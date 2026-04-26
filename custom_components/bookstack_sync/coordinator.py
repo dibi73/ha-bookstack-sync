@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for integration_blueprint."""
+"""DataUpdateCoordinator for bookstack_sync."""
 
 from __future__ import annotations
 

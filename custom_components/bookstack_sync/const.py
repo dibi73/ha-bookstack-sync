@@ -1,8 +1,8 @@
-"""Constants for integration_blueprint."""
+"""Constants for bookstack_sync."""
 
 from logging import Logger, getLogger
 
 LOGGER: Logger = getLogger(__package__)
 
-DOMAIN = "integration_blueprint"
+DOMAIN = "bookstack_sync"
 ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
