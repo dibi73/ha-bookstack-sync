@@ -17,6 +17,14 @@
           "book_id": "Target book",
           "sync_interval": "Sync interval"
         }
+      },
+      "reauth_confirm": {
+        "title": "Refresh BookStack token",
+        "description": "BookStack rejected the API token for {base_url}. Create a fresh token in BookStack and paste the ID + secret here - the URL and target book stay the same.",
+        "data": {
+          "token_id": "API token ID",
+          "token_secret": "API token secret"
+        }
       }
     },
     "error": {
@@ -26,7 +34,8 @@
       "unknown": "Unexpected error - check the Home Assistant log."
     },
     "abort": {
-      "already_configured": "This BookStack instance is already configured."
+      "already_configured": "This BookStack instance is already configured.",
+      "reauth_successful": "Token refreshed - BookStack connection restored."
     }
   },
   "options": {

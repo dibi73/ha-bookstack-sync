@@ -28,6 +28,27 @@ def _format_attribution(now: datetime) -> str:
     return f"_{ATTRIBUTION} – Stand {now.strftime('%Y-%m-%d %H:%M')} UTC._"
 
 
+def render_tombstone_auto_block(now: datetime) -> str:
+    """
+    Render the AUTO block for a page whose HA object no longer exists.
+
+    The MANUAL block stays untouched - the tombstone only replaces the AUTO
+    half so that the user's notes remain available for review or deletion.
+    """
+    return (
+        f"_{ATTRIBUTION} – letzter Sync {now.strftime('%Y-%m-%d %H:%M')} UTC._\n"
+        f"\n"
+        f"> ⚠️ **Diese Seite ist verwaist.**\n"
+        f">\n"
+        f"> Das zugehörige Objekt existiert seit {now.strftime('%Y-%m-%d')} "
+        f"nicht mehr in Home Assistant.\n"
+        f">\n"
+        f"> Der manuelle Block unten bleibt unangetastet. Wenn die Notizen "
+        f"dort nicht mehr relevant sind, kannst du diese Seite manuell "
+        f"löschen.\n"
+    )
+
+
 def render_overview_auto_block(snapshot: HASnapshot, now: datetime) -> str:
     """Render the AUTO block of the overview page."""
     total_devices = sum(len(area.devices) for area in snapshot.areas) + len(

@@ -17,6 +17,14 @@
           "book_id": "Ziel-Book",
           "sync_interval": "Sync-Intervall"
         }
+      },
+      "reauth_confirm": {
+        "title": "BookStack-Token erneuern",
+        "description": "Das API-Token für {base_url} wurde von BookStack abgelehnt. Lege in BookStack einen neuen Token an und trage ID + Secret hier ein – die URL und das Ziel-Book bleiben unverändert.",
+        "data": {
+          "token_id": "API-Token-ID",
+          "token_secret": "API-Token-Secret"
+        }
       }
     },
     "error": {
@@ -26,7 +34,8 @@
       "unknown": "Unbekannter Fehler – siehe Home-Assistant-Log."
     },
     "abort": {
-      "already_configured": "Diese BookStack-Instanz ist bereits konfiguriert."
+      "already_configured": "Diese BookStack-Instanz ist bereits konfiguriert.",
+      "reauth_successful": "Token aktualisiert – Verbindung zu BookStack steht wieder."
     }
   },
   "options": {

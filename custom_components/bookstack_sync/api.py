@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import socket
 from http import HTTPStatus
 from typing import Any
 
 import aiohttp
-import async_timeout
 
 REQUEST_TIMEOUT = 15
 PAGE_SIZE = 500
@@ -132,7 +132,7 @@ class BookStackApiClient:
             "Accept": "application/json",
         }
         try:
-            async with async_timeout.timeout(REQUEST_TIMEOUT):
+            async with asyncio.timeout(REQUEST_TIMEOUT):
                 response = await self._session.request(
                     method=method,
                     url=url,
