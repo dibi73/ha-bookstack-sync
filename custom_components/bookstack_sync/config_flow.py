@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -11,6 +11,9 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.loader import async_get_loaded_integration
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from .api import (
     BookStackApiAuthError,
@@ -21,10 +24,13 @@ from .api import (
 from .const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
+    CONF_EXCLUDED_AREAS,
     CONF_SYNC_INTERVAL,
     CONF_TOKEN_ID,
     CONF_TOKEN_SECRET,
+    CONF_VERIFY_SSL,
     DEFAULT_INTERVAL,
+    DEFAULT_VERIFY_SSL,
     DOMAIN,
     INTERVAL_DAILY,
     INTERVAL_HOURLY,
@@ -105,6 +111,13 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             type=selector.TextSelectorType.PASSWORD,
                         ),
                     ),
+                    vol.Required(
+                        CONF_VERIFY_SSL,
+                        default=(user_input or {}).get(
+                            CONF_VERIFY_SSL,
+                            DEFAULT_VERIFY_SSL,
+                        ),
+                    ): selector.BooleanSelector(),
                 },
             ),
             errors=errors,
@@ -146,13 +159,87 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _fetch_books(self, user_input: dict[str, Any]) -> list[dict[str, Any]]:
+        verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
         client = BookStackApiClient(
             base_url=user_input[CONF_BASE_URL],
             token_id=user_input[CONF_TOKEN_ID],
             token_secret=user_input[CONF_TOKEN_SECRET],
-            session=async_create_clientsession(self.hass),
+            session=async_create_clientsession(self.hass, verify_ssl=verify_ssl),
         )
         return await client.list_books()
+
+    async def async_step_reauth(
+        self,
+        entry_data: Mapping[str, Any],
+    ) -> ConfigFlowResult:
+        """Triggered by HA when the coordinator raises ConfigEntryAuthFailed."""
+        del entry_data
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Show a form to enter a fresh API token (URL stays as configured)."""
+        errors: dict[str, str] = {}
+        existing = self._get_reauth_entry()
+
+        if user_input is not None:
+            try:
+                await self._verify_token(
+                    base_url=existing.data[CONF_BASE_URL],
+                    token_id=user_input[CONF_TOKEN_ID],
+                    token_secret=user_input[CONF_TOKEN_SECRET],
+                )
+            except BookStackApiAuthError as err:
+                LOGGER.warning("Reauth failed: %s", err)
+                errors["base"] = "auth"
+            except BookStackApiCommunicationError as err:
+                LOGGER.error("BookStack unreachable during reauth: %s", err)
+                errors["base"] = "connection"
+            except BookStackApiError:
+                LOGGER.exception("Unexpected error during reauth")
+                errors["base"] = "unknown"
+            else:
+                return self.async_update_reload_and_abort(
+                    existing,
+                    data={
+                        **existing.data,
+                        CONF_TOKEN_ID: user_input[CONF_TOKEN_ID],
+                        CONF_TOKEN_SECRET: user_input[CONF_TOKEN_SECRET],
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            description_placeholders={"base_url": existing.data[CONF_BASE_URL]},
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_TOKEN_ID): selector.TextSelector(),
+                    vol.Required(CONF_TOKEN_SECRET): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD,
+                        ),
+                    ),
+                },
+            ),
+            errors=errors,
+        )
+
+    async def _verify_token(
+        self,
+        base_url: str,
+        token_id: str,
+        token_secret: str,
+    ) -> None:
+        """Hit /api/books once to confirm the token works (and is authorised)."""
+        client = BookStackApiClient(
+            base_url=base_url,
+            token_id=token_id,
+            token_secret=token_secret,
+            session=async_create_clientsession(self.hass),
+        )
+        await client.list_books()
 
     def _title_for_book(self, book_id: int) -> str:
         for book in self._books:
@@ -190,14 +277,16 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                 data={
                     CONF_BOOK_ID: int(user_input[CONF_BOOK_ID]),
                     CONF_SYNC_INTERVAL: user_input[CONF_SYNC_INTERVAL],
+                    CONF_EXCLUDED_AREAS: user_input.get(CONF_EXCLUDED_AREAS, []),
                 },
             )
 
+        verify_ssl = self.config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
         client = BookStackApiClient(
             base_url=self.config_entry.data[CONF_BASE_URL],
             token_id=self.config_entry.data[CONF_TOKEN_ID],
             token_secret=self.config_entry.data[CONF_TOKEN_SECRET],
-            session=async_create_clientsession(self.hass),
+            session=async_create_clientsession(self.hass, verify_ssl=verify_ssl),
         )
         try:
             self._books = await client.list_books()
@@ -211,6 +300,7 @@ class BookStackSyncOptionsFlow(OptionsFlow):
             CONF_SYNC_INTERVAL,
             DEFAULT_INTERVAL,
         )
+        current_excluded = self.config_entry.options.get(CONF_EXCLUDED_AREAS, [])
 
         return self.async_show_form(
             step_id="init",
@@ -235,6 +325,12 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         CONF_SYNC_INTERVAL,
                         default=current_interval,
                     ): _interval_selector(),
+                    vol.Optional(
+                        CONF_EXCLUDED_AREAS,
+                        default=current_excluded,
+                    ): selector.AreaSelector(
+                        selector.AreaSelectorConfig(multiple=True),
+                    ),
                 },
             ),
         )

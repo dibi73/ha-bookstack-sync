@@ -10,9 +10,14 @@ from typing import TYPE_CHECKING
 from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     LOGGER,
+    PAGE_KIND_ADDONS,
     PAGE_KIND_AREA,
+    PAGE_KIND_AUTOMATIONS,
     PAGE_KIND_DEVICE,
+    PAGE_KIND_INTEGRATIONS,
     PAGE_KIND_OVERVIEW,
+    PAGE_KIND_SCENES,
+    PAGE_KIND_SCRIPTS,
 )
 from .extractor import extract_snapshot
 from .merge import (
@@ -22,13 +27,21 @@ from .merge import (
     merge_page,
 )
 from .renderer import (
+    render_addons_auto_block,
     render_area_auto_block,
+    render_automations_auto_block,
     render_device_auto_block,
+    render_integrations_auto_block,
     render_overview_auto_block,
+    render_scenes_auto_block,
+    render_scripts_auto_block,
+    render_tombstone_auto_block,
 )
 from .store import PageMapping
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from homeassistant.core import HomeAssistant
 
     from .api import BookStackApiClient
@@ -48,6 +61,7 @@ class SyncReport:
     created: list[str] = field(default_factory=list)
     updated: list[str] = field(default_factory=list)
     unchanged: list[str] = field(default_factory=list)
+    tombstoned: list[str] = field(default_factory=list)
     skipped_conflict: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     dry_run: bool = False
@@ -58,6 +72,7 @@ class SyncReport:
             "created": self.created,
             "updated": self.updated,
             "unchanged": self.unchanged,
+            "tombstoned": self.tombstoned,
             "skipped_conflict": self.skipped_conflict,
             "errors": self.errors,
             "dry_run": self.dry_run,
@@ -65,6 +80,7 @@ class SyncReport:
                 len(self.created)
                 + len(self.updated)
                 + len(self.unchanged)
+                + len(self.tombstoned)
                 + len(self.skipped_conflict)
             ),
         }
@@ -92,7 +108,35 @@ def _plan_pages(snapshot: HASnapshot, now: datetime) -> list[_PlannedPage]:
             title="Home Assistant – Übersicht",
             auto_body=render_overview_auto_block(snapshot, now),
         ),
+        _PlannedPage(
+            key=f"{PAGE_KIND_INTEGRATIONS}:_",
+            title="Home Assistant – Integrationen",
+            auto_body=render_integrations_auto_block(snapshot.integrations, now),
+        ),
+        _PlannedPage(
+            key=f"{PAGE_KIND_AUTOMATIONS}:_",
+            title="Home Assistant – Automatisierungen",
+            auto_body=render_automations_auto_block(snapshot.automations, now),
+        ),
+        _PlannedPage(
+            key=f"{PAGE_KIND_SCRIPTS}:_",
+            title="Home Assistant – Skripte",
+            auto_body=render_scripts_auto_block(snapshot.scripts, now),
+        ),
+        _PlannedPage(
+            key=f"{PAGE_KIND_SCENES}:_",
+            title="Home Assistant – Szenen",
+            auto_body=render_scenes_auto_block(snapshot.scenes, now),
+        ),
     ]
+    if snapshot.addons:
+        planned.append(
+            _PlannedPage(
+                key=f"{PAGE_KIND_ADDONS}:_",
+                title="Home Assistant – Add-ons",
+                auto_body=render_addons_auto_block(snapshot.addons, now),
+            ),
+        )
     for area in snapshot.areas:
         planned.append(
             _PlannedPage(
@@ -106,13 +150,14 @@ def _plan_pages(snapshot: HASnapshot, now: datetime) -> list[_PlannedPage]:
     return planned
 
 
-async def run_sync(
+async def run_sync(  # noqa: PLR0913 - cohesive entry point
     hass: HomeAssistant,
     client: BookStackApiClient,
     store: BookStackSyncStore,
     book_id: int,
     *,
     dry_run: bool = False,
+    excluded_area_ids: Iterable[str] = (),
 ) -> SyncReport:
     """Execute one full sync cycle and return a report."""
     report = SyncReport(dry_run=dry_run)
@@ -120,7 +165,7 @@ async def run_sync(
 
     # Registries are pure in-memory dict lookups and must run on the event
     # loop thread - never wrap them in async_add_executor_job.
-    snapshot = extract_snapshot(hass)
+    snapshot = extract_snapshot(hass, excluded_area_ids=excluded_area_ids)
     planned = _plan_pages(snapshot, now)
 
     await store.async_load()
@@ -139,15 +184,18 @@ async def run_sync(
         if not dry_run:
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
+    await _tombstone_orphans(client, store, planned, report, now, dry_run=dry_run)
+
     if not dry_run:
         await store.async_save()
 
     LOGGER.info(
         "BookStack sync complete: %d created, %d updated, %d unchanged, "
-        "%d conflicts, %d errors%s",
+        "%d tombstoned, %d conflicts, %d errors%s",
         len(report.created),
         len(report.updated),
         len(report.unchanged),
+        len(report.tombstoned),
         len(report.skipped_conflict),
         len(report.errors),
         " (dry-run)" if dry_run else "",
@@ -222,6 +270,97 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
             page_id=mapping.page_id,
             auto_block_hash=merged.auto_hash,
             last_seen=datetime.now(tz=UTC).isoformat(),
+            tombstoned_at=None,  # device is back; clear any prior tombstone
         ),
     )
     report.updated.append(page.title)
+
+
+async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
+    client: BookStackApiClient,
+    store: BookStackSyncStore,
+    planned: list[_PlannedPage],
+    report: SyncReport,
+    now: datetime,
+    *,
+    dry_run: bool,
+) -> None:
+    """Mark pages whose HA object vanished as orphaned (one-time, not on repeat)."""
+    planned_keys = {p.key for p in planned}
+    # Sorted iteration keeps the report and BookStack revision stream stable.
+    for key, mapping in sorted(store.all().items()):
+        if key in planned_keys:
+            continue
+        if mapping.tombstoned_at is not None:
+            continue
+        try:
+            await _tombstone_one(
+                client,
+                store,
+                key,
+                mapping,
+                report,
+                now,
+                dry_run=dry_run,
+            )
+        except BookStackApiAuthError:
+            raise
+        except BookStackApiError as err:
+            LOGGER.exception("Tombstone failed for %s", key)
+            report.errors.append(f"{key} (tombstone): {err}")
+        except Exception as err:  # noqa: BLE001 - report and continue
+            LOGGER.exception("Unexpected error tombstoning %s", key)
+            report.errors.append(f"{key} (tombstone): {err}")
+        if not dry_run:
+            await asyncio.sleep(WRITE_PAUSE_SECONDS)
+
+
+async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
+    client: BookStackApiClient,
+    store: BookStackSyncStore,
+    key: str,
+    mapping: PageMapping,
+    report: SyncReport,
+    now: datetime,
+    *,
+    dry_run: bool,
+) -> None:
+    auto_body = render_tombstone_auto_block(now)
+    new_hash = hash_auto_block(auto_body)
+
+    existing = await client.get_page(mapping.page_id)
+    existing_markdown = existing.get("markdown") or existing.get("raw_html") or ""
+
+    merged = merge_page(
+        new_auto_body=auto_body,
+        existing_markdown=existing_markdown,
+        last_known_auto_hash=mapping.auto_block_hash or None,
+    )
+
+    if merged.manual_block_tampered:
+        LOGGER.warning(
+            "BookStack page id=%s (%s): AUTO block was edited manually - "
+            "skipping tombstone to preserve manual changes.",
+            mapping.page_id,
+            key,
+        )
+        report.skipped_conflict.append(f"{key} (tombstone)")
+        return
+
+    existing_name = existing.get("name") or key
+
+    if dry_run:
+        report.tombstoned.append(existing_name)
+        return
+
+    await client.update_page(mapping.page_id, existing_name, merged.body)
+    store.set(
+        key,
+        PageMapping(
+            page_id=mapping.page_id,
+            auto_block_hash=new_hash,
+            last_seen=mapping.last_seen,
+            tombstoned_at=now.isoformat(),
+        ),
+    )
+    report.tombstoned.append(existing_name)

@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     CONF_BOOK_ID,
+    CONF_EXCLUDED_AREAS,
     CONF_SYNC_INTERVAL,
     DEFAULT_INTERVAL,
     INTERVAL_MANUAL,
@@ -71,14 +72,17 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         """Execute a sync immediately, regardless of the schedule."""
         async with self._sync_lock:
             runtime = self.config_entry.runtime_data
-            config = self.config_entry.options or self.config_entry.data
-            book_id = int(config[CONF_BOOK_ID])
+            options = self.config_entry.options
+            data = self.config_entry.data
+            book_id = int((options or data)[CONF_BOOK_ID])
+            excluded_areas = options.get(CONF_EXCLUDED_AREAS, []) or []
             report = await run_sync(
                 self.hass,
                 runtime.client,
                 runtime.store,
                 book_id,
                 dry_run=dry_run,
+                excluded_area_ids=excluded_areas,
             )
             if not dry_run:
                 self.last_run = datetime.now(tz=UTC)

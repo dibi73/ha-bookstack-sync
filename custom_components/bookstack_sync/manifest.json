@@ -1,6 +1,7 @@
 {
   "domain": "bookstack_sync",
   "name": "BookStack Sync",
+  "after_dependencies": ["hassio"],
   "codeowners": ["@dibi73"],
   "config_flow": true,
   "documentation": "https://github.com/dibi73/ha-bookstack-sync",
