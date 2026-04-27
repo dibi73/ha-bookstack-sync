@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStack-Verbindung",
+        "description": "Verbinde Home Assistant mit deiner BookStack-Instanz.\n\nLege in BookStack unter *Mein Profil → API-Tokens* einen Token an und trage ID + Secret hier ein.\n\nDokumentation: {documentation_url}",
+        "data": {
+          "base_url": "BookStack-URL",
+          "token_id": "API-Token-ID",
+          "token_secret": "API-Token-Secret"
+        }
+      },
+      "book": {
+        "title": "Ziel-Book wählen",
+        "description": "In welches Book soll Home Assistant synchronisieren? Manuell hinzugefügte Inhalte in den Pages bleiben erhalten.",
+        "data": {
+          "book_id": "Ziel-Book",
+          "sync_interval": "Sync-Intervall"
+        }
+      }
+    },
+    "error": {
+      "auth": "API-Token ungültig oder unzureichende Berechtigungen.",
+      "connection": "BookStack-Instanz nicht erreichbar.",
+      "no_books": "In dieser BookStack-Instanz wurde kein Book gefunden. Lege zuerst manuell ein Ziel-Book an.",
+      "unknown": "Unbekannter Fehler – siehe Home-Assistant-Log."
+    },
+    "abort": {
+      "already_configured": "Diese BookStack-Instanz ist bereits konfiguriert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BookStack-Sync-Einstellungen",
+        "data": {
+          "book_id": "Ziel-Book",
+          "sync_interval": "Sync-Intervall"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Stündlich",
+        "daily": "Täglich",
+        "manual": "Nur manuell (Service-Aufruf)"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Sofort synchronisieren",
+      "description": "Startet einen Sync sofort, ohne auf das Intervall zu warten."
+    },
+    "preview": {
+      "name": "Sync-Vorschau",
+      "description": "Loggt, welche Pages erstellt/aktualisiert würden, schreibt aber nichts in BookStack."
+    }
+  }
+}

@@ -1,0 +1,11 @@
+run_now:
+  name: Sync now
+  description: >-
+    Runs the BookStack sync immediately for every configured BookStack Sync
+    entry, regardless of the configured interval.
+
+preview:
+  name: Sync preview
+  description: >-
+    Performs a dry-run: logs which pages would be created or updated, but
+    writes nothing to BookStack. Useful right after setup or template changes.

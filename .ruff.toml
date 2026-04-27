@@ -13,6 +13,9 @@ ignore = [
     "D212", # multi-line-summary-first-line (incompatible with formatter)
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
+    "RUF001", # German strings legitimately use en-dash/umlauts/non-ASCII chars
+    "RUF002", # same, for docstrings
+    "RUF003", # same, for comments
 ]
 
 [lint.flake8-pytest-style]

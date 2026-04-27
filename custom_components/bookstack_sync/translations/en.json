@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStack connection",
+        "description": "Connect Home Assistant to your BookStack instance.\n\nIn BookStack go to *My Account → API Tokens*, create a token, and paste the ID + secret here.\n\nDocumentation: {documentation_url}",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API token ID",
+          "token_secret": "API token secret"
+        }
+      },
+      "book": {
+        "title": "Pick target book",
+        "description": "Which book should Home Assistant sync into? Manually added content inside pages will be preserved.",
+        "data": {
+          "book_id": "Target book",
+          "sync_interval": "Sync interval"
+        }
+      }
+    },
+    "error": {
+      "auth": "API token rejected or missing permissions.",
+      "connection": "Cannot reach BookStack.",
+      "no_books": "No book found in this BookStack instance. Create a target book first.",
+      "unknown": "Unexpected error - check the Home Assistant log."
+    },
+    "abort": {
+      "already_configured": "This BookStack instance is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BookStack Sync settings",
+        "data": {
+          "book_id": "Target book",
+          "sync_interval": "Sync interval"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Hourly",
+        "daily": "Daily",
+        "manual": "Manual only (service call)"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Sync now",
+      "description": "Trigger a sync immediately without waiting for the interval."
+    },
+    "preview": {
+      "name": "Sync preview",
+      "description": "Logs which pages would be created/updated without writing anything to BookStack."
+    }
+  }
+}
