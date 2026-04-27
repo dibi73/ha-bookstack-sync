@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     LOGGER,
+    PAGE_KIND_ADDONS,
     PAGE_KIND_AREA,
     PAGE_KIND_AUTOMATIONS,
     PAGE_KIND_DEVICE,
@@ -26,6 +27,7 @@ from .merge import (
     merge_page,
 )
 from .renderer import (
+    render_addons_auto_block,
     render_area_auto_block,
     render_automations_auto_block,
     render_device_auto_block,
@@ -38,6 +40,8 @@ from .renderer import (
 from .store import PageMapping
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from homeassistant.core import HomeAssistant
 
     from .api import BookStackApiClient
@@ -125,6 +129,14 @@ def _plan_pages(snapshot: HASnapshot, now: datetime) -> list[_PlannedPage]:
             auto_body=render_scenes_auto_block(snapshot.scenes, now),
         ),
     ]
+    if snapshot.addons:
+        planned.append(
+            _PlannedPage(
+                key=f"{PAGE_KIND_ADDONS}:_",
+                title="Home Assistant – Add-ons",
+                auto_body=render_addons_auto_block(snapshot.addons, now),
+            ),
+        )
     for area in snapshot.areas:
         planned.append(
             _PlannedPage(
@@ -138,13 +150,14 @@ def _plan_pages(snapshot: HASnapshot, now: datetime) -> list[_PlannedPage]:
     return planned
 
 
-async def run_sync(
+async def run_sync(  # noqa: PLR0913 - cohesive entry point
     hass: HomeAssistant,
     client: BookStackApiClient,
     store: BookStackSyncStore,
     book_id: int,
     *,
     dry_run: bool = False,
+    excluded_area_ids: Iterable[str] = (),
 ) -> SyncReport:
     """Execute one full sync cycle and return a report."""
     report = SyncReport(dry_run=dry_run)
@@ -152,7 +165,7 @@ async def run_sync(
 
     # Registries are pure in-memory dict lookups and must run on the event
     # loop thread - never wrap them in async_add_executor_job.
-    snapshot = extract_snapshot(hass)
+    snapshot = extract_snapshot(hass, excluded_area_ids=excluded_area_ids)
     planned = _plan_pages(snapshot, now)
 
     await store.async_load()

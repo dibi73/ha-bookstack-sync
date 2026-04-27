@@ -15,8 +15,17 @@ from homeassistant.helpers import (
     entity_registry as er,
 )
 
+from .const import LOGGER
+
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from homeassistant.core import HomeAssistant
+
+
+# Common attribute names that Tasmota / Shelly / generic MQTT integrations
+# use to expose the topic, in priority order.
+_MQTT_TOPIC_KEYS = ("topic", "state_topic", "command_topic", "mqtt_topic")
 
 
 @dataclass
@@ -31,6 +40,7 @@ class EntitySnapshot:
     state: str | None
     attributes: dict
     disabled: bool
+    mqtt_topic: str | None = None
 
 
 @dataclass
@@ -103,6 +113,17 @@ class IntegrationSnapshot:
 
 
 @dataclass
+class AddonSnapshot:
+    """One Supervisor add-on (only available on HassOS / Supervised installs)."""
+
+    slug: str
+    name: str
+    version: str | None
+    state: str | None
+    update_available: bool
+
+
+@dataclass
 class HASnapshot:
     """Deterministic, fully-sorted view of HA used by the renderer."""
 
@@ -112,15 +133,26 @@ class HASnapshot:
     scripts: list[ScriptSnapshot]
     scenes: list[SceneSnapshot]
     integrations: list[IntegrationSnapshot]
+    addons: list[AddonSnapshot]
 
 
-def extract_snapshot(hass: HomeAssistant) -> HASnapshot:
+def extract_snapshot(
+    hass: HomeAssistant,
+    *,
+    excluded_area_ids: Iterable[str] = (),
+) -> HASnapshot:
     """
-    Build a sorted snapshot of areas/devices/entities/automations/integrations.
+    Build a sorted snapshot of HA registries plus auxiliary data.
 
-    Sort order is stable so the renderer can produce byte-identical output
-    when nothing actually changed -> avoids spurious BookStack revisions.
+    Includes areas/devices/entities, automations/scripts/scenes/integrations
+    and Supervisor add-ons (best-effort). ``excluded_area_ids`` skips entire
+    areas (and their devices) so the user can keep certain rooms out of the
+    wiki without losing the rest of the documentation. Sort order is stable
+    so the renderer can produce byte-identical output when nothing actually
+    changed.
     """
+    excluded = set(excluded_area_ids)
+
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
     entity_reg = er.async_get(hass)
@@ -128,10 +160,13 @@ def extract_snapshot(hass: HomeAssistant) -> HASnapshot:
     areas: dict[str, AreaSnapshot] = {
         area.id: AreaSnapshot(area_id=area.id, name=area.name)
         for area in area_reg.areas.values()
+        if area.id not in excluded
     }
 
     devices: dict[str, DeviceSnapshot] = {}
     for device in device_reg.devices.values():
+        if device.area_id in excluded:
+            continue
         devices[device.id] = DeviceSnapshot(
             device_id=device.id,
             name=device.name_by_user or device.name or device.id,
@@ -145,7 +180,13 @@ def extract_snapshot(hass: HomeAssistant) -> HASnapshot:
 
     orphan_entities_by_area: dict[str, list[EntitySnapshot]] = {}
     for entity in entity_reg.entities.values():
+        if entity.area_id in excluded:
+            continue
+        if entity.device_id and entity.device_id not in devices:
+            # Device was filtered out -> skip its entities too.
+            continue
         state_obj = hass.states.get(entity.entity_id)
+        attrs = dict(state_obj.attributes) if state_obj else {}
         snapshot = EntitySnapshot(
             entity_id=entity.entity_id,
             name=entity.name or entity.original_name or entity.entity_id,
@@ -153,10 +194,11 @@ def extract_snapshot(hass: HomeAssistant) -> HASnapshot:
             device_id=entity.device_id,
             area_id=entity.area_id,
             state=state_obj.state if state_obj else None,
-            attributes=dict(state_obj.attributes) if state_obj else {},
+            attributes=attrs,
             disabled=entity.disabled,
+            mqtt_topic=_mqtt_topic_from(attrs),
         )
-        if entity.device_id and entity.device_id in devices:
+        if entity.device_id:
             devices[entity.device_id].entities.append(snapshot)
         else:
             area_id = entity.area_id or ""
@@ -180,19 +222,24 @@ def extract_snapshot(hass: HomeAssistant) -> HASnapshot:
     unassigned.sort(key=lambda d: (d.name.lower(), d.device_id))
     sorted_areas = sorted(areas.values(), key=lambda a: (a.name.lower(), a.area_id))
 
-    automations = _extract_automations(hass)
-    scripts = _extract_scripts(hass)
-    scenes = _extract_scenes(hass)
-    integrations = _extract_integrations(hass, device_reg, entity_reg)
-
     return HASnapshot(
         areas=sorted_areas,
         unassigned_devices=unassigned,
-        automations=automations,
-        scripts=scripts,
-        scenes=scenes,
-        integrations=integrations,
+        automations=_extract_automations(hass),
+        scripts=_extract_scripts(hass),
+        scenes=_extract_scenes(hass),
+        integrations=_extract_integrations(hass, device_reg, entity_reg),
+        addons=_extract_addons(hass),
     )
+
+
+def _mqtt_topic_from(attrs: dict) -> str | None:
+    """Return the most informative topic-like attribute, or None."""
+    for key in _MQTT_TOPIC_KEYS:
+        value = attrs.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 def _extract_automations(hass: HomeAssistant) -> list[AutomationSnapshot]:
@@ -280,3 +327,38 @@ def _extract_integrations(
         )
     integrations.sort(key=lambda i: (i.domain, i.title.lower(), i.entry_id))
     return integrations
+
+
+def _extract_addons(hass: HomeAssistant) -> list[AddonSnapshot]:
+    """Best-effort add-on listing - empty unless HA Supervisor is available."""
+    try:
+        from homeassistant.components.hassio import (  # noqa: PLC0415 - optional dep
+            get_addons_info,
+            is_hassio,
+        )
+    except ImportError:
+        return []
+
+    try:
+        if not is_hassio(hass):
+            return []
+        addons_dict = get_addons_info(hass) or {}
+    except Exception as err:  # noqa: BLE001 - third-party call, never fatal
+        LOGGER.debug("Could not query Supervisor add-ons: %s", err)
+        return []
+
+    addons: list[AddonSnapshot] = []
+    for slug, info in addons_dict.items():
+        if not isinstance(info, dict):
+            continue
+        addons.append(
+            AddonSnapshot(
+                slug=slug,
+                name=info.get("name") or slug,
+                version=info.get("version"),
+                state=info.get("state"),
+                update_available=bool(info.get("update_available")),
+            ),
+        )
+    addons.sort(key=lambda a: (a.name.lower(), a.slug))
+    return addons

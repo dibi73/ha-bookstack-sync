@@ -14,7 +14,13 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
 from .api import BookStackApiClient
-from .const import CONF_BASE_URL, CONF_TOKEN_ID, CONF_TOKEN_SECRET
+from .const import (
+    CONF_BASE_URL,
+    CONF_TOKEN_ID,
+    CONF_TOKEN_SECRET,
+    CONF_VERIFY_SSL,
+    DEFAULT_VERIFY_SSL,
+)
 from .coordinator import BookStackSyncCoordinator
 from .data import BookStackSyncData
 from .services import async_register_services, async_unregister_services
@@ -33,11 +39,12 @@ async def async_setup_entry(
     entry: BookStackSyncConfigEntry,
 ) -> bool:
     """Set up a BookStack Sync config entry."""
+    verify_ssl = entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
     client = BookStackApiClient(
         base_url=entry.data[CONF_BASE_URL],
         token_id=entry.data[CONF_TOKEN_ID],
         token_secret=entry.data[CONF_TOKEN_SECRET],
-        session=async_get_clientsession(hass),
+        session=async_get_clientsession(hass, verify_ssl=verify_ssl),
     )
     store = BookStackSyncStore(hass, entry.entry_id)
     await store.async_load()

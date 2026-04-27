@@ -7,7 +7,8 @@
         "data": {
           "base_url": "BookStack URL",
           "token_id": "API token ID",
-          "token_secret": "API token secret"
+          "token_secret": "API token secret",
+          "verify_ssl": "Verify TLS certificate (disable for self-signed)"
         }
       },
       "book": {
@@ -44,7 +45,8 @@
         "title": "BookStack Sync settings",
         "data": {
           "book_id": "Target book",
-          "sync_interval": "Sync interval"
+          "sync_interval": "Sync interval",
+          "excluded_areas": "Excluded areas (will not be synced)"
         }
       }
     }
