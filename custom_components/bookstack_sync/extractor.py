@@ -59,16 +59,64 @@ class AreaSnapshot:
 
 
 @dataclass
+class AutomationSnapshot:
+    """One automation, scraped from the automation domain's state."""
+
+    entity_id: str
+    name: str
+    description: str | None
+    state: str | None
+    mode: str | None
+    last_triggered: str | None
+
+
+@dataclass
+class ScriptSnapshot:
+    """One script, scraped from the script domain's state."""
+
+    entity_id: str
+    name: str
+    description: str | None
+    state: str | None
+    last_triggered: str | None
+
+
+@dataclass
+class SceneSnapshot:
+    """One scene, scraped from the scene domain's state."""
+
+    entity_id: str
+    name: str
+
+
+@dataclass
+class IntegrationSnapshot:
+    """One config entry / installed integration."""
+
+    entry_id: str
+    domain: str
+    title: str
+    state: str
+    source: str
+    device_count: int
+    entity_count: int
+
+
+@dataclass
 class HASnapshot:
     """Deterministic, fully-sorted view of HA used by the renderer."""
 
     areas: list[AreaSnapshot]
     unassigned_devices: list[DeviceSnapshot]
+    automations: list[AutomationSnapshot]
+    scripts: list[ScriptSnapshot]
+    scenes: list[SceneSnapshot]
+    integrations: list[IntegrationSnapshot]
 
 
 def extract_snapshot(hass: HomeAssistant) -> HASnapshot:
     """
-    Build a sorted snapshot of areas/devices/entities.
+    Build a sorted snapshot of areas/devices/entities/automations/integrations.
 
     Sort order is stable so the renderer can produce byte-identical output
     when nothing actually changed -> avoids spurious BookStack revisions.
@@ -132,4 +180,103 @@ def extract_snapshot(hass: HomeAssistant) -> HASnapshot:
     unassigned.sort(key=lambda d: (d.name.lower(), d.device_id))
     sorted_areas = sorted(areas.values(), key=lambda a: (a.name.lower(), a.area_id))
 
-    return HASnapshot(areas=sorted_areas, unassigned_devices=unassigned)
+    automations = _extract_automations(hass)
+    scripts = _extract_scripts(hass)
+    scenes = _extract_scenes(hass)
+    integrations = _extract_integrations(hass, device_reg, entity_reg)
+
+    return HASnapshot(
+        areas=sorted_areas,
+        unassigned_devices=unassigned,
+        automations=automations,
+        scripts=scripts,
+        scenes=scenes,
+        integrations=integrations,
+    )
+
+
+def _extract_automations(hass: HomeAssistant) -> list[AutomationSnapshot]:
+    automations: list[AutomationSnapshot] = []
+    for state in hass.states.async_all("automation"):
+        attrs = state.attributes
+        last = attrs.get("last_triggered")
+        automations.append(
+            AutomationSnapshot(
+                entity_id=state.entity_id,
+                name=attrs.get("friendly_name") or state.entity_id,
+                description=attrs.get("description") or None,
+                state=state.state,
+                mode=attrs.get("mode"),
+                last_triggered=last.isoformat() if hasattr(last, "isoformat") else last,
+            ),
+        )
+    automations.sort(key=lambda a: (a.name.lower(), a.entity_id))
+    return automations
+
+
+def _extract_scripts(hass: HomeAssistant) -> list[ScriptSnapshot]:
+    scripts: list[ScriptSnapshot] = []
+    for state in hass.states.async_all("script"):
+        attrs = state.attributes
+        last = attrs.get("last_triggered")
+        scripts.append(
+            ScriptSnapshot(
+                entity_id=state.entity_id,
+                name=attrs.get("friendly_name") or state.entity_id,
+                description=attrs.get("description") or None,
+                state=state.state,
+                last_triggered=last.isoformat() if hasattr(last, "isoformat") else last,
+            ),
+        )
+    scripts.sort(key=lambda s: (s.name.lower(), s.entity_id))
+    return scripts
+
+
+def _extract_scenes(hass: HomeAssistant) -> list[SceneSnapshot]:
+    scenes: list[SceneSnapshot] = []
+    for state in hass.states.async_all("scene"):
+        attrs = state.attributes
+        scenes.append(
+            SceneSnapshot(
+                entity_id=state.entity_id,
+                name=attrs.get("friendly_name") or state.entity_id,
+            ),
+        )
+    scenes.sort(key=lambda s: (s.name.lower(), s.entity_id))
+    return scenes
+
+
+def _extract_integrations(
+    hass: HomeAssistant,
+    device_reg: dr.DeviceRegistry,
+    entity_reg: er.EntityRegistry,
+) -> list[IntegrationSnapshot]:
+    devices_per_entry: dict[str, int] = {}
+    for device in device_reg.devices.values():
+        for entry_id in device.config_entries:
+            devices_per_entry[entry_id] = devices_per_entry.get(entry_id, 0) + 1
+
+    entities_per_entry: dict[str, int] = {}
+    for entity in entity_reg.entities.values():
+        if entity.config_entry_id:
+            entities_per_entry[entity.config_entry_id] = (
+                entities_per_entry.get(entity.config_entry_id, 0) + 1
+            )
+
+    integrations: list[IntegrationSnapshot] = []
+    for entry in hass.config_entries.async_entries():
+        # entry.state is an enum (ConfigEntryState); .value gives the human key
+        state_value = getattr(entry.state, "value", str(entry.state))
+        integrations.append(
+            IntegrationSnapshot(
+                entry_id=entry.entry_id,
+                domain=entry.domain,
+                title=entry.title or entry.domain,
+                state=str(state_value),
+                source=entry.source,
+                device_count=devices_per_entry.get(entry.entry_id, 0),
+                entity_count=entities_per_entry.get(entry.entry_id, 0),
+            ),
+        )
+    integrations.sort(key=lambda i: (i.domain, i.title.lower(), i.entry_id))
+    return integrations

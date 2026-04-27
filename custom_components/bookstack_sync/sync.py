@@ -11,8 +11,12 @@ from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     LOGGER,
     PAGE_KIND_AREA,
+    PAGE_KIND_AUTOMATIONS,
     PAGE_KIND_DEVICE,
+    PAGE_KIND_INTEGRATIONS,
     PAGE_KIND_OVERVIEW,
+    PAGE_KIND_SCENES,
+    PAGE_KIND_SCRIPTS,
 )
 from .extractor import extract_snapshot
 from .merge import (
@@ -23,8 +27,12 @@ from .merge import (
 )
 from .renderer import (
     render_area_auto_block,
+    render_automations_auto_block,
     render_device_auto_block,
+    render_integrations_auto_block,
     render_overview_auto_block,
+    render_scenes_auto_block,
+    render_scripts_auto_block,
 )
 from .store import PageMapping
 
@@ -91,6 +99,26 @@ def _plan_pages(snapshot: HASnapshot, now: datetime) -> list[_PlannedPage]:
             key=f"{PAGE_KIND_OVERVIEW}:_",
             title="Home Assistant – Übersicht",
             auto_body=render_overview_auto_block(snapshot, now),
+        ),
+        _PlannedPage(
+            key=f"{PAGE_KIND_INTEGRATIONS}:_",
+            title="Home Assistant – Integrationen",
+            auto_body=render_integrations_auto_block(snapshot.integrations, now),
+        ),
+        _PlannedPage(
+            key=f"{PAGE_KIND_AUTOMATIONS}:_",
+            title="Home Assistant – Automatisierungen",
+            auto_body=render_automations_auto_block(snapshot.automations, now),
+        ),
+        _PlannedPage(
+            key=f"{PAGE_KIND_SCRIPTS}:_",
+            title="Home Assistant – Skripte",
+            auto_body=render_scripts_auto_block(snapshot.scripts, now),
+        ),
+        _PlannedPage(
+            key=f"{PAGE_KIND_SCENES}:_",
+            title="Home Assistant – Szenen",
+            auto_body=render_scenes_auto_block(snapshot.scenes, now),
         ),
     ]
     for area in snapshot.areas:
