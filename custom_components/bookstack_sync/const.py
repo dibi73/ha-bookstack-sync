@@ -13,6 +13,10 @@ CONF_TOKEN_ID = "token_id"  # noqa: S105 - config-entry field name, not a secret
 CONF_TOKEN_SECRET = "token_secret"  # noqa: S105 - field name, not a secret
 CONF_BOOK_ID = "book_id"
 CONF_SYNC_INTERVAL = "sync_interval"
+CONF_VERIFY_SSL = "verify_ssl"
+CONF_EXCLUDED_AREAS = "excluded_areas"
+
+DEFAULT_VERIFY_SSL = True
 
 INTERVAL_HOURLY = "hourly"
 INTERVAL_DAILY = "daily"
@@ -37,6 +41,7 @@ STORAGE_KEY_FMT = "bookstack_sync.{entry_id}.mapping"
 PAGE_KIND_OVERVIEW = "overview"
 PAGE_KIND_AREA = "area"
 PAGE_KIND_DEVICE = "device"
+PAGE_KIND_ADDONS = "addons"
 
 SERVICE_RUN_NOW = "run_now"
 SERVICE_PREVIEW = "preview"

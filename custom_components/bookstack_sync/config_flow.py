@@ -21,10 +21,13 @@ from .api import (
 from .const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
+    CONF_EXCLUDED_AREAS,
     CONF_SYNC_INTERVAL,
     CONF_TOKEN_ID,
     CONF_TOKEN_SECRET,
+    CONF_VERIFY_SSL,
     DEFAULT_INTERVAL,
+    DEFAULT_VERIFY_SSL,
     DOMAIN,
     INTERVAL_DAILY,
     INTERVAL_HOURLY,
@@ -105,6 +108,13 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             type=selector.TextSelectorType.PASSWORD,
                         ),
                     ),
+                    vol.Required(
+                        CONF_VERIFY_SSL,
+                        default=(user_input or {}).get(
+                            CONF_VERIFY_SSL,
+                            DEFAULT_VERIFY_SSL,
+                        ),
+                    ): selector.BooleanSelector(),
                 },
             ),
             errors=errors,
@@ -146,11 +156,12 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _fetch_books(self, user_input: dict[str, Any]) -> list[dict[str, Any]]:
+        verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
         client = BookStackApiClient(
             base_url=user_input[CONF_BASE_URL],
             token_id=user_input[CONF_TOKEN_ID],
             token_secret=user_input[CONF_TOKEN_SECRET],
-            session=async_create_clientsession(self.hass),
+            session=async_create_clientsession(self.hass, verify_ssl=verify_ssl),
         )
         return await client.list_books()
 
@@ -190,14 +201,16 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                 data={
                     CONF_BOOK_ID: int(user_input[CONF_BOOK_ID]),
                     CONF_SYNC_INTERVAL: user_input[CONF_SYNC_INTERVAL],
+                    CONF_EXCLUDED_AREAS: user_input.get(CONF_EXCLUDED_AREAS, []),
                 },
             )
 
+        verify_ssl = self.config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
         client = BookStackApiClient(
             base_url=self.config_entry.data[CONF_BASE_URL],
             token_id=self.config_entry.data[CONF_TOKEN_ID],
             token_secret=self.config_entry.data[CONF_TOKEN_SECRET],
-            session=async_create_clientsession(self.hass),
+            session=async_create_clientsession(self.hass, verify_ssl=verify_ssl),
         )
         try:
             self._books = await client.list_books()
@@ -211,6 +224,7 @@ class BookStackSyncOptionsFlow(OptionsFlow):
             CONF_SYNC_INTERVAL,
             DEFAULT_INTERVAL,
         )
+        current_excluded = self.config_entry.options.get(CONF_EXCLUDED_AREAS, [])
 
         return self.async_show_form(
             step_id="init",
@@ -235,6 +249,12 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         CONF_SYNC_INTERVAL,
                         default=current_interval,
                     ): _interval_selector(),
+                    vol.Optional(
+                        CONF_EXCLUDED_AREAS,
+                        default=current_excluded,
+                    ): selector.AreaSelector(
+                        selector.AreaSelectorConfig(multiple=True),
+                    ),
                 },
             ),
         )
