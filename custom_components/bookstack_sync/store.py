@@ -20,6 +20,7 @@ class PageMapping:
     page_id: int
     auto_block_hash: str = ""
     last_seen: str | None = None  # ISO timestamp of last successful sync
+    tombstoned_at: str | None = None  # ISO timestamp; set when soft-deleted
 
 
 @dataclass

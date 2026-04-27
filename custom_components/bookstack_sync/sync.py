@@ -25,6 +25,7 @@ from .renderer import (
     render_area_auto_block,
     render_device_auto_block,
     render_overview_auto_block,
+    render_tombstone_auto_block,
 )
 from .store import PageMapping
 
@@ -48,6 +49,7 @@ class SyncReport:
     created: list[str] = field(default_factory=list)
     updated: list[str] = field(default_factory=list)
     unchanged: list[str] = field(default_factory=list)
+    tombstoned: list[str] = field(default_factory=list)
     skipped_conflict: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     dry_run: bool = False
@@ -58,6 +60,7 @@ class SyncReport:
             "created": self.created,
             "updated": self.updated,
             "unchanged": self.unchanged,
+            "tombstoned": self.tombstoned,
             "skipped_conflict": self.skipped_conflict,
             "errors": self.errors,
             "dry_run": self.dry_run,
@@ -65,6 +68,7 @@ class SyncReport:
                 len(self.created)
                 + len(self.updated)
                 + len(self.unchanged)
+                + len(self.tombstoned)
                 + len(self.skipped_conflict)
             ),
         }
@@ -139,15 +143,18 @@ async def run_sync(
         if not dry_run:
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
+    await _tombstone_orphans(client, store, planned, report, now, dry_run=dry_run)
+
     if not dry_run:
         await store.async_save()
 
     LOGGER.info(
         "BookStack sync complete: %d created, %d updated, %d unchanged, "
-        "%d conflicts, %d errors%s",
+        "%d tombstoned, %d conflicts, %d errors%s",
         len(report.created),
         len(report.updated),
         len(report.unchanged),
+        len(report.tombstoned),
         len(report.skipped_conflict),
         len(report.errors),
         " (dry-run)" if dry_run else "",
@@ -222,6 +229,97 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
             page_id=mapping.page_id,
             auto_block_hash=merged.auto_hash,
             last_seen=datetime.now(tz=UTC).isoformat(),
+            tombstoned_at=None,  # device is back; clear any prior tombstone
         ),
     )
     report.updated.append(page.title)
+
+
+async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
+    client: BookStackApiClient,
+    store: BookStackSyncStore,
+    planned: list[_PlannedPage],
+    report: SyncReport,
+    now: datetime,
+    *,
+    dry_run: bool,
+) -> None:
+    """Mark pages whose HA object vanished as orphaned (one-time, not on repeat)."""
+    planned_keys = {p.key for p in planned}
+    # Sorted iteration keeps the report and BookStack revision stream stable.
+    for key, mapping in sorted(store.all().items()):
+        if key in planned_keys:
+            continue
+        if mapping.tombstoned_at is not None:
+            continue
+        try:
+            await _tombstone_one(
+                client,
+                store,
+                key,
+                mapping,
+                report,
+                now,
+                dry_run=dry_run,
+            )
+        except BookStackApiAuthError:
+            raise
+        except BookStackApiError as err:
+            LOGGER.exception("Tombstone failed for %s", key)
+            report.errors.append(f"{key} (tombstone): {err}")
+        except Exception as err:  # noqa: BLE001 - report and continue
+            LOGGER.exception("Unexpected error tombstoning %s", key)
+            report.errors.append(f"{key} (tombstone): {err}")
+        if not dry_run:
+            await asyncio.sleep(WRITE_PAUSE_SECONDS)
+
+
+async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
+    client: BookStackApiClient,
+    store: BookStackSyncStore,
+    key: str,
+    mapping: PageMapping,
+    report: SyncReport,
+    now: datetime,
+    *,
+    dry_run: bool,
+) -> None:
+    auto_body = render_tombstone_auto_block(now)
+    new_hash = hash_auto_block(auto_body)
+
+    existing = await client.get_page(mapping.page_id)
+    existing_markdown = existing.get("markdown") or existing.get("raw_html") or ""
+
+    merged = merge_page(
+        new_auto_body=auto_body,
+        existing_markdown=existing_markdown,
+        last_known_auto_hash=mapping.auto_block_hash or None,
+    )
+
+    if merged.manual_block_tampered:
+        LOGGER.warning(
+            "BookStack page id=%s (%s): AUTO block was edited manually - "
+            "skipping tombstone to preserve manual changes.",
+            mapping.page_id,
+            key,
+        )
+        report.skipped_conflict.append(f"{key} (tombstone)")
+        return
+
+    existing_name = existing.get("name") or key
+
+    if dry_run:
+        report.tombstoned.append(existing_name)
+        return
+
+    await client.update_page(mapping.page_id, existing_name, merged.body)
+    store.set(
+        key,
+        PageMapping(
+            page_id=mapping.page_id,
+            auto_block_hash=new_hash,
+            last_seen=mapping.last_seen,
+            tombstoned_at=now.isoformat(),
+        ),
+    )
+    report.tombstoned.append(existing_name)
