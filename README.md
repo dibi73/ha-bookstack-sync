@@ -1,46 +1,93 @@
-# Notice
+# BookStack Sync für Home Assistant
 
-The component and platforms in this repository are not meant to be used by a
-user, but as a "blueprint" that custom component developers can build
-upon, to make more awesome stuff.
+Eine Home-Assistant-Custom-Integration, die dein gesamtes HA-Setup automatisch in
+ein bestehendes Book deiner [BookStack](https://www.bookstackapp.com/)-Wiki-Instanz
+synchronisiert. Manuell hinzugefügte Inhalte in den Wiki-Pages bleiben dabei
+zuverlässig erhalten.
 
-HAVE FUN! 😎
+## Status
 
-## Why?
+V0 – funktionales Grundgerüst. Sync von Areas, Devices und Entities funktioniert,
+inklusive Marker-Block-Merge mit Hash-Verifikation. Automationen, Skripte und
+Add-on-Inhalte folgen in einer späteren Version (siehe `anforderungsdokument.md`).
 
-This is simple, by having custom_components look (README + structure) the same
-it is easier for developers to help each other and for users to start using them.
+## Funktionsumfang
 
-If you are a developer and you want to add things to this "blueprint" that you think more
-developers will have use for, please open a PR to add it :)
+- **Daten aus HA**: Areas, Devices (mit Hersteller / Modell / Firmware) und
+  Entities (mit aktuellem State) werden über die HA-Registries gelesen.
+- **Pages in BookStack**:
+  - eine Übersichtsseite mit Statistik
+  - eine Page pro Area
+  - eine Page pro Device
+- **Schutz manueller Inhalte**: jede Page hat zwei Marker-Blöcke –
+  `<!-- BEGIN AUTO-GENERATED -->` und `<!-- BEGIN MANUAL -->`. Nur der
+  Auto-Block wird vom Sync angefasst. Wenn der Auto-Block manuell editiert
+  wurde (Hash-Check), überspringt der Sync die Page mit Warnung.
+- **Idempotenter Renderer**: identischer HA-State → byte-identische Markdown-
+  Ausgabe → keine BookStack-Revisionen ohne echte Änderung.
+- **Mapping-Persistenz**: Zuordnung HA-ID ↔ BookStack-Page-ID liegt in
+  `.storage/bookstack_sync.<entry_id>.mapping`.
+- **Services**:
+  - `bookstack_sync.run_now` – sofortiger Sync
+  - `bookstack_sync.preview` – Dry-Run, schreibt nichts und loggt nur
 
-## What?
+## Installation (HACS)
 
-This repository contains multiple files, here is a overview:
+1. In HACS → *Custom repositories* dieses Repo hinzufügen (Kategorie
+   *Integration*).
+2. *BookStack Sync* installieren.
+3. Home Assistant neu starten.
+4. *Einstellungen → Geräte & Dienste → Integration hinzufügen* → "BookStack Sync".
 
-File | Purpose | Documentation
--- | -- | --
-`.devcontainer.json` | Used for development/testing with Visual Studio Code. | [Documentation](https://code.visualstudio.com/docs/remote/containers)
-`.github/ISSUE_TEMPLATE/*.yml` | Templates for the issue tracker | [Documentation](https://help.github.com/en/github/building-a-strong-community/configuring-issue-templates-for-your-repository)
-`custom_components/bookstack_sync/*` | Integration files, this is where everything happens. | [Documentation](https://developers.home-assistant.io/docs/creating_component_index)
-`CONTRIBUTING.md` | Guidelines on how to contribute. | [Documentation](https://help.github.com/en/github/building-a-strong-community/setting-guidelines-for-repository-contributors)
-`LICENSE` | The license file for the project. | [Documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/licensing-a-repository)
-`README.md` | The file you are reading now, should contain info about the integration, installation and configuration instructions. | [Documentation](https://help.github.com/en/github/writing-on-github/basic-writing-and-formatting-syntax)
-`requirements.txt` | Python packages used for development/lint/testing this integration. | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)
+## Konfiguration
 
-## How?
+Im Config-Flow werden zwei Schritte durchlaufen:
 
-1. Create a new repository in GitHub, using this repository as a template by clicking the "Use this template" button in the GitHub UI.
-1. Open your new repository in Visual Studio Code devcontainer (Preferably with the "`Dev Containers: Clone Repository in Named Container Volume...`" option).
-1. Rename all instances of the `bookstack_sync` to `custom_components/<your_integration_domain>` (e.g. `custom_components/awesome_integration`).
-1. Rename all instances of the `BookStack Sync` to `<Your Integration Name>` (e.g. `Awesome Integration`).
-1. Run the `scripts/develop` to start HA and test out your new integration.
+1. **Verbindung**: BookStack-URL plus API-Token-ID + Secret. Das Token legst du
+   in BookStack unter *My Profile → API Tokens* an. Es muss Lese- und
+   Schreibrechte auf das Ziel-Book haben.
+2. **Ziel**: Auswahl des Books, in das synchronisiert wird, sowie das
+   Sync-Intervall (stündlich / täglich / nur manuell).
 
-## Next steps
+Spätere Anpassungen (anderes Book, anderes Intervall) gehen über
+*Konfigurieren* in der Integrationskachel.
 
-These are some next steps you may want to look into:
-- Add tests to your integration, [`pytest-homeassistant-custom-component`](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component) can help you get started.
-- Add brand images (logo/icon).
-- Create your first release.
-- Share your integration on the [Home Assistant Forum](https://community.home-assistant.io/).
-- Submit your integration to [HACS](https://hacs.xyz/docs/publish/start).
+## Manuelle Notizen pflegen
+
+Pro Page sieht der gemerge­te Markdown so aus:
+
+```markdown
+<!-- BEGIN AUTO-GENERATED -->
+... wird bei jedem Sync neu generiert ...
+<!-- END AUTO-GENERATED -->
+
+<!-- BEGIN MANUAL -->
+Hier kannst du Notizen, Quirks oder Cross-Refs zu Vaultwarden eintragen.
+Diese Sektion wird vom Sync nicht angefasst.
+<!-- END MANUAL -->
+```
+
+Solange du nur **innerhalb** des MANUAL-Blocks editierst, bleibt alles erhalten.
+Editierst du im AUTO-Block, erkennt der Sync das beim nächsten Lauf am Hash
+und überspringt die Page mit einer Warnung im HA-Log.
+
+## Entwicklung
+
+Repo ist auf das ludeeus-Devcontainer-Layout aufgesetzt:
+
+```bash
+scripts/develop  # startet HA mit dieser Integration unter ./config
+scripts/lint     # ruff check + format
+```
+
+Der CI-Workflow validiert hassfest + HACS auf jedem Push.
+
+## Nicht-Ziele
+
+- Keine Passwortverwaltung – Vaultwarden bleibt strikt getrennt.
+- Kein bidirektionaler Sync – Daten fließen nur HA → BookStack.
+- Kein Edit-Konflikt-Resolver – Konflikte werden geloggt, nicht aufgelöst.
+
+## Lizenz
+
+MIT – siehe [LICENSE](LICENSE).

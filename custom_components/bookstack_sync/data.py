@@ -9,17 +9,19 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.loader import Integration
 
-    from .api import IntegrationBlueprintApiClient
-    from .coordinator import BlueprintDataUpdateCoordinator
+    from .api import BookStackApiClient
+    from .coordinator import BookStackSyncCoordinator
+    from .store import BookStackSyncStore
 
 
-type IntegrationBlueprintConfigEntry = ConfigEntry[IntegrationBlueprintData]
+type BookStackSyncConfigEntry = ConfigEntry[BookStackSyncData]
 
 
 @dataclass
-class IntegrationBlueprintData:
-    """Data for the Blueprint integration."""
+class BookStackSyncData:
+    """Runtime data for the BookStack Sync integration."""
 
-    client: IntegrationBlueprintApiClient
-    coordinator: BlueprintDataUpdateCoordinator
+    client: BookStackApiClient
+    coordinator: BookStackSyncCoordinator
     integration: Integration
+    store: BookStackSyncStore
