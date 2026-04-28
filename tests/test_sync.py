@@ -58,6 +58,7 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
         *,
         book_id: int | None = None,
         chapter_id: int | None = None,
+        tags: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         pid = state["next_id"]
         state["next_id"] += 1
@@ -67,6 +68,7 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
             "markdown": markdown,
             "chapter_id": chapter_id,
             "book_id": book_id,
+            "tags": tags,
         }
         return state["pages"][pid]
 
@@ -79,11 +81,14 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
         markdown: str,
         *,
         chapter_id: int | None = None,
+        tags: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         state["pages"][page_id]["name"] = name
         state["pages"][page_id]["markdown"] = markdown
         if chapter_id is not None:
             state["pages"][page_id]["chapter_id"] = chapter_id
+        if tags is not None:
+            state["pages"][page_id]["tags"] = tags
         return state["pages"][page_id]
 
     client.list_chapters = AsyncMock(side_effect=list_chapters)
@@ -130,6 +135,29 @@ async def test_first_sync_creates_chapters_and_pages(
     # At least the overview + the four bundle pages + the area page were created
     assert len(report.created) >= 6
     assert report.errors == []
+
+
+async def test_first_sync_tags_pages_as_managed(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """Every newly-created page carries the bookstack_sync=managed tag."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    # Inspect every kwargs the fake client received during create_page.
+    create_calls = client.create_page.call_args_list
+    assert create_calls, "first sync must have created at least one page"
+    for call in create_calls:
+        tags = call.kwargs.get("tags")
+        assert tags == [{"name": "bookstack_sync", "value": "managed"}], (
+            f"expected managed tag on every create_page, got {tags!r}"
+        )
 
 
 async def test_second_sync_with_unchanged_data_makes_no_changes(

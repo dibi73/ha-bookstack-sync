@@ -315,6 +315,148 @@ class TestOverviewLinks:
         assert r"Wohn\|zimmer &lt;stage&gt;" in out
 
 
+class TestAreaPerArea:
+    """Area pages list automations / scripts / scenes assigned to that area."""
+
+    def test_automations_section_rendered_when_present(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        area = AreaSnapshot(
+            area_id="living",
+            name="Wohnzimmer",
+            automations=[
+                AutomationSnapshot(
+                    entity_id="automation.morning",
+                    name="Morgenroutine",
+                    description=None,
+                    state="on",
+                    mode="single",
+                    last_triggered=None,
+                    area_id="living",
+                ),
+            ],
+        )
+        out = render_area_auto_block(area, fixed_now, strings_de)
+        assert "## Automatisierungen in Wohnzimmer" in out
+        assert "Morgenroutine" in out
+
+    def test_scenes_section_rendered_when_present(
+        self,
+        fixed_now: datetime,
+        strings_en: dict[str, str],
+    ) -> None:
+        area = AreaSnapshot(
+            area_id="living",
+            name="Living Room",
+            scenes=[SceneSnapshot(entity_id="scene.cinema", name="Cinema")],
+        )
+        out = render_area_auto_block(area, fixed_now, strings_en)
+        assert "## Scenes in Living Room" in out
+        assert "**Cinema**" in out
+        assert "`scene.cinema`" in out
+
+    def test_empty_lists_emit_no_sections(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        area = AreaSnapshot(area_id="x", name="Empty")
+        out = render_area_auto_block(area, fixed_now, strings_de)
+        assert "Automatisierungen in" not in out
+        assert "Skripte in" not in out
+        assert "Szenen in" not in out
+
+
+class TestAreaToc:
+    """Inline TOC at the top of area pages, threshold-gated."""
+
+    def test_no_toc_below_threshold(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        # 1 device + 1 scene = 2 elements, below the threshold of 3.
+        area = AreaSnapshot(
+            area_id="small",
+            name="Klein",
+            devices=[_device("d1", name="Eine Lampe")],
+            scenes=[SceneSnapshot(entity_id="scene.x", name="Scene X")],
+        )
+        out = render_area_auto_block(area, fixed_now, strings_de)
+        assert "**Inhalt**" not in out
+
+    def test_toc_at_threshold(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        # 3 devices = exactly threshold.
+        area = AreaSnapshot(
+            area_id="big",
+            name="Wohnzimmer",
+            devices=[
+                _device("d1", name="Lampe"),
+                _device("d2", name="Stehlampe"),
+                _device("d3", name="Heizung"),
+            ],
+        )
+        out = render_area_auto_block(area, fixed_now, strings_de)
+        assert "**Inhalt**" in out
+        # TOC must list each device's anchor link.
+        assert "[Lampe](#lampe)" in out
+        assert "[Heizung](#heizung)" in out
+        # And the section anchor for Geräte.
+        assert "(#gerate-in-wohnzimmer)" in out
+
+    def test_toc_includes_automations_and_scenes(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        area = AreaSnapshot(
+            area_id="mixed",
+            name="Mix",
+            devices=[_device("d1", name="Lampe")],
+            automations=[
+                AutomationSnapshot(
+                    entity_id="automation.morning",
+                    name="Morgen",
+                    description=None,
+                    state="on",
+                    mode=None,
+                    last_triggered=None,
+                ),
+            ],
+            scenes=[SceneSnapshot(entity_id="scene.cinema", name="Cinema")],
+        )
+        out = render_area_auto_block(area, fixed_now, strings_de)
+        assert "**Inhalt**" in out
+        # Section bullets for each populated category.
+        assert "(#gerate-in-mix)" in out
+        assert "(#automatisierungen-in-mix)" in out
+        assert "(#szenen-in-mix)" in out
+        # Sub-bullet for the automation but NOT for scenes (no per-scene H3).
+        assert "[Morgen](#morgen)" in out
+        # Scene listed in the scenes section, but not as a TOC sub-bullet.
+        toc_block = out.split("\n## ")[0]
+        assert "[Cinema]" not in toc_block
+
+    def test_toc_only_on_areas_not_devices(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        # Device pages with many entities should NOT get a TOC.
+        device = _device(name="Hub")
+        device.entities.extend(
+            [_entity(f"sensor.x{i}") for i in range(10)],
+        )
+        out = render_device_auto_block(device, fixed_now, strings_de)
+        assert "**Inhalt**" not in out
+
+
 class TestBundlePages:
     """The five bundle-list renderers."""
 

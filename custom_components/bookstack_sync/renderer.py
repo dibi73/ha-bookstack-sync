@@ -13,9 +13,17 @@ output language follows the user's choice without changing render code.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from typing import TYPE_CHECKING
 
 from .const import ATTRIBUTION
+
+# Inline TOC at the top of an area page only renders when the area has
+# at least this many "elements" (devices + automations + scripts + scenes).
+# Below this we'd be adding noise to a page that already fits on one
+# screen.
+_AREA_TOC_THRESHOLD = 3
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -38,6 +46,23 @@ def _format_attribution(strings: dict[str, str], now: datetime) -> str:
         attribution=ATTRIBUTION,
         timestamp=now.strftime("%Y-%m-%d %H:%M"),
     )
+
+
+def _slugify(text: str) -> str:
+    """
+    Generate a heading-anchor slug compatible with BookStack's renderer.
+
+    BookStack uses a GitHub-style auto-anchor algorithm: lowercase ASCII,
+    runs of non-alphanumeric collapsed to ``-``, leading/trailing
+    hyphens stripped. Umlauts and other non-ASCII characters are
+    transliterated via NFKD + ASCII fold (so ``Wohnzimmer Süd`` becomes
+    ``wohnzimmer-sud``). On exotic characters the slug may diverge from
+    BookStack's exact output - in the worst case the click jump fails
+    and the user has to scroll, the page itself still reads fine.
+    """
+    nfkd = unicodedata.normalize("NFKD", text)
+    ascii_text = nfkd.encode("ascii", "ignore").decode("ascii").lower()
+    return re.sub(r"[^a-z0-9]+", "-", ascii_text).strip("-")
 
 
 def _md_escape(value: str) -> str:
@@ -164,6 +189,70 @@ def render_overview_auto_block(
     return "\n".join(lines)
 
 
+def _area_toc_lines(
+    area: AreaSnapshot,
+    strings: dict[str, str],
+) -> list[str]:
+    """
+    Build an inline TOC for big area pages.
+
+    Returns ``[]`` for areas with fewer than ``_AREA_TOC_THRESHOLD``
+    elements (devices + automations + scripts + scenes) so small areas
+    don't get a noisy table-of-one.
+    """
+    total = (
+        len(area.devices) + len(area.automations) + len(area.scripts) + len(area.scenes)
+    )
+    if total < _AREA_TOC_THRESHOLD:
+        return []
+
+    name = _md_escape(area.name)
+    raw_name = area.name
+    lines: list[str] = [f"**{strings['toc_label']}**", ""]
+
+    if area.devices:
+        section = strings["section_devices_in_area_template"].format(name=name)
+        section_anchor = _slugify(
+            strings["section_devices_in_area_template"].format(name=raw_name),
+        )
+        lines.append(f"- [{section}](#{section_anchor})")
+        lines.extend(
+            f"  - [{_md_escape(d.name)}](#{_slugify(d.name)})" for d in area.devices
+        )
+
+    if area.automations:
+        section = strings["section_automations_in_area_template"].format(name=name)
+        section_anchor = _slugify(
+            strings["section_automations_in_area_template"].format(name=raw_name),
+        )
+        lines.append(f"- [{section}](#{section_anchor})")
+        lines.extend(
+            f"  - [{_md_escape(a.name)}](#{_slugify(a.name)})" for a in area.automations
+        )
+
+    if area.scripts:
+        section = strings["section_scripts_in_area_template"].format(name=name)
+        section_anchor = _slugify(
+            strings["section_scripts_in_area_template"].format(name=raw_name),
+        )
+        lines.append(f"- [{section}](#{section_anchor})")
+        lines.extend(
+            f"  - [{_md_escape(s.name)}](#{_slugify(s.name)})" for s in area.scripts
+        )
+
+    if area.scenes:
+        section = strings["section_scenes_in_area_template"].format(name=name)
+        section_anchor = _slugify(
+            strings["section_scenes_in_area_template"].format(name=raw_name),
+        )
+        lines.append(f"- [{section}](#{section_anchor})")
+        # Scenes don't get individual H3 headings (they're rendered as a
+        # bulleted list), so no per-scene sub-bullets.
+
+    lines.append("")
+    return lines
+
+
 def render_area_auto_block(
     area: AreaSnapshot,
     now: datetime,
@@ -173,6 +262,7 @@ def render_area_auto_block(
     lines: list[str] = [
         _format_attribution(strings, now),
         "",
+        *_area_toc_lines(area, strings),
         "## "
         + strings["section_devices_in_area_template"].format(
             name=_md_escape(area.name),
@@ -210,6 +300,50 @@ def render_area_auto_block(
                 *_entity_lines(area.orphan_entities, strings),
             ],
         )
+
+    if area.automations:
+        lines.extend(
+            [
+                "",
+                "## "
+                + strings["section_automations_in_area_template"].format(
+                    name=_md_escape(area.name),
+                ),
+                "",
+            ],
+        )
+        for auto in area.automations:
+            lines.extend(_automation_block(auto, strings))
+
+    if area.scripts:
+        lines.extend(
+            [
+                "",
+                "## "
+                + strings["section_scripts_in_area_template"].format(
+                    name=_md_escape(area.name),
+                ),
+                "",
+            ],
+        )
+        for script in area.scripts:
+            lines.extend(_script_block(script, strings))
+
+    if area.scenes:
+        lines.extend(
+            [
+                "",
+                "## "
+                + strings["section_scenes_in_area_template"].format(
+                    name=_md_escape(area.name),
+                ),
+                "",
+            ],
+        )
+        lines.extend(
+            f"- **{_md_escape(s.name)}** – `{s.entity_id}`" for s in area.scenes
+        )
+
     return "\n".join(lines).rstrip() + "\n"
 
 

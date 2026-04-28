@@ -158,3 +158,54 @@ async def test_extract_addons_returns_empty_without_supervisor(
     # should be an empty list (not raise).
     snap = extract_snapshot(hass)
     assert snap.addons == []
+
+
+async def test_automation_with_area_id_routed_to_area(
+    hass: HomeAssistant,
+) -> None:
+    """An automation entity assigned an area_id lands on that AreaSnapshot."""
+    await _seed_minimal_registry(hass)
+    area_reg = ar.async_get(hass)
+    living = next(a for a in area_reg.areas.values() if a.name == "Living Room")
+
+    # Create an entity_registry entry for automation.morning with area_id=living
+    entity_reg = er.async_get(hass)
+    entry = entity_reg.async_get_or_create(
+        domain="automation",
+        platform="automation",
+        unique_id="morning_unique",
+        suggested_object_id="morning",
+    )
+    entity_reg.async_update_entity(entry.entity_id, area_id=living.id)
+    # The state we already seeded under automation.morning may have a
+    # different entity_id (no registry entry above). Make a new one matching
+    # the registry entry's entity_id.
+    hass.states.async_set(
+        entry.entity_id,
+        "on",
+        {"friendly_name": "Routine in Wohnzimmer", "mode": "single"},
+    )
+
+    snap = extract_snapshot(hass)
+    living_snap = next(a for a in snap.areas if a.name == "Living Room")
+    routed_names = [a.name for a in living_snap.automations]
+    assert "Routine in Wohnzimmer" in routed_names
+
+    # Bundle list still contains it (master index).
+    bundle_names = [a.name for a in snap.automations]
+    assert "Routine in Wohnzimmer" in bundle_names
+
+
+async def test_automation_without_area_only_in_bundle(
+    hass: HomeAssistant,
+) -> None:
+    """An automation without area_id appears only on the bundle page."""
+    await _seed_minimal_registry(hass)
+    snap = extract_snapshot(hass)
+
+    # The seeded automation.morning has NO entity_registry entry (no area).
+    for area in snap.areas:
+        names = [a.name for a in area.automations]
+        assert "Morning Routine" not in names
+    # But the bundle has it.
+    assert any(a.name == "Morning Routine" for a in snap.automations)
