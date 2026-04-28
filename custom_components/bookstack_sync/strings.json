@@ -69,5 +69,18 @@
       "name": "Sync-Vorschau",
       "description": "Loggt, welche Pages erstellt/aktualisiert würden, schreibt aber nichts in BookStack."
     }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Sync-Status",
+        "state": {
+          "ok": "OK",
+          "error": "Fehler",
+          "never_run": "Noch nicht gelaufen",
+          "syncing": "Sync läuft"
+        }
+      }
+    }
   }
 }

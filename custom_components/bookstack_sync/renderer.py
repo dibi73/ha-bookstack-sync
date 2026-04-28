@@ -73,8 +73,19 @@ def render_tombstone_auto_block(now: datetime) -> str:
     )
 
 
-def render_overview_auto_block(snapshot: HASnapshot, now: datetime) -> str:
-    """Render the AUTO block of the overview page."""
+def render_overview_auto_block(
+    snapshot: HASnapshot,
+    now: datetime,
+    page_links: dict[str, int] | None = None,
+) -> str:
+    """
+    Render the AUTO block of the overview page.
+
+    ``page_links`` maps page keys (e.g. ``area:living_room``) to BookStack
+    page IDs. When provided, area names and category links use BookStack's
+    ``[label](page:ID)`` internal-link syntax instead of plain text.
+    """
+    links = page_links or {}
     total_devices = sum(len(area.devices) for area in snapshot.areas) + len(
         snapshot.unassigned_devices,
     )
@@ -96,14 +107,32 @@ def render_overview_auto_block(snapshot: HASnapshot, now: datetime) -> str:
         f"- Szenen: **{len(snapshot.scenes)}**",
         f"- Add-ons: **{len(snapshot.addons)}**",
         "",
-        "## Räume",
+        "## Bereiche",
         "",
     ]
+    bundle_links = [
+        ("integrations:_", "Integrationen"),
+        ("automations:_", "Automatisierungen"),
+        ("scripts:_", "Skripte"),
+        ("scenes:_", "Szenen"),
+        ("addons:_", "Add-ons"),
+    ]
+    for key, label in bundle_links:
+        page_id = links.get(key)
+        if page_id is not None:
+            lines.append(f"- [{label}](page:{page_id})")
+        else:
+            lines.append(f"- {label}")
+
+    lines.extend(["", "## Räume", ""])
     if snapshot.areas:
-        lines.extend(
-            f"- **{_md_escape(area.name)}** – {len(area.devices)} Geräte"
-            for area in snapshot.areas
-        )
+        for area in snapshot.areas:
+            label = _md_escape(area.name)
+            page_id = links.get(f"area:{area.area_id}")
+            link = (
+                f"[{label}](page:{page_id})" if page_id is not None else f"**{label}**"
+            )
+            lines.append(f"- {link} – {len(area.devices)} Geräte")
     else:
         lines.append("_Keine Areas konfiguriert._")
 
@@ -115,9 +144,11 @@ def render_overview_auto_block(snapshot: HASnapshot, now: datetime) -> str:
                 "",
             ],
         )
-        lines.extend(
-            f"- {_md_escape(device.name)}" for device in snapshot.unassigned_devices
-        )
+        for device in snapshot.unassigned_devices:
+            label = _md_escape(device.name)
+            page_id = links.get(f"device:{device.device_id}")
+            link = f"[{label}](page:{page_id})" if page_id is not None else label
+            lines.append(f"- {link}")
 
     return "\n".join(lines)
 

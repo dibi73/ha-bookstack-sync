@@ -28,6 +28,7 @@ class StoredState:
     """Whole persisted state per config entry."""
 
     pages: dict[str, PageMapping] = field(default_factory=dict)
+    chapters: dict[str, int] = field(default_factory=dict)
 
 
 class BookStackSyncStore:
@@ -55,15 +56,22 @@ class BookStackSyncStore:
             return
         raw = await self._store.async_load() or {}
         pages_raw = raw.get("pages", {}) or {}
+        chapters_raw = raw.get("chapters", {}) or {}
         self._state = StoredState(
             pages={key: PageMapping(**value) for key, value in pages_raw.items()},
+            chapters={key: int(value) for key, value in chapters_raw.items()},
         )
         self._loaded = True
 
     async def async_save(self) -> None:
         """Persist the current mapping state."""
         await self._store.async_save(
-            {"pages": {key: asdict(value) for key, value in self._state.pages.items()}},
+            {
+                "pages": {
+                    key: asdict(value) for key, value in self._state.pages.items()
+                },
+                "chapters": dict(self._state.chapters),
+            },
         )
 
     def get(self, key: str) -> PageMapping | None:
@@ -77,3 +85,15 @@ class BookStackSyncStore:
     def all(self) -> dict[str, PageMapping]:
         """Return a shallow copy of all known mappings."""
         return dict(self._state.pages)
+
+    def get_chapter(self, key: str) -> int | None:
+        """Return the BookStack chapter id for ``key`` (e.g. ``areas``)."""
+        return self._state.chapters.get(key)
+
+    def set_chapter(self, key: str, chapter_id: int) -> None:
+        """Insert or replace the chapter id for ``key`` (call async_save to persist)."""
+        self._state.chapters[key] = chapter_id
+
+    def all_chapters(self) -> dict[str, int]:
+        """Return a shallow copy of the persisted chapter map."""
+        return dict(self._state.chapters)

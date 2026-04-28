@@ -69,5 +69,18 @@
       "name": "Sync preview",
       "description": "Logs which pages would be created/updated without writing anything to BookStack."
     }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Sync status",
+        "state": {
+          "ok": "OK",
+          "error": "Error",
+          "never_run": "Never run",
+          "syncing": "Sync running"
+        }
+      }
+    }
   }
 }

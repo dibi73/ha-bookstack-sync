@@ -47,6 +47,18 @@ PAGE_KIND_SCENES = "scenes"
 PAGE_KIND_INTEGRATIONS = "integrations"
 PAGE_KIND_ADDONS = "addons"
 
+# Chapters group the many area/device pages so the book stays readable.
+CHAPTER_KEY_AREAS = "areas"
+CHAPTER_KEY_DEVICES = "devices"
+CHAPTER_TITLE_AREAS = "Räume"
+CHAPTER_TITLE_DEVICES = "Geräte"
+CHAPTER_DESC_AREAS = (
+    "Pro Raum eine Page mit den dort angesiedelten Geräten und Entities."
+)
+CHAPTER_DESC_DEVICES = (
+    "Pro Gerät eine Page mit Stammdaten und allen zugehörigen Entities."
+)
+
 SERVICE_RUN_NOW = "run_now"
 SERVICE_PREVIEW = "preview"
 
