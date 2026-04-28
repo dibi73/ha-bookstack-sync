@@ -56,7 +56,28 @@ class MergeResult:
 
 
 def hash_auto_block(auto_body: str) -> str:
-    """Stable hash of the AUTO body (without markers)."""
+    r"""
+    Compute the whitespace-normalised hash of the AUTO body (without markers).
+
+    Stripping is critical because ``build_page_body`` writes the auto body
+    via ``auto_body.strip()`` and ``extract_auto_block`` reads it via
+    ``.strip('\n')`` - if we hashed the raw render output (which our
+    renderers end with a trailing newline) the write-time hash would never
+    match the read-time hash, every page after its initial creation would
+    be flagged as ``manual_block_tampered`` and the next sync would skip
+    it entirely.
+    """
+    return hashlib.sha256(auto_body.strip().encode("utf-8")).hexdigest()
+
+
+def _legacy_unstripped_hash(auto_body: str) -> str:
+    """
+    Bug-bug-compatible hash from v0.1.x that didn't strip trailing whitespace.
+
+    Only used to recognise mappings written before the v0.2.1 fix so we
+    don't falsely flag them as tampered. New writes always use the stripped
+    hash above.
+    """
     return hashlib.sha256(auto_body.encode("utf-8")).hexdigest()
 
 
@@ -113,6 +134,13 @@ def merge_page(
         existing_auto is not None
         and bool(last_known_auto_hash)
         and hash_auto_block(existing_auto) != last_known_auto_hash
+        # Migration tolerance: v0.1.x stored hashes of unstripped bodies.
+        # Accept either the new (stripped) or legacy (unstripped + "\n")
+        # variant so existing setups don't show a wave of false conflicts
+        # on the first v0.2.1 sync. New writes always use the stripped
+        # variant, so the legacy check naturally goes away.
+        and _legacy_unstripped_hash(existing_auto + "\n") != last_known_auto_hash
+        and _legacy_unstripped_hash(existing_auto) != last_known_auto_hash
     )
 
     auto_changed = existing_auto is None or hash_auto_block(existing_auto) != new_hash
