@@ -46,7 +46,8 @@
         "data": {
           "book_id": "Ziel-Book",
           "sync_interval": "Sync-Intervall",
-          "excluded_areas": "Ausgeschlossene Räume (werden nicht synchronisiert)"
+          "excluded_areas": "Ausgeschlossene Räume (werden nicht synchronisiert)",
+          "output_language": "Sprache der BookStack-Pages"
         }
       }
     }
@@ -57,6 +58,13 @@
         "hourly": "Stündlich",
         "daily": "Täglich",
         "manual": "Nur manuell (Service-Aufruf)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Wie Home Assistant (automatisch)",
+        "de": "Deutsch",
+        "en": "Englisch"
       }
     }
   },

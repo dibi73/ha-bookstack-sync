@@ -15,8 +15,12 @@ CONF_BOOK_ID = "book_id"
 CONF_SYNC_INTERVAL = "sync_interval"
 CONF_VERIFY_SSL = "verify_ssl"
 CONF_EXCLUDED_AREAS = "excluded_areas"
+CONF_OUTPUT_LANGUAGE = "output_language"
 
 DEFAULT_VERIFY_SSL = True
+# "auto" follows hass.config.language; explicit codes ("de", "en") override it
+OUTPUT_LANGUAGE_AUTO = "auto"
+DEFAULT_OUTPUT_LANGUAGE = OUTPUT_LANGUAGE_AUTO
 
 INTERVAL_HOURLY = "hourly"
 INTERVAL_DAILY = "daily"
@@ -48,16 +52,10 @@ PAGE_KIND_INTEGRATIONS = "integrations"
 PAGE_KIND_ADDONS = "addons"
 
 # Chapters group the many area/device pages so the book stays readable.
+# Titles + descriptions come from `_strings.py` so they follow the user's
+# selected output language.
 CHAPTER_KEY_AREAS = "areas"
 CHAPTER_KEY_DEVICES = "devices"
-CHAPTER_TITLE_AREAS = "Räume"
-CHAPTER_TITLE_DEVICES = "Geräte"
-CHAPTER_DESC_AREAS = (
-    "Pro Raum eine Page mit den dort angesiedelten Geräten und Entities."
-)
-CHAPTER_DESC_DEVICES = (
-    "Pro Gerät eine Page mit Stammdaten und allen zugehörigen Entities."
-)
 
 SERVICE_RUN_NOW = "run_now"
 SERVICE_PREVIEW = "preview"

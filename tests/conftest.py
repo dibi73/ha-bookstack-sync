@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.bookstack_sync._strings import get_strings
 from custom_components.bookstack_sync.const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
@@ -27,6 +28,18 @@ if TYPE_CHECKING:
 def fixed_now() -> datetime:
     """A stable timestamp so renderer output is byte-identical across runs."""
     return datetime(2026, 4, 28, 12, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def strings_de() -> dict[str, str]:
+    """German output strings used across renderer tests."""
+    return get_strings("de")
+
+
+@pytest.fixture
+def strings_en() -> dict[str, str]:
+    """English output strings used across renderer tests."""
+    return get_strings("en")
 
 
 # Allow this custom integration to be loaded by pytest-homeassistant-custom-component.
