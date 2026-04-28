@@ -263,6 +263,7 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
                 page,
                 chapters,
                 report,
+                strings,
                 index=index,
                 total=total_steps,
                 dry_run=dry_run,
@@ -299,6 +300,7 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
             overview,
             chapters,
             report,
+            strings,
             index=total_steps,
             total=total_steps,
             dry_run=dry_run,
@@ -367,6 +369,7 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
     page: _PlannedPage,
     chapters: dict[str, int],
     report: SyncReport,
+    strings: dict[str, str],
     *,
     index: int,
     total: int,
@@ -424,6 +427,7 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
         new_auto_body=page.auto_body,
         existing_markdown=existing_markdown,
         last_known_auto_hash=mapping.auto_block_hash or None,
+        default_manual_body=strings.get("default_manual_body"),
     )
 
     if merged.manual_block_tampered:
@@ -558,6 +562,7 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
         new_auto_body=auto_body,
         existing_markdown=existing_markdown,
         last_known_auto_hash=mapping.auto_block_hash or None,
+        default_manual_body=strings.get("default_manual_body"),
     )
 
     if merged.manual_block_tampered:

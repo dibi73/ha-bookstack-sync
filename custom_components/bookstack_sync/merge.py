@@ -39,7 +39,7 @@ _MANUAL_RE = re.compile(
     re.DOTALL,
 )
 
-_DEFAULT_MANUAL_BODY = (
+_FALLBACK_MANUAL_BODY = (
     "\n\n_Notizen, die du hier zwischen den Markern einträgst, "
     "bleiben beim Sync erhalten._\n\n"
 )
@@ -114,21 +114,27 @@ def merge_page(
     new_auto_body: str,
     existing_markdown: str | None,
     last_known_auto_hash: str | None,
+    default_manual_body: str | None = None,
 ) -> MergeResult:
     """
     Combine the new AUTO block with an existing page's MANUAL block.
 
     Detects manual-block tampering inside the AUTO area by comparing the
     existing AUTO block against the hash we stored after the previous write.
+
+    ``default_manual_body`` is the placeholder we drop into the manual
+    block on first write, so users see a hint about where to put their
+    notes. Callers should pass the localised version from ``_strings``;
+    the hardcoded fallback is German for backward compatibility with
+    pre-i18n stores.
     """
     new_hash = hash_auto_block(new_auto_body)
 
     existing_auto = extract_auto_block(existing_markdown)
     existing_manual = extract_manual_block(existing_markdown)
 
-    manual_body = (
-        existing_manual if existing_manual is not None else _DEFAULT_MANUAL_BODY
-    )
+    placeholder = default_manual_body or _FALLBACK_MANUAL_BODY
+    manual_body = existing_manual if existing_manual is not None else placeholder
 
     tampered = (
         existing_auto is not None

@@ -20,8 +20,6 @@ LANG_DE = "de"
 LANG_EN = "en"
 LANG_DEFAULT = LANG_EN
 
-SUPPORTED_LANGUAGES: tuple[str, ...] = (LANG_DE, LANG_EN)
-
 
 _STRINGS: dict[str, dict[str, str]] = {
     LANG_DE: {
@@ -269,12 +267,3 @@ def get_strings(lang: str | None) -> dict[str, str]:
         if short in _STRINGS:
             return _STRINGS[short]
     return _STRINGS[LANG_DEFAULT]
-
-
-def normalise_language(lang: str | None) -> str:
-    """Return the canonical two-letter code we'd resolve ``lang`` to."""
-    if lang:
-        short = lang.split("-")[0].split("_")[0].lower()
-        if short in _STRINGS:
-            return short
-    return LANG_DEFAULT
