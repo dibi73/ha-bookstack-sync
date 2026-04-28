@@ -19,6 +19,7 @@ from homeassistant.helpers import (
 from homeassistant.helpers import (
     entity_registry as er,
 )
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync.extractor import extract_snapshot
 
@@ -28,6 +29,13 @@ if TYPE_CHECKING:
 
 async def _seed_minimal_registry(hass: HomeAssistant) -> None:
     """Two areas, two devices each, a handful of entities + automation/script/scene."""
+    # Devices in HA's registry must reference real config entries, so create
+    # placeholder entries first.
+    entry1 = MockConfigEntry(domain="mqtt", entry_id="entry1", title="MQTT")
+    entry2 = MockConfigEntry(domain="zha", entry_id="entry2", title="Zigbee")
+    entry1.add_to_hass(hass)
+    entry2.add_to_hass(hass)
+
     area_reg = ar.async_get(hass)
     living = area_reg.async_create("Living Room")
     kitchen = area_reg.async_create("Kitchen")
