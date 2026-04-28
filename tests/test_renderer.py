@@ -119,10 +119,20 @@ class TestMdEscape:
         assert _md_escape("[note]") == "\\[note\\]"
 
     def test_link_label_breakout_defused(self) -> None:
-        # End-to-end: a rendered link must not contain an unescaped
-        # ``](javascript:`` sequence regardless of input.
+        # End-to-end: when a malicious name is rendered into a markdown
+        # link, the close-bracket of the malicious name must arrive in the
+        # output as ``\]`` (backslash-escaped), so the markdown parser
+        # treats it as a literal character and does NOT close the link
+        # label early. The naive ``](javascript:`` substring is still
+        # present in the raw text (because ``\]`` followed by ``(`` reads
+        # as ``](`` if you ignore the backslash) — what matters is that
+        # the parser sees ``\]``, not a real link terminator.
         rendered = f"[{_md_escape('Lampe](javascript:alert(1))')}](page:42)"
-        assert "](javascript:" not in rendered
+        assert "\\]" in rendered, "close-bracket must be escaped"
+        # And the unescaped ``](`` only appears at the legitimate link
+        # boundary at the very end (``](page:42)``).
+        assert rendered.count("](") == 1
+        assert rendered.endswith("](page:42)")
 
 
 class TestDeterminism:
