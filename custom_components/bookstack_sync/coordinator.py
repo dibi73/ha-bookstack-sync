@@ -60,6 +60,10 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         self.config_entry = entry
         self.last_run: datetime | None = None
         self.last_report: SyncReport | None = None
+        # Surfaced via the status sensor so the dashboard can show
+        # "syncing" while a run is in progress. Toggled in
+        # ``async_run_sync`` (try/finally so failed runs also clear it).
+        self.is_syncing: bool = False
         # Serialises every sync path - schedule, run_now service, preview -
         # so they cannot interleave and create duplicate pages on first run.
         self._sync_lock = asyncio.Lock()
@@ -75,28 +79,34 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
     async def async_run_sync(self, *, dry_run: bool = False) -> SyncReport:
         """Execute a sync immediately, regardless of the schedule."""
         async with self._sync_lock:
-            runtime = self.config_entry.runtime_data
-            options = self.config_entry.options
-            data = self.config_entry.data
-            # Initial setup stores book_id in `data`, but the options flow
-            # rewrites it into `options`. Look in options first, then fall
-            # back to data so both layouts work without crashing.
-            book_id = int(options.get(CONF_BOOK_ID) or data[CONF_BOOK_ID])
-            excluded_areas = options.get(CONF_EXCLUDED_AREAS, []) or []
-            strings = get_strings(self._resolve_output_language())
-            report = await run_sync(
-                self.hass,
-                runtime.client,
-                runtime.store,
-                book_id,
-                strings,
-                dry_run=dry_run,
-                excluded_area_ids=excluded_areas,
-            )
-            if not dry_run:
-                self.last_run = datetime.now(tz=UTC)
-                self.last_report = report
-            return report
+            self.is_syncing = True
+            self.async_update_listeners()
+            try:
+                runtime = self.config_entry.runtime_data
+                options = self.config_entry.options
+                data = self.config_entry.data
+                # Initial setup stores book_id in `data`, but the options
+                # flow rewrites it into `options`. Look in options first,
+                # then fall back to data so both layouts work.
+                book_id = int(options.get(CONF_BOOK_ID) or data[CONF_BOOK_ID])
+                excluded_areas = options.get(CONF_EXCLUDED_AREAS, []) or []
+                strings = get_strings(self._resolve_output_language())
+                report = await run_sync(
+                    self.hass,
+                    runtime.client,
+                    runtime.store,
+                    book_id,
+                    strings,
+                    dry_run=dry_run,
+                    excluded_area_ids=excluded_areas,
+                )
+                if not dry_run:
+                    self.last_run = datetime.now(tz=UTC)
+                    self.last_report = report
+                return report
+            finally:
+                self.is_syncing = False
+                self.async_update_listeners()
 
     def _resolve_output_language(self) -> str:
         """

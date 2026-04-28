@@ -109,6 +109,21 @@ class TestMdEscape:
     def test_no_special_chars_unchanged(self) -> None:
         assert _md_escape("Living Room") == "Living Room"
 
+    def test_square_brackets_escaped(self) -> None:
+        # Defence-in-depth against link-label breakout: a device named
+        # ``Lampe](javascript:alert(1))`` must not break out of
+        # ``[label](page:N)`` and inject a clickable javascript: URL.
+        assert _md_escape("Lampe](javascript:alert(1))") == (
+            "Lampe\\](javascript:alert(1))"
+        )
+        assert _md_escape("[note]") == "\\[note\\]"
+
+    def test_link_label_breakout_defused(self) -> None:
+        # End-to-end: a rendered link must not contain an unescaped
+        # ``](javascript:`` sequence regardless of input.
+        rendered = f"[{_md_escape('Lampe](javascript:alert(1))')}](page:42)"
+        assert "](javascript:" not in rendered
+
 
 class TestDeterminism:
     """Same input must produce byte-identical output across calls."""
