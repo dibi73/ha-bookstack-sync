@@ -9,14 +9,18 @@ from typing import TYPE_CHECKING
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from ._strings import get_strings
 from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     CONF_BOOK_ID,
     CONF_EXCLUDED_AREAS,
+    CONF_OUTPUT_LANGUAGE,
     CONF_SYNC_INTERVAL,
     DEFAULT_INTERVAL,
+    DEFAULT_OUTPUT_LANGUAGE,
     INTERVAL_MANUAL,
     LOGGER,
+    OUTPUT_LANGUAGE_AUTO,
     SYNC_INTERVALS,
 )
 from .sync import SyncReport, run_sync
@@ -79,11 +83,13 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             # back to data so both layouts work without crashing.
             book_id = int(options.get(CONF_BOOK_ID) or data[CONF_BOOK_ID])
             excluded_areas = options.get(CONF_EXCLUDED_AREAS, []) or []
+            strings = get_strings(self._resolve_output_language())
             report = await run_sync(
                 self.hass,
                 runtime.client,
                 runtime.store,
                 book_id,
+                strings,
                 dry_run=dry_run,
                 excluded_area_ids=excluded_areas,
             )
@@ -91,3 +97,16 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 self.last_run = datetime.now(tz=UTC)
                 self.last_report = report
             return report
+
+    def _resolve_output_language(self) -> str:
+        """
+        Return the language code to use for BookStack output.
+
+        ``auto`` (default) follows the user's HA UI language. An explicit
+        choice in the options flow (e.g. ``en``, ``de``) overrides it.
+        """
+        options = self.config_entry.options or {}
+        choice = options.get(CONF_OUTPUT_LANGUAGE, DEFAULT_OUTPUT_LANGUAGE)
+        if choice == OUTPUT_LANGUAGE_AUTO:
+            return self.hass.config.language or "en"
+        return choice

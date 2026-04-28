@@ -46,7 +46,8 @@
         "data": {
           "book_id": "Target book",
           "sync_interval": "Sync interval",
-          "excluded_areas": "Excluded areas (will not be synced)"
+          "excluded_areas": "Excluded areas (will not be synced)",
+          "output_language": "Language of the BookStack pages"
         }
       }
     }
@@ -57,6 +58,13 @@
         "hourly": "Hourly",
         "daily": "Daily",
         "manual": "Manual only (service call)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Follow Home Assistant (auto)",
+        "de": "German",
+        "en": "English"
       }
     }
   },

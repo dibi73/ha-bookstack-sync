@@ -2,12 +2,16 @@
 Sync orchestrator: snapshot HA -> render -> merge -> push to BookStack.
 
 Flow per run:
-1. ``ensure_chapters`` makes sure ``Räume`` + ``Geräte`` chapters exist.
+1. ``ensure_chapters`` makes sure ``Räume`` + ``Geräte`` chapters exist
+   (titles + descriptions come from the active output language).
 2. Pass 1 syncs all area / device / bundle pages and collects their page IDs.
-3. Pass 2 renders the Übersicht with markdown links to the IDs from pass 1
+3. Pass 2 renders the overview with markdown links to the IDs from pass 1
    and writes it.
 4. Pages whose HA object has vanished get a one-time tombstone block.
 5. Mapping store is persisted and a persistent notification is posted.
+
+The active output language is passed in via ``strings`` — see
+``_strings.get_strings``. Default in coordinator is ``hass.config.language``.
 """
 
 from __future__ import annotations
@@ -23,12 +27,8 @@ from homeassistant.components.persistent_notification import (
 
 from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
-    CHAPTER_DESC_AREAS,
-    CHAPTER_DESC_DEVICES,
     CHAPTER_KEY_AREAS,
     CHAPTER_KEY_DEVICES,
-    CHAPTER_TITLE_AREAS,
-    CHAPTER_TITLE_DEVICES,
     LOGGER,
     PAGE_KIND_ADDONS,
     PAGE_KIND_AREA,
@@ -116,58 +116,74 @@ class _PlannedPage:
     chapter_key: str | None = None  # None = page lives at book level
 
 
-def _device_page(device: DeviceSnapshot, now: datetime) -> _PlannedPage:
+def _device_page(
+    device: DeviceSnapshot,
+    now: datetime,
+    strings: dict[str, str],
+) -> _PlannedPage:
     return _PlannedPage(
         key=f"{PAGE_KIND_DEVICE}:{device.device_id}",
-        title=f"Gerät: {device.name}",
-        auto_body=render_device_auto_block(device, now),
+        title=strings["title_device_template"].format(name=device.name),
+        auto_body=render_device_auto_block(device, now, strings),
         chapter_key=CHAPTER_KEY_DEVICES,
     )
 
 
-def _plan_pages(snapshot: HASnapshot, now: datetime) -> list[_PlannedPage]:
+def _plan_pages(
+    snapshot: HASnapshot,
+    now: datetime,
+    strings: dict[str, str],
+) -> list[_PlannedPage]:
     """Plan all pages EXCEPT the overview (rendered in a second pass)."""
     planned: list[_PlannedPage] = [
         _PlannedPage(
             key=f"{PAGE_KIND_INTEGRATIONS}:_",
-            title="Home Assistant – Integrationen",
-            auto_body=render_integrations_auto_block(snapshot.integrations, now),
+            title=strings["title_integrations"],
+            auto_body=render_integrations_auto_block(
+                snapshot.integrations,
+                now,
+                strings,
+            ),
         ),
         _PlannedPage(
             key=f"{PAGE_KIND_AUTOMATIONS}:_",
-            title="Home Assistant – Automatisierungen",
-            auto_body=render_automations_auto_block(snapshot.automations, now),
+            title=strings["title_automations"],
+            auto_body=render_automations_auto_block(
+                snapshot.automations,
+                now,
+                strings,
+            ),
         ),
         _PlannedPage(
             key=f"{PAGE_KIND_SCRIPTS}:_",
-            title="Home Assistant – Skripte",
-            auto_body=render_scripts_auto_block(snapshot.scripts, now),
+            title=strings["title_scripts"],
+            auto_body=render_scripts_auto_block(snapshot.scripts, now, strings),
         ),
         _PlannedPage(
             key=f"{PAGE_KIND_SCENES}:_",
-            title="Home Assistant – Szenen",
-            auto_body=render_scenes_auto_block(snapshot.scenes, now),
+            title=strings["title_scenes"],
+            auto_body=render_scenes_auto_block(snapshot.scenes, now, strings),
         ),
     ]
     if snapshot.addons:
         planned.append(
             _PlannedPage(
                 key=f"{PAGE_KIND_ADDONS}:_",
-                title="Home Assistant – Add-ons",
-                auto_body=render_addons_auto_block(snapshot.addons, now),
+                title=strings["title_addons"],
+                auto_body=render_addons_auto_block(snapshot.addons, now, strings),
             ),
         )
     for area in snapshot.areas:
         planned.append(
             _PlannedPage(
                 key=f"{PAGE_KIND_AREA}:{area.area_id}",
-                title=f"Raum: {area.name}",
-                auto_body=render_area_auto_block(area, now),
+                title=strings["title_area_template"].format(name=area.name),
+                auto_body=render_area_auto_block(area, now, strings),
                 chapter_key=CHAPTER_KEY_AREAS,
             ),
         )
-        planned.extend(_device_page(d, now) for d in area.devices)
-    planned.extend(_device_page(d, now) for d in snapshot.unassigned_devices)
+        planned.extend(_device_page(d, now, strings) for d in area.devices)
+    planned.extend(_device_page(d, now, strings) for d in snapshot.unassigned_devices)
     return planned
 
 
@@ -175,11 +191,20 @@ async def _ensure_chapters(
     client: BookStackApiClient,
     store: BookStackSyncStore,
     book_id: int,
+    strings: dict[str, str],
 ) -> dict[str, int]:
     """Make sure the area + device chapters exist; return their IDs."""
     desired = (
-        (CHAPTER_KEY_AREAS, CHAPTER_TITLE_AREAS, CHAPTER_DESC_AREAS),
-        (CHAPTER_KEY_DEVICES, CHAPTER_TITLE_DEVICES, CHAPTER_DESC_DEVICES),
+        (
+            CHAPTER_KEY_AREAS,
+            strings["chapter_areas_title"],
+            strings["chapter_areas_description"],
+        ),
+        (
+            CHAPTER_KEY_DEVICES,
+            strings["chapter_devices_title"],
+            strings["chapter_devices_description"],
+        ),
     )
     existing_chapters = await client.list_chapters(book_id)
     existing_ids = {int(ch["id"]) for ch in existing_chapters}
@@ -207,6 +232,7 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
     client: BookStackApiClient,
     store: BookStackSyncStore,
     book_id: int,
+    strings: dict[str, str],
     *,
     dry_run: bool = False,
     excluded_area_ids: Iterable[str] = (),
@@ -218,10 +244,12 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
     # Registries are pure in-memory dict lookups and must run on the event
     # loop thread - never wrap them in async_add_executor_job.
     snapshot = extract_snapshot(hass, excluded_area_ids=excluded_area_ids)
-    planned = _plan_pages(snapshot, now)
+    planned = _plan_pages(snapshot, now, strings)
 
     await store.async_load()
-    chapters = {} if dry_run else await _ensure_chapters(client, store, book_id)
+    chapters = (
+        {} if dry_run else await _ensure_chapters(client, store, book_id, strings)
+    )
 
     # Pass 1: sync all non-overview pages, collect their IDs for the overview.
     page_ids: dict[str, int] = {}
@@ -255,8 +283,13 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
     # Pass 2: render overview with page links + sync it.
     overview = _PlannedPage(
         key=f"{PAGE_KIND_OVERVIEW}:_",
-        title="Home Assistant – Übersicht",
-        auto_body=render_overview_auto_block(snapshot, now, page_links=page_ids),
+        title=strings["title_overview"],
+        auto_body=render_overview_auto_block(
+            snapshot,
+            now,
+            strings,
+            page_links=page_ids,
+        ),
     )
     try:
         await _sync_one(
@@ -277,7 +310,15 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
         report.errors.append(f"{overview.key}: {err}")
 
     all_planned = [overview, *planned]
-    await _tombstone_orphans(client, store, all_planned, report, now, dry_run=dry_run)
+    await _tombstone_orphans(
+        client,
+        store,
+        all_planned,
+        report,
+        now,
+        strings,
+        dry_run=dry_run,
+    )
 
     if not dry_run:
         await store.async_save()
@@ -294,23 +335,27 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
         " (dry-run)" if dry_run else "",
     )
     if not dry_run:
-        _post_sync_notification(hass, report)
+        _post_sync_notification(hass, report, strings)
     return report
 
 
-def _post_sync_notification(hass: HomeAssistant, report: SyncReport) -> None:
-    bullet = (
-        f"- {len(report.created)} angelegt\n"
-        f"- {len(report.updated)} aktualisiert\n"
-        f"- {len(report.unchanged)} unverändert\n"
-        f"- {len(report.tombstoned)} verwaist (Tombstone)\n"
-        f"- {len(report.skipped_conflict)} mit Konflikt übersprungen\n"
-        f"- {len(report.errors)} Fehler"
+def _post_sync_notification(
+    hass: HomeAssistant,
+    report: SyncReport,
+    strings: dict[str, str],
+) -> None:
+    body = strings["notification_body_template"].format(
+        created=len(report.created),
+        updated=len(report.updated),
+        unchanged=len(report.unchanged),
+        tombstoned=len(report.tombstoned),
+        skipped=len(report.skipped_conflict),
+        errors=len(report.errors),
     )
     async_create_notification(
         hass,
-        f"BookStack-Sync abgeschlossen:\n\n{bullet}",
-        title="BookStack Sync",
+        body,
+        title=strings["notification_title"],
         notification_id="bookstack_sync_last_run",
     )
 
@@ -369,8 +414,7 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
         return page_id
 
     existing = await client.get_page(mapping.page_id)
-    existing_chapter_id = existing.get("chapter_id") or 0
-    needs_move = chapter_id is not None and int(existing_chapter_id) != chapter_id
+    needs_move = _needs_move(existing, chapter_id, page.key)
 
     existing_markdown = existing.get("markdown") or existing.get("raw_html") or ""
     existing_auto = extract_auto_block(existing_markdown)
@@ -421,12 +465,44 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
     return mapping.page_id
 
 
+def _needs_move(
+    existing: dict,
+    expected_chapter_id: int | None,
+    page_key: str,
+) -> bool:
+    """
+    Return whether the existing page needs to be moved into ``expected_chapter_id``.
+
+    Defensively coerces BookStack's response: ``chapter_id`` can come back as
+    int, str, None or missing. Anything that doesn't parse to the expected
+    target is treated as "needs move" rather than crashing — this is what
+    finally clears the V0.1.x findlings stuck at book level on long-running
+    setups.
+    """
+    if expected_chapter_id is None:
+        return False
+    raw = existing.get("chapter_id")
+    try:
+        actual = int(raw) if raw is not None else 0
+    except TypeError, ValueError:
+        LOGGER.warning(
+            "BookStack returned non-numeric chapter_id %r for %s "
+            "(page id=%s); treating as needs-move",
+            raw,
+            page_key,
+            existing.get("id"),
+        )
+        return True
+    return actual != expected_chapter_id
+
+
 async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
     client: BookStackApiClient,
     store: BookStackSyncStore,
     planned: list[_PlannedPage],
     report: SyncReport,
     now: datetime,
+    strings: dict[str, str],
     *,
     dry_run: bool,
 ) -> None:
@@ -446,6 +522,7 @@ async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
                 mapping,
                 report,
                 now,
+                strings,
                 dry_run=dry_run,
             )
         except BookStackApiAuthError:
@@ -467,10 +544,11 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
     mapping: PageMapping,
     report: SyncReport,
     now: datetime,
+    strings: dict[str, str],
     *,
     dry_run: bool,
 ) -> None:
-    auto_body = render_tombstone_auto_block(now)
+    auto_body = render_tombstone_auto_block(strings, now)
     new_hash = hash_auto_block(auto_body)
 
     existing = await client.get_page(mapping.page_id)

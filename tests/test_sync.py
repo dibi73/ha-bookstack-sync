@@ -15,11 +15,10 @@ from homeassistant.helpers import (
     area_registry as ar,
 )
 
+from custom_components.bookstack_sync._strings import get_strings
 from custom_components.bookstack_sync.const import (
     CHAPTER_KEY_AREAS,
     CHAPTER_KEY_DEVICES,
-    CHAPTER_TITLE_AREAS,
-    CHAPTER_TITLE_DEVICES,
 )
 from custom_components.bookstack_sync.store import BookStackSyncStore
 from custom_components.bookstack_sync.sync import run_sync
@@ -102,9 +101,16 @@ async def store(hass: HomeAssistant) -> BookStackSyncStore:
     return s
 
 
+@pytest.fixture
+def strings() -> dict[str, str]:
+    """Default to German strings for sync tests (tests our home-base output)."""
+    return get_strings("de")
+
+
 async def test_first_sync_creates_chapters_and_pages(
     hass: HomeAssistant,
     store: BookStackSyncStore,
+    strings: dict[str, str],
 ) -> None:
     state: dict[str, Any] = {}
     client = _fake_client_with_state(state)
@@ -113,11 +119,11 @@ async def test_first_sync_creates_chapters_and_pages(
     area_reg = ar.async_get(hass)
     area_reg.async_create("Living Room")
 
-    report = await run_sync(hass, client, store, book_id=1)
+    report = await run_sync(hass, client, store, 1, strings)
 
-    # Both chapters auto-created
-    assert CHAPTER_TITLE_AREAS in state["chapters"].values()
-    assert CHAPTER_TITLE_DEVICES in state["chapters"].values()
+    # Both chapters auto-created (titles come from the active language).
+    assert strings["chapter_areas_title"] in state["chapters"].values()
+    assert strings["chapter_devices_title"] in state["chapters"].values()
     assert store.get_chapter(CHAPTER_KEY_AREAS) is not None
     assert store.get_chapter(CHAPTER_KEY_DEVICES) is not None
 
@@ -129,6 +135,7 @@ async def test_first_sync_creates_chapters_and_pages(
 async def test_second_sync_with_unchanged_data_makes_no_changes(
     hass: HomeAssistant,
     store: BookStackSyncStore,
+    strings: dict[str, str],
 ) -> None:
     state: dict[str, Any] = {}
     client = _fake_client_with_state(state)
@@ -136,11 +143,11 @@ async def test_second_sync_with_unchanged_data_makes_no_changes(
     area_reg.async_create("Living Room")
 
     # First sync: creates everything
-    await run_sync(hass, client, store, book_id=1)
+    await run_sync(hass, client, store, 1, strings)
 
     # Second sync should be all-unchanged (this is the regression hot spot
     # we just fixed in v0.2.1: false-positive tampering after first write).
-    report2 = await run_sync(hass, client, store, book_id=1)
+    report2 = await run_sync(hass, client, store, 1, strings)
     assert report2.created == []
     assert report2.skipped_conflict == []  # NO false positives
     assert report2.errors == []
@@ -149,11 +156,12 @@ async def test_second_sync_with_unchanged_data_makes_no_changes(
 async def test_dry_run_does_not_call_writes(
     hass: HomeAssistant,
     store: BookStackSyncStore,
+    strings: dict[str, str],
 ) -> None:
     state: dict[str, Any] = {}
     client = _fake_client_with_state(state)
 
-    report = await run_sync(hass, client, store, book_id=1, dry_run=True)
+    report = await run_sync(hass, client, store, 1, strings, dry_run=True)
     assert report.dry_run is True
     client.create_page.assert_not_called()
     client.update_page.assert_not_called()
@@ -163,20 +171,38 @@ async def test_dry_run_does_not_call_writes(
 async def test_chapter_reused_when_already_present(
     hass: HomeAssistant,
     store: BookStackSyncStore,
+    strings: dict[str, str],
 ) -> None:
-    # Seed BookStack with an existing "Räume" chapter from a previous setup.
     state: dict[str, Any] = {
-        "chapters": {500: CHAPTER_TITLE_AREAS},
+        "chapters": {500: strings["chapter_areas_title"]},
         "next_id": 600,
     }
     client = _fake_client_with_state(state)
 
-    await run_sync(hass, client, store, book_id=1)
+    await run_sync(hass, client, store, 1, strings)
 
-    # We must NOT have created a duplicate "Räume" chapter — only
-    # "Geräte" was missing.
+    # We must NOT have created a duplicate area chapter - only the device
+    # chapter was missing.
     chapter_titles = list(state["chapters"].values())
-    assert chapter_titles.count(CHAPTER_TITLE_AREAS) == 1
-    assert chapter_titles.count(CHAPTER_TITLE_DEVICES) == 1
-    # Stored mapping points at the pre-existing chapter id (500), not a new one.
+    assert chapter_titles.count(strings["chapter_areas_title"]) == 1
+    assert chapter_titles.count(strings["chapter_devices_title"]) == 1
     assert store.get_chapter(CHAPTER_KEY_AREAS) == 500
+
+
+async def test_english_run_creates_english_titled_chapters(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+) -> None:
+    """v0.4.0 regression: chapter titles follow the strings dict."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    en = get_strings("en")
+
+    await run_sync(hass, client, store, 1, en)
+
+    chapter_titles = list(state["chapters"].values())
+    assert "Areas" in chapter_titles
+    assert "Devices" in chapter_titles
+    # And no German leftovers.
+    assert "Räume" not in chapter_titles
+    assert "Geräte" not in chapter_titles

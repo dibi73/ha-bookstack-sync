@@ -25,17 +25,20 @@ from .const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
     CONF_EXCLUDED_AREAS,
+    CONF_OUTPUT_LANGUAGE,
     CONF_SYNC_INTERVAL,
     CONF_TOKEN_ID,
     CONF_TOKEN_SECRET,
     CONF_VERIFY_SSL,
     DEFAULT_INTERVAL,
+    DEFAULT_OUTPUT_LANGUAGE,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     INTERVAL_DAILY,
     INTERVAL_HOURLY,
     INTERVAL_MANUAL,
     LOGGER,
+    OUTPUT_LANGUAGE_AUTO,
 )
 
 
@@ -45,6 +48,16 @@ def _interval_selector() -> selector.SelectSelector:
             mode=selector.SelectSelectorMode.DROPDOWN,
             translation_key="sync_interval",
             options=[INTERVAL_HOURLY, INTERVAL_DAILY, INTERVAL_MANUAL],
+        ),
+    )
+
+
+def _output_language_selector() -> selector.SelectSelector:
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            mode=selector.SelectSelectorMode.DROPDOWN,
+            translation_key="output_language",
+            options=[OUTPUT_LANGUAGE_AUTO, "de", "en"],
         ),
     )
 
@@ -278,6 +291,10 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                     CONF_BOOK_ID: int(user_input[CONF_BOOK_ID]),
                     CONF_SYNC_INTERVAL: user_input[CONF_SYNC_INTERVAL],
                     CONF_EXCLUDED_AREAS: user_input.get(CONF_EXCLUDED_AREAS, []),
+                    CONF_OUTPUT_LANGUAGE: user_input.get(
+                        CONF_OUTPUT_LANGUAGE,
+                        DEFAULT_OUTPUT_LANGUAGE,
+                    ),
                 },
             )
 
@@ -301,6 +318,10 @@ class BookStackSyncOptionsFlow(OptionsFlow):
             DEFAULT_INTERVAL,
         )
         current_excluded = self.config_entry.options.get(CONF_EXCLUDED_AREAS, [])
+        current_language = self.config_entry.options.get(
+            CONF_OUTPUT_LANGUAGE,
+            DEFAULT_OUTPUT_LANGUAGE,
+        )
 
         return self.async_show_form(
             step_id="init",
@@ -331,6 +352,10 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                     ): selector.AreaSelector(
                         selector.AreaSelectorConfig(multiple=True),
                     ),
+                    vol.Required(
+                        CONF_OUTPUT_LANGUAGE,
+                        default=current_language,
+                    ): _output_language_selector(),
                 },
             ),
         )

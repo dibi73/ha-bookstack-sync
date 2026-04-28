@@ -2,6 +2,8 @@
 
 The renderer's whole point is byte-identical output for unchanged input,
 so the renderer-determinism property is the first thing we lock down.
+After v0.4.0 every renderer takes a ``strings`` dict so we also assert
+that output language follows that dict (DE vs EN).
 """
 
 from __future__ import annotations
@@ -9,9 +11,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 from custom_components.bookstack_sync.extractor import (
     AddonSnapshot,
@@ -36,6 +35,10 @@ from custom_components.bookstack_sync.renderer import (
     render_scripts_auto_block,
     render_tombstone_auto_block,
 )
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -110,58 +113,155 @@ class TestMdEscape:
 class TestDeterminism:
     """Same input must produce byte-identical output across calls."""
 
-    def test_overview_is_deterministic(self, fixed_now: datetime) -> None:
+    def test_overview_is_deterministic(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         snap = _empty_snapshot()
-        first = render_overview_auto_block(snap, fixed_now)
-        second = render_overview_auto_block(snap, fixed_now)
+        first = render_overview_auto_block(snap, fixed_now, strings_de)
+        second = render_overview_auto_block(snap, fixed_now, strings_de)
         assert first == second
 
-    def test_area_is_deterministic(self, fixed_now: datetime) -> None:
+    def test_area_is_deterministic(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         area = AreaSnapshot(
             area_id="living",
             name="Living Room",
             devices=[_device("d1"), _device("d2")],
             orphan_entities=[],
         )
-        first = render_area_auto_block(area, fixed_now)
-        second = render_area_auto_block(area, fixed_now)
+        first = render_area_auto_block(area, fixed_now, strings_de)
+        second = render_area_auto_block(area, fixed_now, strings_de)
         assert first == second
 
-    def test_device_is_deterministic(self, fixed_now: datetime) -> None:
+    def test_device_is_deterministic(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         device = _device(name="Tasmota Plug")
         device.entities.extend([_entity("switch.a"), _entity("sensor.b")])
-        first = render_device_auto_block(device, fixed_now)
-        second = render_device_auto_block(device, fixed_now)
+        first = render_device_auto_block(device, fixed_now, strings_de)
+        second = render_device_auto_block(device, fixed_now, strings_de)
         assert first == second
+
+
+class TestI18n:
+    """The strings dict drives the visible language; same input differs by lang."""
+
+    def test_overview_is_german(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_overview_auto_block(_empty_snapshot(), fixed_now, strings_de)
+        assert "## Statistik" in out
+        assert "Räume" in out
+        assert "Bereiche" in out
+        assert "Statistics" not in out
+
+    def test_overview_is_english(
+        self,
+        fixed_now: datetime,
+        strings_en: dict[str, str],
+    ) -> None:
+        out = render_overview_auto_block(_empty_snapshot(), fixed_now, strings_en)
+        assert "## Statistics" in out
+        assert "Areas" in out
+        assert "Sections" in out
+        assert "Statistik" not in out
+
+    def test_device_table_translates_field_labels(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+        strings_en: dict[str, str],
+    ) -> None:
+        device = _device()
+        de_out = render_device_auto_block(device, fixed_now, strings_de)
+        en_out = render_device_auto_block(device, fixed_now, strings_en)
+        assert "Hersteller" in de_out
+        assert "Manufacturer" in en_out
+        assert "Manufacturer" not in de_out
+        assert "Hersteller" not in en_out
+
+    def test_addon_table_translates_yes_no(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+        strings_en: dict[str, str],
+    ) -> None:
+        addons = [
+            AddonSnapshot(
+                slug="x",
+                name="X",
+                version="1",
+                state="started",
+                update_available=True,
+            ),
+        ]
+        de_out = render_addons_auto_block(addons, fixed_now, strings_de)
+        en_out = render_addons_auto_block(addons, fixed_now, strings_en)
+        assert "| Ja |" in de_out
+        assert "| Yes |" in en_out
+
+    def test_tombstone_speaks_chosen_language(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+        strings_en: dict[str, str],
+    ) -> None:
+        de = render_tombstone_auto_block(strings_de, fixed_now)
+        en = render_tombstone_auto_block(strings_en, fixed_now)
+        assert "verwaist" in de
+        assert "orphaned" in en
 
 
 class TestOverviewLinks:
     """Overview must use BookStack page-link syntax when ids are provided."""
 
-    def test_area_link_rendered(self, fixed_now: datetime) -> None:
+    def test_area_link_rendered(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         area = AreaSnapshot(area_id="living", name="Living Room")
         snap = _empty_snapshot()
         snap.areas.append(area)
         out = render_overview_auto_block(
             snap,
             fixed_now,
+            strings_de,
             page_links={"area:living": 42},
         )
         assert "[Living Room](page:42)" in out
 
-    def test_area_falls_back_to_bold_when_no_link(self, fixed_now: datetime) -> None:
+    def test_area_falls_back_to_bold_when_no_link(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         area = AreaSnapshot(area_id="living", name="Living Room")
         snap = _empty_snapshot()
         snap.areas.append(area)
-        out = render_overview_auto_block(snap, fixed_now)
+        out = render_overview_auto_block(snap, fixed_now, strings_de)
         assert "**Living Room**" in out
         assert "page:" not in out
 
-    def test_bundle_links_rendered(self, fixed_now: datetime) -> None:
+    def test_bundle_links_rendered(
+        self,
+        fixed_now: datetime,
+        strings_en: dict[str, str],
+    ) -> None:
         snap = _empty_snapshot()
         out = render_overview_auto_block(
             snap,
             fixed_now,
+            strings_en,
             page_links={
                 "integrations:_": 1,
                 "automations:_": 2,
@@ -170,20 +270,24 @@ class TestOverviewLinks:
                 "addons:_": 5,
             },
         )
-        assert "[Integrationen](page:1)" in out
-        assert "[Automatisierungen](page:2)" in out
-        assert "[Skripte](page:3)" in out
-        assert "[Szenen](page:4)" in out
+        assert "[Integrations](page:1)" in out
+        assert "[Automations](page:2)" in out
+        assert "[Scripts](page:3)" in out
+        assert "[Scenes](page:4)" in out
         assert "[Add-ons](page:5)" in out
 
-    def test_special_chars_in_area_name_escaped(self, fixed_now: datetime) -> None:
-        # Names like "Wohn|zimmer <stage>" must not break the markdown table.
+    def test_special_chars_in_area_name_escaped(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         area = AreaSnapshot(area_id="living", name="Wohn|zimmer <stage>")
         snap = _empty_snapshot()
         snap.areas.append(area)
         out = render_overview_auto_block(
             snap,
             fixed_now,
+            strings_de,
             page_links={"area:living": 99},
         )
         assert r"Wohn\|zimmer &lt;stage&gt;" in out
@@ -195,6 +299,7 @@ class TestBundlePages:
     def test_automations_with_description_rendered_as_quote(
         self,
         fixed_now: datetime,
+        strings_de: dict[str, str],
     ) -> None:
         autos = [
             AutomationSnapshot(
@@ -206,16 +311,24 @@ class TestBundlePages:
                 last_triggered="2026-04-28T06:00:00+00:00",
             ),
         ]
-        out = render_automations_auto_block(autos, fixed_now)
+        out = render_automations_auto_block(autos, fixed_now, strings_de)
         assert "### Foo" in out
         assert "`automation.foo`" in out
         assert "> Wakes me up" in out
 
-    def test_empty_automations_emits_placeholder(self, fixed_now: datetime) -> None:
-        out = render_automations_auto_block([], fixed_now)
+    def test_empty_automations_emits_placeholder(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_automations_auto_block([], fixed_now, strings_de)
         assert "Keine Automatisierungen" in out
 
-    def test_scripts_use_md_escape_for_name(self, fixed_now: datetime) -> None:
+    def test_scripts_use_md_escape_for_name(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         scripts = [
             ScriptSnapshot(
                 entity_id="script.foo",
@@ -225,16 +338,24 @@ class TestBundlePages:
                 last_triggered=None,
             ),
         ]
-        out = render_scripts_auto_block(scripts, fixed_now)
+        out = render_scripts_auto_block(scripts, fixed_now, strings_de)
         assert r"### Foo\|Bar" in out
 
-    def test_scenes_table_format(self, fixed_now: datetime) -> None:
+    def test_scenes_table_format(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         scenes = [SceneSnapshot(entity_id="scene.bedtime", name="Bedtime")]
-        out = render_scenes_auto_block(scenes, fixed_now)
+        out = render_scenes_auto_block(scenes, fixed_now, strings_de)
         assert "**Bedtime**" in out
         assert "`scene.bedtime`" in out
 
-    def test_integrations_table_columns_present(self, fixed_now: datetime) -> None:
+    def test_integrations_table_columns_present(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         integ = [
             IntegrationSnapshot(
                 entry_id="abc",
@@ -246,14 +367,18 @@ class TestBundlePages:
                 entity_count=42,
             ),
         ]
-        out = render_integrations_auto_block(integ, fixed_now)
+        out = render_integrations_auto_block(integ, fixed_now, strings_de)
         assert "`mqtt`" in out
         assert "MQTT Broker" in out
         assert "loaded" in out
         assert "12" in out
         assert "42" in out
 
-    def test_addons_table(self, fixed_now: datetime) -> None:
+    def test_addons_table(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         addons = [
             AddonSnapshot(
                 slug="core_zwave",
@@ -263,45 +388,65 @@ class TestBundlePages:
                 update_available=True,
             ),
         ]
-        out = render_addons_auto_block(addons, fixed_now)
+        out = render_addons_auto_block(addons, fixed_now, strings_de)
         assert "`core_zwave`" in out
         assert "Z-Wave" in out
         assert "1.2.3" in out
         assert "started" in out
         assert "Ja" in out
 
-    def test_no_addons_emits_supervisor_placeholder(self, fixed_now: datetime) -> None:
-        out = render_addons_auto_block([], fixed_now)
+    def test_no_addons_emits_supervisor_placeholder(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_addons_auto_block([], fixed_now, strings_de)
         assert "Kein Supervisor" in out
 
 
 class TestTombstone:
     """Tombstone-block has the obvious warning + date format."""
 
-    def test_tombstone_contains_date(self, fixed_now: datetime) -> None:
-        out = render_tombstone_auto_block(fixed_now)
+    def test_tombstone_contains_date(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_tombstone_auto_block(strings_de, fixed_now)
         assert "2026-04-28" in out
 
-    def test_tombstone_has_warning_header(self, fixed_now: datetime) -> None:
-        out = render_tombstone_auto_block(fixed_now)
+    def test_tombstone_has_warning_header(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_tombstone_auto_block(strings_de, fixed_now)
         assert "verwaist" in out
 
 
 class TestEntityLinesMqttTopic:
     """MQTT topic should be surfaced when present in the entity attributes."""
 
-    def test_mqtt_topic_rendered_when_present(self, fixed_now: datetime) -> None:
+    def test_mqtt_topic_rendered_when_present(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         device = _device()
         entity = _entity()
         entity.mqtt_topic = "tasmota/plug3/STATE"
         device.entities.append(entity)
-        out = render_device_auto_block(device, fixed_now)
+        out = render_device_auto_block(device, fixed_now, strings_de)
         assert "(Topic: `tasmota/plug3/STATE`)" in out
 
-    def test_no_topic_means_no_topic_marker(self, fixed_now: datetime) -> None:
+    def test_no_topic_means_no_topic_marker(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
         device = _device()
         device.entities.append(_entity())
-        out = render_device_auto_block(device, fixed_now)
+        out = render_device_auto_block(device, fixed_now, strings_de)
         assert "Topic" not in out
 
 
@@ -316,15 +461,17 @@ class TestEntityLinesMqttTopic:
 def test_all_renderers_include_attribution(
     render_fn: object,
     fixed_now: datetime,
+    strings_de: dict[str, str],
 ) -> None:
     """Every page is timestamped + attributed - verifies _format_attribution path."""
     if render_fn is render_overview_auto_block:
-        out = render_overview_auto_block(_empty_snapshot(), fixed_now)
+        out = render_overview_auto_block(_empty_snapshot(), fixed_now, strings_de)
     elif render_fn is render_area_auto_block:
         out = render_area_auto_block(
             AreaSnapshot(area_id="x", name="X"),
             fixed_now,
+            strings_de,
         )
     else:
-        out = render_device_auto_block(_device(), fixed_now)
-    assert "Stand 2026-04-28 12:00 UTC" in out
+        out = render_device_auto_block(_device(), fixed_now, strings_de)
+    assert "2026-04-28 12:00 UTC" in out

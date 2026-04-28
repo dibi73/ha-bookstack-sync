@@ -167,9 +167,15 @@ def extract_snapshot(
     for device in device_reg.devices.values():
         if device.area_id in excluded:
             continue
+        # Skip stub devices that some integrations leave behind: no name AND
+        # no user-given name. We later filter again on entity-emptiness so
+        # only useful devices land in the wiki.
+        display_name = device.name_by_user or device.name
+        if not display_name:
+            continue
         devices[device.id] = DeviceSnapshot(
             device_id=device.id,
-            name=device.name_by_user or device.name or device.id,
+            name=display_name,
             manufacturer=device.manufacturer,
             model=device.model,
             sw_version=device.sw_version,
