@@ -58,6 +58,7 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
         *,
         book_id: int | None = None,
         chapter_id: int | None = None,
+        tags: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         pid = state["next_id"]
         state["next_id"] += 1
@@ -67,6 +68,7 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
             "markdown": markdown,
             "chapter_id": chapter_id,
             "book_id": book_id,
+            "tags": tags,
         }
         return state["pages"][pid]
 
@@ -79,11 +81,14 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
         markdown: str,
         *,
         chapter_id: int | None = None,
+        tags: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         state["pages"][page_id]["name"] = name
         state["pages"][page_id]["markdown"] = markdown
         if chapter_id is not None:
             state["pages"][page_id]["chapter_id"] = chapter_id
+        if tags is not None:
+            state["pages"][page_id]["tags"] = tags
         return state["pages"][page_id]
 
     client.list_chapters = AsyncMock(side_effect=list_chapters)
