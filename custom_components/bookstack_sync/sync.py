@@ -1,4 +1,14 @@
-"""Sync orchestrator: snapshot HA -> render -> merge -> push to BookStack."""
+"""
+Sync orchestrator: snapshot HA -> render -> merge -> push to BookStack.
+
+Flow per run:
+1. ``ensure_chapters`` makes sure ``Räume`` + ``Geräte`` chapters exist.
+2. Pass 1 syncs all area / device / bundle pages and collects their page IDs.
+3. Pass 2 renders the Übersicht with markdown links to the IDs from pass 1
+   and writes it.
+4. Pages whose HA object has vanished get a one-time tombstone block.
+5. Mapping store is persisted and a persistent notification is posted.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +17,18 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from homeassistant.components.persistent_notification import (
+    async_create as async_create_notification,
+)
+
 from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
+    CHAPTER_DESC_AREAS,
+    CHAPTER_DESC_DEVICES,
+    CHAPTER_KEY_AREAS,
+    CHAPTER_KEY_DEVICES,
+    CHAPTER_TITLE_AREAS,
+    CHAPTER_TITLE_DEVICES,
     LOGGER,
     PAGE_KIND_ADDONS,
     PAGE_KIND_AREA,
@@ -88,9 +108,12 @@ class SyncReport:
 
 @dataclass
 class _PlannedPage:
+    """One page we want to ensure exists / is up to date."""
+
     key: str
     title: str
     auto_body: str
+    chapter_key: str | None = None  # None = page lives at book level
 
 
 def _device_page(device: DeviceSnapshot, now: datetime) -> _PlannedPage:
@@ -98,16 +121,13 @@ def _device_page(device: DeviceSnapshot, now: datetime) -> _PlannedPage:
         key=f"{PAGE_KIND_DEVICE}:{device.device_id}",
         title=f"Gerät: {device.name}",
         auto_body=render_device_auto_block(device, now),
+        chapter_key=CHAPTER_KEY_DEVICES,
     )
 
 
 def _plan_pages(snapshot: HASnapshot, now: datetime) -> list[_PlannedPage]:
+    """Plan all pages EXCEPT the overview (rendered in a second pass)."""
     planned: list[_PlannedPage] = [
-        _PlannedPage(
-            key=f"{PAGE_KIND_OVERVIEW}:_",
-            title="Home Assistant – Übersicht",
-            auto_body=render_overview_auto_block(snapshot, now),
-        ),
         _PlannedPage(
             key=f"{PAGE_KIND_INTEGRATIONS}:_",
             title="Home Assistant – Integrationen",
@@ -143,11 +163,43 @@ def _plan_pages(snapshot: HASnapshot, now: datetime) -> list[_PlannedPage]:
                 key=f"{PAGE_KIND_AREA}:{area.area_id}",
                 title=f"Raum: {area.name}",
                 auto_body=render_area_auto_block(area, now),
+                chapter_key=CHAPTER_KEY_AREAS,
             ),
         )
         planned.extend(_device_page(d, now) for d in area.devices)
     planned.extend(_device_page(d, now) for d in snapshot.unassigned_devices)
     return planned
+
+
+async def _ensure_chapters(
+    client: BookStackApiClient,
+    store: BookStackSyncStore,
+    book_id: int,
+) -> dict[str, int]:
+    """Make sure the area + device chapters exist; return their IDs."""
+    desired = (
+        (CHAPTER_KEY_AREAS, CHAPTER_TITLE_AREAS, CHAPTER_DESC_AREAS),
+        (CHAPTER_KEY_DEVICES, CHAPTER_TITLE_DEVICES, CHAPTER_DESC_DEVICES),
+    )
+    existing_chapters = await client.list_chapters(book_id)
+    existing_ids = {int(ch["id"]) for ch in existing_chapters}
+    by_name = {ch["name"]: int(ch["id"]) for ch in existing_chapters}
+
+    chapters: dict[str, int] = {}
+    for key, title, description in desired:
+        stored_id = store.get_chapter(key)
+        if stored_id and stored_id in existing_ids:
+            chapters[key] = stored_id
+            continue
+        if title in by_name:
+            chapters[key] = by_name[title]
+            continue
+        created = await client.create_chapter(book_id, title, description=description)
+        chapters[key] = int(created["id"])
+
+    for key, chapter_id in chapters.items():
+        store.set_chapter(key, chapter_id)
+    return chapters
 
 
 async def run_sync(  # noqa: PLR0913 - cohesive entry point
@@ -169,10 +221,26 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
     planned = _plan_pages(snapshot, now)
 
     await store.async_load()
+    chapters = {} if dry_run else await _ensure_chapters(client, store, book_id)
 
-    for page in planned:
+    # Pass 1: sync all non-overview pages, collect their IDs for the overview.
+    page_ids: dict[str, int] = {}
+    total_steps = len(planned) + 1  # +1 for the overview pass
+    for index, page in enumerate(planned, start=1):
         try:
-            await _sync_one(client, store, book_id, page, report, dry_run=dry_run)
+            page_id = await _sync_one(
+                client,
+                store,
+                book_id,
+                page,
+                chapters,
+                report,
+                index=index,
+                total=total_steps,
+                dry_run=dry_run,
+            )
+            if page_id is not None:
+                page_ids[page.key] = page_id
         except BookStackApiAuthError:
             raise
         except BookStackApiError as err:
@@ -184,7 +252,32 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
         if not dry_run:
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
-    await _tombstone_orphans(client, store, planned, report, now, dry_run=dry_run)
+    # Pass 2: render overview with page links + sync it.
+    overview = _PlannedPage(
+        key=f"{PAGE_KIND_OVERVIEW}:_",
+        title="Home Assistant – Übersicht",
+        auto_body=render_overview_auto_block(snapshot, now, page_links=page_ids),
+    )
+    try:
+        await _sync_one(
+            client,
+            store,
+            book_id,
+            overview,
+            chapters,
+            report,
+            index=total_steps,
+            total=total_steps,
+            dry_run=dry_run,
+        )
+    except BookStackApiAuthError:
+        raise
+    except BookStackApiError as err:
+        LOGGER.exception("BookStack sync failed for overview")
+        report.errors.append(f"{overview.key}: {err}")
+
+    all_planned = [overview, *planned]
+    await _tombstone_orphans(client, store, all_planned, report, now, dry_run=dry_run)
 
     if not dry_run:
         await store.async_save()
@@ -200,7 +293,26 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
         len(report.errors),
         " (dry-run)" if dry_run else "",
     )
+    if not dry_run:
+        _post_sync_notification(hass, report)
     return report
+
+
+def _post_sync_notification(hass: HomeAssistant, report: SyncReport) -> None:
+    bullet = (
+        f"- {len(report.created)} angelegt\n"
+        f"- {len(report.updated)} aktualisiert\n"
+        f"- {len(report.unchanged)} unverändert\n"
+        f"- {len(report.tombstoned)} verwaist (Tombstone)\n"
+        f"- {len(report.skipped_conflict)} mit Konflikt übersprungen\n"
+        f"- {len(report.errors)} Fehler"
+    )
+    async_create_notification(
+        hass,
+        f"BookStack-Sync abgeschlossen:\n\n{bullet}",
+        title="BookStack Sync",
+        notification_id="bookstack_sync_last_run",
+    )
 
 
 async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clarity
@@ -208,31 +320,58 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
     store: BookStackSyncStore,
     book_id: int,
     page: _PlannedPage,
+    chapters: dict[str, int],
     report: SyncReport,
     *,
+    index: int,
+    total: int,
     dry_run: bool,
-) -> None:
+) -> int | None:
+    """Sync one page; return the BookStack page id (or None on dry-run create)."""
+    chapter_id = chapters.get(page.chapter_key) if page.chapter_key else None
     new_hash = hash_auto_block(page.auto_body)
     mapping = store.get(page.key)
+
+    LOGGER.info(
+        "BookStack sync %d/%d: %s",
+        index,
+        total,
+        page.title,
+    )
 
     if mapping is None:
         if dry_run:
             report.created.append(page.title)
-            return
+            return None
         body = build_page_body(page.auto_body, "")
-        created = await client.create_page(book_id, page.title, body)
+        if chapter_id is not None:
+            created = await client.create_page(
+                page.title,
+                body,
+                chapter_id=chapter_id,
+            )
+        else:
+            created = await client.create_page(
+                page.title,
+                body,
+                book_id=book_id,
+            )
+        page_id = int(created["id"])
         store.set(
             page.key,
             PageMapping(
-                page_id=int(created["id"]),
+                page_id=page_id,
                 auto_block_hash=new_hash,
                 last_seen=datetime.now(tz=UTC).isoformat(),
             ),
         )
         report.created.append(page.title)
-        return
+        return page_id
 
     existing = await client.get_page(mapping.page_id)
+    existing_chapter_id = existing.get("chapter_id") or 0
+    needs_move = chapter_id is not None and int(existing_chapter_id) != chapter_id
+
     existing_markdown = existing.get("markdown") or existing.get("raw_html") or ""
     existing_auto = extract_auto_block(existing_markdown)
     existing_auto_hash = hash_auto_block(existing_auto) if existing_auto else None
@@ -251,19 +390,24 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
             mapping.page_id,
         )
         report.skipped_conflict.append(page.title)
-        return
+        return mapping.page_id
 
-    if existing_auto_hash == new_hash:
+    if existing_auto_hash == new_hash and not needs_move:
         report.unchanged.append(page.title)
         mapping.last_seen = datetime.now(tz=UTC).isoformat()
         store.set(page.key, mapping)
-        return
+        return mapping.page_id
 
     if dry_run:
         report.updated.append(page.title)
-        return
+        return mapping.page_id
 
-    await client.update_page(mapping.page_id, page.title, merged.body)
+    await client.update_page(
+        mapping.page_id,
+        page.title,
+        merged.body,
+        chapter_id=chapter_id if needs_move else None,
+    )
     store.set(
         page.key,
         PageMapping(
@@ -274,6 +418,7 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
         ),
     )
     report.updated.append(page.title)
+    return mapping.page_id
 
 
 async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step

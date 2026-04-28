@@ -69,35 +69,65 @@ class BookStackApiClient:
             params={"filter[book_id]": str(book_id)},
         )
 
+    async def list_chapters(self, book_id: int) -> list[dict[str, Any]]:
+        """Return all chapters in the given book."""
+        return await self._list_paginated(
+            "/api/chapters",
+            params={"filter[book_id]": str(book_id)},
+        )
+
+    async def create_chapter(
+        self,
+        book_id: int,
+        name: str,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a new chapter inside the given book."""
+        body: dict[str, Any] = {"book_id": book_id, "name": name}
+        if description:
+            body["description"] = description
+        return await self._request("post", "/api/chapters", json=body)
+
     async def get_page(self, page_id: int) -> dict[str, Any]:
         """Fetch a single page including markdown body."""
         return await self._request("get", f"/api/pages/{page_id}")
 
     async def create_page(
         self,
-        book_id: int,
         name: str,
         markdown: str,
+        *,
+        book_id: int | None = None,
+        chapter_id: int | None = None,
     ) -> dict[str, Any]:
-        """Create a markdown page inside the given book."""
-        return await self._request(
-            "post",
-            "/api/pages",
-            json={"book_id": book_id, "name": name, "markdown": markdown},
-        )
+        """
+        Create a markdown page either at book-level or inside a chapter.
+
+        Exactly one of ``book_id`` and ``chapter_id`` must be provided.
+        """
+        if (book_id is None) == (chapter_id is None):
+            msg = "create_page needs exactly one of book_id or chapter_id"
+            raise BookStackApiError(msg)
+        body: dict[str, Any] = {"name": name, "markdown": markdown}
+        if chapter_id is not None:
+            body["chapter_id"] = chapter_id
+        else:
+            body["book_id"] = book_id
+        return await self._request("post", "/api/pages", json=body)
 
     async def update_page(
         self,
         page_id: int,
         name: str,
         markdown: str,
+        *,
+        chapter_id: int | None = None,
     ) -> dict[str, Any]:
-        """Update an existing markdown page."""
-        return await self._request(
-            "put",
-            f"/api/pages/{page_id}",
-            json={"name": name, "markdown": markdown},
-        )
+        """Update an existing markdown page; optionally move it to a chapter."""
+        body: dict[str, Any] = {"name": name, "markdown": markdown}
+        if chapter_id is not None:
+            body["chapter_id"] = chapter_id
+        return await self._request("put", f"/api/pages/{page_id}", json=body)
 
     async def _list_paginated(
         self,

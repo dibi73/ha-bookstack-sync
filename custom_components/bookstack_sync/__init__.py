@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from homeassistant.const import Platform
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
@@ -31,7 +32,7 @@ if TYPE_CHECKING:
 
     from .data import BookStackSyncConfigEntry
 
-PLATFORMS: list = []  # services-only integration; no entities in V0
+PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
 async def async_setup_entry(
@@ -58,21 +59,31 @@ async def async_setup_entry(
         store=store,
     )
 
-    if coordinator.update_interval is not None:
-        await coordinator.async_config_entry_first_refresh()
-
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await async_register_services(hass)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
+    # Trigger the initial sync in the background so the integration finishes
+    # setup quickly. The status sensor, per-page log lines and the persistent
+    # notification let the user follow progress without blocking HA's UI.
+    if coordinator.update_interval is not None:
+        entry.async_create_background_task(
+            hass,
+            coordinator.async_request_refresh(),
+            "bookstack_sync_initial_refresh",
+        )
+
     return True
 
 
 async def async_unload_entry(
     hass: HomeAssistant,
-    entry: BookStackSyncConfigEntry,  # noqa: ARG001 - entry unused; HA contract
+    entry: BookStackSyncConfigEntry,
 ) -> bool:
-    """Unload a config entry and tear down services if it was the last one."""
+    """Unload platforms + services for this config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     await async_unregister_services(hass)
-    return True
+    return unload_ok
 
 
 async def _async_update_listener(
