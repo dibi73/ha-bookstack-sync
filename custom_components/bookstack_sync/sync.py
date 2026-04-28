@@ -332,7 +332,7 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
     new_hash = hash_auto_block(page.auto_body)
     mapping = store.get(page.key)
 
-    LOGGER.info(
+    LOGGER.debug(
         "BookStack sync %d/%d: %s",
         index,
         total,

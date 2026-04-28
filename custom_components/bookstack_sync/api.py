@@ -9,8 +9,22 @@ from typing import Any
 
 import aiohttp
 
+from .const import LOGGER
+
 REQUEST_TIMEOUT = 15
 PAGE_SIZE = 500
+MAX_REQUEST_ATTEMPTS = 3
+RETRY_BACKOFF_BASE = 0.5
+
+# Connection-level errors that BookStack's reverse proxy or aiohttp's
+# keep-alive pool can hand us mid-flight on long sync runs. They are
+# safe to retry: the request either never reached BookStack or BookStack
+# itself dropped the connection before responding.
+_TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
+    aiohttp.ServerDisconnectedError,
+    aiohttp.ClientConnectorError,
+    aiohttp.ServerTimeoutError,
+)
 
 
 class BookStackApiError(Exception):
@@ -161,27 +175,52 @@ class BookStackApiClient:
             "Authorization": f"Token {self._token_id}:{self._token_secret}",
             "Accept": "application/json",
         }
-        try:
-            async with asyncio.timeout(REQUEST_TIMEOUT):
-                response = await self._session.request(
-                    method=method,
-                    url=url,
-                    params=params,
-                    json=json,
-                    headers=headers,
+        last_err: Exception | None = None
+        for attempt in range(MAX_REQUEST_ATTEMPTS):
+            try:
+                async with asyncio.timeout(REQUEST_TIMEOUT):
+                    response = await self._session.request(
+                        method=method,
+                        url=url,
+                        params=params,
+                        json=json,
+                        headers=headers,
+                    )
+                    _raise_for_status(response)
+                    if response.status == HTTPStatus.NO_CONTENT:
+                        return {}
+                    # Don't gate on Content-Length: BookStack uses chunked
+                    # transfer encoding, so content_length is None even when
+                    # there is a JSON body to parse.
+                    return await response.json()
+            except BookStackApiError:
+                raise
+            except (TimeoutError, *_TRANSIENT_ERRORS) as err:
+                last_err = err
+                remaining = MAX_REQUEST_ATTEMPTS - attempt - 1
+                if remaining > 0:
+                    backoff = RETRY_BACKOFF_BASE * (2**attempt)
+                    LOGGER.warning(
+                        "BookStack %s %s transient error (attempt %d/%d): %s; "
+                        "retrying in %.1fs",
+                        method.upper(),
+                        path,
+                        attempt + 1,
+                        MAX_REQUEST_ATTEMPTS,
+                        err,
+                        backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                msg = (
+                    f"BookStack request failed after {MAX_REQUEST_ATTEMPTS} "
+                    f"attempts: {err}"
                 )
-                _raise_for_status(response)
-                if response.status == HTTPStatus.NO_CONTENT:
-                    return {}
-                # Don't gate on Content-Length: BookStack uses chunked
-                # transfer encoding, so content_length is None even when
-                # there is a JSON body to parse.
-                return await response.json()
-        except BookStackApiError:
-            raise
-        except TimeoutError as err:
-            msg = f"BookStack request timed out: {err}"
-            raise BookStackApiCommunicationError(msg) from err
-        except (aiohttp.ClientError, socket.gaierror) as err:
-            msg = f"BookStack request failed: {err}"
-            raise BookStackApiCommunicationError(msg) from err
+                raise BookStackApiCommunicationError(msg) from err
+            except (aiohttp.ClientError, socket.gaierror) as err:
+                msg = f"BookStack request failed: {err}"
+                raise BookStackApiCommunicationError(msg) from err
+        # The retry loop above either returns, raises, or reaches its final
+        # iteration which always raises. This line is purely a safety net.
+        msg = f"BookStack request retry loop exited unexpectedly: {last_err}"
+        raise BookStackApiCommunicationError(msg)
