@@ -1,93 +1,172 @@
-# BookStack Sync für Home Assistant
+# BookStack Sync for Home Assistant
 
-Eine Home-Assistant-Custom-Integration, die dein gesamtes HA-Setup automatisch in
-ein bestehendes Book deiner [BookStack](https://www.bookstackapp.com/)-Wiki-Instanz
-synchronisiert. Manuell hinzugefügte Inhalte in den Wiki-Pages bleiben dabei
-zuverlässig erhalten.
+A Home Assistant custom integration (installable via HACS) that
+documents your entire HA setup as markdown pages inside an existing
+[BookStack](https://www.bookstackapp.com/) wiki book and keeps it in
+sync.
+
+The killer feature: **manually added wiki content stays preserved
+across syncs.** Every page is split into an auto-generated section and
+a manual section by markdown markers. The integration only ever
+rewrites the auto block — your notes, quirks, password references and
+"why we set option X" comments live in the manual block forever.
+
+> **Auch auf Deutsch verfügbar**: [README.de.md](README.de.md)
+
+## What gets documented
+
+Pages are organised into chapters inside your target book:
+
+- **Overview** — statistics + links to every other page
+- **Areas** chapter — one page per area listing all devices and
+  entities it contains
+- **Devices** chapter — one page per device with manufacturer, model,
+  firmware version, configured integrations, and a list of all entities
+  including current state and (for MQTT devices) the topic
+- **Integrations**, **Automations**, **Scripts**, **Scenes** — one
+  bundled page each, listing every entry with description, mode, last
+  triggered etc.
+- **Add-ons** — Supervisor add-on listing (only on HassOS / Supervised)
+
+Output language follows your HA UI language by default (German and
+English supported); you can override it in the options flow.
+
+## Why use it
+
+- **Self-documenting smart home**. Every device, area, automation
+  always present in your wiki. Always current.
+- **Survives manual edits**. Add cross-references, quirks, "why" notes
+  to any page — they stay through future syncs. Hash-based tampering
+  detection logs (and skips) any page where the auto block was edited
+  outside of HA.
+- **Idempotent**. Same HA state → byte-identical markdown → no
+  spurious BookStack revisions.
+- **Soft-delete**. When a device disappears from HA, its page is not
+  deleted. Instead the auto block is replaced with an "orphaned —
+  device gone since YYYY-MM-DD" notice; the manual block stays.
+- **Survives BookStack restarts and HA migrations**. Mapping between
+  HA-IDs and BookStack page IDs is persisted in HA's storage.
 
 ## Status
 
-V0 – funktionales Grundgerüst. Sync von Areas, Devices und Entities funktioniert,
-inklusive Marker-Block-Merge mit Hash-Verifikation. Automationen, Skripte und
-Add-on-Inhalte folgen in einer späteren Version (siehe `anforderungsdokument.md`).
+Production-ready for personal use. **V0.4** as of this README:
 
-## Funktionsumfang
+- Full HA-data extraction (areas, devices, entities, automations,
+  scripts, scenes, integrations, add-ons)
+- Marker-block merge with hash-based tampering detection
+- Two-pass overview render with internal page links
+- Status sensor, persistent notifications, structured services
+- Reauth flow, area filter, TLS-verify toggle, MQTT-topic display
+- Output language i18n (DE + EN)
+- 80+ tests covering merge logic, renderer determinism, API client,
+  config flow, coordinator, sync orchestrator (each new bug we shipped
+  has an explicit regression test)
 
-- **Daten aus HA**: Areas, Devices (mit Hersteller / Modell / Firmware) und
-  Entities (mit aktuellem State) werden über die HA-Registries gelesen.
-- **Pages in BookStack**:
-  - eine Übersichtsseite mit Statistik
-  - eine Page pro Area
-  - eine Page pro Device
-- **Schutz manueller Inhalte**: jede Page hat zwei Marker-Blöcke –
-  `<!-- BEGIN AUTO-GENERATED -->` und `<!-- BEGIN MANUAL -->`. Nur der
-  Auto-Block wird vom Sync angefasst. Wenn der Auto-Block manuell editiert
-  wurde (Hash-Check), überspringt der Sync die Page mit Warnung.
-- **Idempotenter Renderer**: identischer HA-State → byte-identische Markdown-
-  Ausgabe → keine BookStack-Revisionen ohne echte Änderung.
-- **Mapping-Persistenz**: Zuordnung HA-ID ↔ BookStack-Page-ID liegt in
-  `.storage/bookstack_sync.<entry_id>.mapping`.
-- **Services**:
-  - `bookstack_sync.run_now` – sofortiger Sync
-  - `bookstack_sync.preview` – Dry-Run, schreibt nichts und loggt nur
+V1 will require: more languages on demand, HA Quality-Scale gold
+checks, full reconfigure flow.
 
-## Installation (HACS)
+## Installation
 
-1. In HACS → *Custom repositories* dieses Repo hinzufügen (Kategorie
-   *Integration*).
-2. *BookStack Sync* installieren.
-3. Home Assistant neu starten.
-4. *Einstellungen → Geräte & Dienste → Integration hinzufügen* → "BookStack Sync".
+### Via HACS (recommended)
 
-## Konfiguration
+1. HACS → top-right **⋮** → **Custom repositories**
+2. **Repository**: `https://github.com/dibi73/ha-bookstack-sync`
+3. **Type**: `Integration`
+4. Click **Add**, then **Download** on the BookStack Sync card
+5. Restart Home Assistant
+6. **Settings → Devices & Services → Add Integration → "BookStack Sync"**
 
-Im Config-Flow werden zwei Schritte durchlaufen:
+### Manual install
 
-1. **Verbindung**: BookStack-URL plus API-Token-ID + Secret. Das Token legst du
-   in BookStack unter *My Profile → API Tokens* an. Es muss Lese- und
-   Schreibrechte auf das Ziel-Book haben.
-2. **Ziel**: Auswahl des Books, in das synchronisiert wird, sowie das
-   Sync-Intervall (stündlich / täglich / nur manuell).
+Copy `custom_components/bookstack_sync/` from this repo into your HA
+`config/custom_components/` directory, then restart HA and add the
+integration via the UI.
 
-Spätere Anpassungen (anderes Book, anderes Intervall) gehen über
-*Konfigurieren* in der Integrationskachel.
+## Configuration
 
-## Manuelle Notizen pflegen
+The config flow asks two screens of questions:
 
-Pro Page sieht der gemerge­te Markdown so aus:
+**Step 1 — Connection**
+- **BookStack URL**: e.g. `https://bookstack.example.com` or
+  `http://192.168.0.11:6875`
+- **API Token ID + Secret**: create in BookStack under
+  *My Profile → API Tokens*. The token needs read+write on the target
+  book.
+- **Verify TLS certificate**: leave checked unless you use a
+  self-signed cert (common on Synology / NAS setups).
+
+**Step 2 — Target**
+- Pick the book to sync into (dropdown of all readable books)
+- Sync interval: hourly / daily / manual only
+
+After setup the **Options** dialog (gear icon on the integration card)
+adds:
+- Excluded areas (multi-select; their devices skip the wiki entirely)
+- Output language (`Auto` follows HA, or pick `German` / `English`
+  explicitly)
+
+## Page structure with marker blocks
+
+Every page the integration writes follows this shape:
 
 ```markdown
 <!-- BEGIN AUTO-GENERATED -->
-... wird bei jedem Sync neu generiert ...
+... regenerated by the integration on every sync ...
 <!-- END AUTO-GENERATED -->
 
 <!-- BEGIN MANUAL -->
-Hier kannst du Notizen, Quirks oder Cross-Refs zu Vaultwarden eintragen.
-Diese Sektion wird vom Sync nicht angefasst.
+Your notes, quirks, cross-references — never overwritten.
 <!-- END MANUAL -->
 ```
 
-Solange du nur **innerhalb** des MANUAL-Blocks editierst, bleibt alles erhalten.
-Editierst du im AUTO-Block, erkennt der Sync das beim nächsten Lauf am Hash
-und überspringt die Page mit einer Warnung im HA-Log.
+Stay inside the **MANUAL** block when editing in BookStack. The
+integration computes a SHA-256 hash of the auto block on every write
+and compares it to what it last wrote — if anything changed
+unexpectedly (e.g. someone edited inside the auto block), the page is
+skipped with a warning rather than clobbered.
 
-## Entwicklung
+## Services
 
-Repo ist auf das ludeeus-Devcontainer-Layout aufgesetzt:
+- **`bookstack_sync.run_now`** — kick off a sync immediately. Useful
+  after adding a new device.
+- **`bookstack_sync.preview`** — dry run. Logs to the HA log what
+  would be created / updated, but writes nothing to BookStack.
+
+Both available from *Developer Tools → Actions* or via automations.
+
+## Status sensor
+
+Each configured BookStack instance gets a sensor:
+
+- **State**: `ok` / `error` / `never_run` / `syncing`
+- **Attributes**: `last_run`, `created`, `updated`, `unchanged`,
+  `tombstoned`, `skipped_conflict`, `errors`, `total_pages`
+
+Drop it on a dashboard or feed it into automations.
+
+## Non-goals
+
+- **No password storage** in BookStack — keep credentials in a proper
+  password manager (Vaultwarden / Bitwarden / 1Password). The
+  integration intentionally never writes credentials anywhere.
+- **No bidirectional sync** — data flows HA → BookStack only.
+- **No automatic conflict resolution** — manual edits inside the auto
+  block are detected and logged, but the user resolves them.
+
+## Development
+
+The repo is set up around the
+[ludeeus/integration_blueprint](https://github.com/ludeeus/integration_blueprint)
+devcontainer:
 
 ```bash
-scripts/develop  # startet HA mit dieser Integration unter ./config
-scripts/lint     # ruff check + format
+scripts/develop      # starts HA against ./config with this integration
+scripts/lint         # ruff check + format
+pytest tests/        # full test suite
 ```
 
-Der CI-Workflow validiert hassfest + HACS auf jedem Push.
+CI runs hassfest, HACS validation, ruff and pytest on every push and PR.
 
-## Nicht-Ziele
+## License
 
-- Keine Passwortverwaltung – Vaultwarden bleibt strikt getrennt.
-- Kein bidirektionaler Sync – Daten fließen nur HA → BookStack.
-- Kein Edit-Konflikt-Resolver – Konflikte werden geloggt, nicht aufgelöst.
-
-## Lizenz
-
-MIT – siehe [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
