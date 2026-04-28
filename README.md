@@ -49,21 +49,20 @@ English supported); you can override it in the options flow.
 
 ## Status
 
-Production-ready for personal use. **V0.4** as of this README:
+Production-ready for personal use. **V0.5** as of this README — first
+release tracking the HA Quality Scale **Gold** tier:
 
 - Full HA-data extraction (areas, devices, entities, automations,
   scripts, scenes, integrations, add-ons)
 - Marker-block merge with hash-based tampering detection
 - Two-pass overview render with internal page links
 - Status sensor, persistent notifications, structured services
-- Reauth flow, area filter, TLS-verify toggle, MQTT-topic display
-- Output language i18n (DE + EN)
+- Reauth flow + user-initiated reconfigure flow (URL / token / TLS)
+- Diagnostics endpoint (redacted dump for bug reports)
+- Area filter, TLS-verify toggle, MQTT-topic display, i18n (DE + EN)
+- Admin-only services (`run_now`, `preview`)
 - 80+ tests covering merge logic, renderer determinism, API client,
-  config flow, coordinator, sync orchestrator (each new bug we shipped
-  has an explicit regression test)
-
-V1 will require: more languages on demand, HA Quality-Scale gold
-checks, full reconfigure flow.
+  config flow, coordinator, sync orchestrator
 
 ## Installation
 
@@ -143,6 +142,112 @@ Each configured BookStack instance gets a sensor:
   `tombstoned`, `skipped_conflict`, `errors`, `total_pages`
 
 Drop it on a dashboard or feed it into automations.
+
+## Use cases
+
+- **House-handover dossier**: when you sell a house or hand it to a
+  caretaker, the wiki already lists every smart device, every area
+  assignment, every automation — pdf-export the book and you have a
+  printable manual.
+- **"Why is this device offline" forensics**: open the device's wiki
+  page, see the manufacturer / model / firmware *and* your manual notes
+  ("replaced battery 2024-10", "needs zigbee re-pairing after router
+  reboot") next to each other.
+- **Onboarding a partner / family member**: the Areas chapter tells
+  them which lights belong to which room, the Automations page tells
+  them what runs at sunset, the manual block under each page is where
+  you explain the intent.
+- **Migration prep**: before flashing a new HA box, the wiki is your
+  out-of-band record of which integrations exist, what they're called,
+  and which entities they own — survives a config restore gone wrong.
+
+## Examples
+
+**Trigger a sync from a button card:**
+
+```yaml
+type: button
+name: Sync wiki
+tap_action:
+  action: call-service
+  service: bookstack_sync.run_now
+```
+
+**Daily sync at 03:00 instead of the built-in interval:**
+
+```yaml
+automation:
+  - alias: BookStack daily sync
+    trigger:
+      - platform: time
+        at: "03:00:00"
+    action:
+      - service: bookstack_sync.run_now
+```
+
+(Set the integration's interval to `manual` first.)
+
+**Notify on sync errors:**
+
+```yaml
+automation:
+  - alias: BookStack sync error
+    trigger:
+      - platform: state
+        entity_id: sensor.bookstack_sync_status
+        to: "error"
+    action:
+      - service: notify.mobile_app_my_phone
+        data:
+          message: >
+            BookStack sync failed:
+            {{ state_attr('sensor.bookstack_sync_status', 'errors') }}
+```
+
+## Troubleshooting
+
+**"BookStack rejected the API token"** — re-create the token in
+BookStack (*My Profile → API Tokens*), make sure it has read+write on
+the target book. The integration will surface a reauth card on the
+Devices & Services page; click it, paste the new ID + secret, done.
+
+**"BookStack unreachable"** — usually one of: wrong URL (forgot the
+port?), TLS verify on against a self-signed cert (toggle it off in
+*Configure*), reverse proxy returning 502 mid-sync (the integration
+retries transient errors three times with exponential backoff — if it
+still fails, the next sync will pick up).
+
+**"AUTO block was edited outside of Home Assistant"** — somebody
+edited the auto section in BookStack. The integration *skips* that
+page rather than clobbering the edit. Either undo the edit in
+BookStack or move the content into the manual block, then re-sync.
+
+**Persistent notification "X errors"** — open the integration's
+Diagnostics dump (gear icon → *Download diagnostics*) and attach it to
+a GitHub issue. The dump redacts the URL + token automatically.
+
+**Pages stuck at book level instead of in their chapter** — known
+finding from v0.1.x; fixed in v0.4.0. If you upgraded, the next sync
+moves them to the right chapter automatically.
+
+## Known limitations
+
+- **One BookStack book per HA instance.** Multiple books are not
+  supported in v0.5; you'd need multiple HA instances.
+- **No bidirectional sync.** Edits in BookStack outside the manual
+  block are detected, logged, and the page is skipped — not merged
+  back into HA.
+- **Sync is HA-state-driven.** Renaming an area or device renames the
+  page on next sync; the old page becomes orphan and gets a tombstone
+  banner. Manual cleanup of tombstoned pages is left to the user.
+- **Languages: DE + EN only.** Other locales fall back to English in
+  the page output. Adding a language is a matter of populating
+  `_strings.py`; PRs welcome.
+- **Excluded areas hide their devices.** A device assigned only to an
+  excluded area disappears from the wiki entirely. If you also want
+  the device, give it a second area outside the excluded set.
+- **API token has full book-level access.** BookStack does not offer
+  per-page tokens; the integration uses whatever the token can reach.
 
 ## Non-goals
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -40,6 +41,27 @@ from .const import (
     LOGGER,
     OUTPUT_LANGUAGE_AUTO,
 )
+
+_ERR_INVALID_SCHEME = "base_url_invalid_scheme"
+_ERR_MISSING_HOST = "base_url_missing_host"
+
+
+def _validate_base_url(raw: str) -> str:
+    """
+    Reject schemes other than http/https; reject missing host.
+
+    Why: aiohttp will happily dispatch ``file://``, ``gopher://`` etc. and
+    we send a BookStack token in the Authorization header, so an
+    accidentally-pasted ``file:///etc/passwd`` would otherwise leak the
+    token to a logger or to whatever responds. We do *not* block private
+    IP ranges - 99% of real users run BookStack on 192.168.x.x.
+    """
+    parsed = urlparse(raw.strip())
+    if parsed.scheme not in {"http", "https"}:
+        raise vol.Invalid(_ERR_INVALID_SCHEME)
+    if not parsed.netloc:
+        raise vol.Invalid(_ERR_MISSING_HOST)
+    return raw.strip()
 
 
 def _interval_selector() -> selector.SelectSelector:
@@ -79,6 +101,14 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Collect BookStack URL + API token."""
         errors: dict[str, str] = {}
         if user_input is not None:
+            try:
+                user_input[CONF_BASE_URL] = _validate_base_url(
+                    user_input[CONF_BASE_URL],
+                )
+            except vol.Invalid as err:
+                errors[CONF_BASE_URL] = str(err)
+
+        if user_input is not None and not errors:
             try:
                 books = await self._fetch_books(user_input)
             except BookStackApiAuthError as err:
@@ -203,6 +233,10 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     base_url=existing.data[CONF_BASE_URL],
                     token_id=user_input[CONF_TOKEN_ID],
                     token_secret=user_input[CONF_TOKEN_SECRET],
+                    verify_ssl=existing.data.get(
+                        CONF_VERIFY_SSL,
+                        DEFAULT_VERIFY_SSL,
+                    ),
                 )
             except BookStackApiAuthError as err:
                 LOGGER.warning("Reauth failed: %s", err)
@@ -244,15 +278,109 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         base_url: str,
         token_id: str,
         token_secret: str,
+        *,
+        verify_ssl: bool = DEFAULT_VERIFY_SSL,
     ) -> None:
         """Hit /api/books once to confirm the token works (and is authorised)."""
         client = BookStackApiClient(
             base_url=base_url,
             token_id=token_id,
             token_secret=token_secret,
-            session=async_create_clientsession(self.hass),
+            session=async_create_clientsession(self.hass, verify_ssl=verify_ssl),
         )
         await client.list_books()
+
+    async def async_step_reconfigure(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """
+        User-initiated reconfigure of URL / token / TLS settings.
+
+        Triggered when the user clicks *Configure → Reconfigure* on the
+        integration card. Unlike the options flow this rewrites the
+        ``data`` half of the entry (credentials), not the ``options``.
+        The book selection is preserved as-is.
+        """
+        errors: dict[str, str] = {}
+        existing = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            try:
+                user_input[CONF_BASE_URL] = _validate_base_url(
+                    user_input[CONF_BASE_URL],
+                )
+            except vol.Invalid as err:
+                errors[CONF_BASE_URL] = str(err)
+
+        if user_input is not None and not errors:
+            # Re-pin unique_id; abort if user pointed at a different instance.
+            await self.async_set_unique_id(user_input[CONF_BASE_URL].rstrip("/"))
+            self._abort_if_unique_id_mismatch(reason="url_mismatch")
+
+            try:
+                await self._verify_token(
+                    base_url=user_input[CONF_BASE_URL],
+                    token_id=user_input[CONF_TOKEN_ID],
+                    token_secret=user_input[CONF_TOKEN_SECRET],
+                    verify_ssl=user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+                )
+            except BookStackApiAuthError as err:
+                LOGGER.warning("Reconfigure auth failed: %s", err)
+                errors["base"] = "auth"
+            except BookStackApiCommunicationError as err:
+                LOGGER.error("BookStack unreachable during reconfigure: %s", err)
+                errors["base"] = "connection"
+            except BookStackApiError:
+                LOGGER.exception("Unexpected error during reconfigure")
+                errors["base"] = "unknown"
+            else:
+                return self.async_update_reload_and_abort(
+                    existing,
+                    data={
+                        **existing.data,
+                        CONF_BASE_URL: user_input[CONF_BASE_URL],
+                        CONF_TOKEN_ID: user_input[CONF_TOKEN_ID],
+                        CONF_TOKEN_SECRET: user_input[CONF_TOKEN_SECRET],
+                        CONF_VERIFY_SSL: user_input.get(
+                            CONF_VERIFY_SSL,
+                            DEFAULT_VERIFY_SSL,
+                        ),
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_BASE_URL,
+                        default=existing.data[CONF_BASE_URL],
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.URL,
+                        ),
+                    ),
+                    vol.Required(
+                        CONF_TOKEN_ID,
+                        default=existing.data[CONF_TOKEN_ID],
+                    ): selector.TextSelector(),
+                    vol.Required(CONF_TOKEN_SECRET): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD,
+                        ),
+                    ),
+                    vol.Required(
+                        CONF_VERIFY_SSL,
+                        default=existing.data.get(
+                            CONF_VERIFY_SSL,
+                            DEFAULT_VERIFY_SSL,
+                        ),
+                    ): selector.BooleanSelector(),
+                },
+            ),
+            errors=errors,
+        )
 
     def _title_for_book(self, book_id: int) -> str:
         for book in self._books:

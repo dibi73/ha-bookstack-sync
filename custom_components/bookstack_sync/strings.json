@@ -26,17 +26,31 @@
           "token_id": "API-Token-ID",
           "token_secret": "API-Token-Secret"
         }
+      },
+      "reconfigure": {
+        "title": "BookStack-Verbindung anpassen",
+        "description": "Ändere URL, Token oder TLS-Einstellung dieser BookStack-Anbindung. Das Ziel-Book und alle Page-Mappings bleiben erhalten. Die URL muss auf dieselbe BookStack-Instanz zeigen wie bisher.",
+        "data": {
+          "base_url": "BookStack-URL",
+          "token_id": "API-Token-ID",
+          "token_secret": "API-Token-Secret",
+          "verify_ssl": "TLS-Zertifikat prüfen (bei Self-Signed deaktivieren)"
+        }
       }
     },
     "error": {
       "auth": "API-Token ungültig oder unzureichende Berechtigungen.",
       "connection": "BookStack-Instanz nicht erreichbar.",
       "no_books": "In dieser BookStack-Instanz wurde kein Book gefunden. Lege zuerst manuell ein Ziel-Book an.",
-      "unknown": "Unbekannter Fehler – siehe Home-Assistant-Log."
+      "unknown": "Unbekannter Fehler – siehe Home-Assistant-Log.",
+      "base_url_invalid_scheme": "URL muss mit http:// oder https:// beginnen.",
+      "base_url_missing_host": "URL ist unvollständig – Hostname fehlt."
     },
     "abort": {
       "already_configured": "Diese BookStack-Instanz ist bereits konfiguriert.",
-      "reauth_successful": "Token aktualisiert – Verbindung zu BookStack steht wieder."
+      "reauth_successful": "Token aktualisiert – Verbindung zu BookStack steht wieder.",
+      "reconfigure_successful": "Verbindung aktualisiert – BookStack-Sync ist neu konfiguriert.",
+      "url_mismatch": "Die neue URL zeigt auf eine andere BookStack-Instanz. Bitte den ursprünglichen Eintrag löschen und neu anlegen."
     }
   },
   "options": {

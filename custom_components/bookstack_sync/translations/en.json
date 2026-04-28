@@ -26,17 +26,31 @@
           "token_id": "API token ID",
           "token_secret": "API token secret"
         }
+      },
+      "reconfigure": {
+        "title": "Adjust BookStack connection",
+        "description": "Change URL, token or TLS setting for this BookStack link. The target book and all page mappings are preserved. The URL must point at the same BookStack instance as before.",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API token ID",
+          "token_secret": "API token secret",
+          "verify_ssl": "Verify TLS certificate (disable for self-signed)"
+        }
       }
     },
     "error": {
       "auth": "API token rejected or missing permissions.",
       "connection": "Cannot reach BookStack.",
       "no_books": "No book found in this BookStack instance. Create a target book first.",
-      "unknown": "Unexpected error - check the Home Assistant log."
+      "unknown": "Unexpected error - check the Home Assistant log.",
+      "base_url_invalid_scheme": "URL must start with http:// or https://.",
+      "base_url_missing_host": "URL is incomplete - hostname missing."
     },
     "abort": {
       "already_configured": "This BookStack instance is already configured.",
-      "reauth_successful": "Token refreshed - BookStack connection restored."
+      "reauth_successful": "Token refreshed - BookStack connection restored.",
+      "reconfigure_successful": "Connection updated - BookStack Sync has been reconfigured.",
+      "url_mismatch": "The new URL points at a different BookStack instance. Please remove the original entry and add it fresh."
     }
   },
   "options": {
