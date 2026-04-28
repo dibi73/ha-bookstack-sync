@@ -241,3 +241,38 @@ class TestRetryOnTransientErrors:
             )
             with pytest.raises(BookStackApiCommunicationError):
                 await client.get_page(42)
+
+
+class TestUrlScrubbing:
+    """The BookStack URL/hostname must not leak into raised error messages."""
+
+    async def test_500_error_message_does_not_contain_url_or_host(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                status=500,
+            )
+            with pytest.raises(BookStackApiCommunicationError) as excinfo:
+                await client.get_page(42)
+            text = str(excinfo.value)
+            assert "bookstack.local" not in text
+            assert "http://bookstack.local:6875" not in text
+            # Sanity: scrubbed placeholder is in there instead.
+            assert "<bookstack>" in text
+
+    async def test_persistent_disconnect_message_does_not_leak_host(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            for _ in range(MAX_REQUEST_ATTEMPTS):
+                mocked.get(
+                    "http://bookstack.local:6875/api/pages/42",
+                    exception=aiohttp.ServerDisconnectedError(),
+                )
+            with pytest.raises(BookStackApiCommunicationError) as excinfo:
+                await client.get_page(42)
+            assert "bookstack.local" not in str(excinfo.value)

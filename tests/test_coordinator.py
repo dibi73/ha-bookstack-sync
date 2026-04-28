@@ -117,6 +117,61 @@ async def test_last_run_recorded_after_successful_sync(
     assert coord.last_report is report
 
 
+async def test_is_syncing_flag_set_during_run(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """The is_syncing flag is True during run_sync, False before/after."""
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+
+    flag_during = []
+
+    async def fake_run_sync(*args: object, **kwargs: object) -> SyncReport:
+        flag_during.append(coord.is_syncing)
+        return SyncReport(dry_run=bool(kwargs.get("dry_run")))
+
+    assert coord.is_syncing is False
+    with patch(
+        "custom_components.bookstack_sync.coordinator.run_sync",
+        new=fake_run_sync,
+    ):
+        await coord.async_run_sync()
+
+    assert flag_during == [True]
+    assert coord.is_syncing is False
+
+
+async def test_is_syncing_flag_cleared_on_failure(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """A failed run also clears is_syncing (try/finally)."""
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+
+    with (
+        patch(
+            "custom_components.bookstack_sync.coordinator.run_sync",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        await coord.async_run_sync()
+
+    assert coord.is_syncing is False
+
+
 async def test_dry_run_does_not_record_last_run(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,

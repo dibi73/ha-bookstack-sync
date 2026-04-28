@@ -32,9 +32,9 @@ class BookStackSyncStatusSensor(CoordinatorEntity, SensorEntity):
     """
     Surfaces the result of the last sync run as a single sensor entity.
 
-    The state is one of ``ok`` / ``error`` / ``never_run``; the counts and the
-    last-run timestamp live as attributes so they can be put on a dashboard
-    or used in automations.
+    The state is one of ``ok`` / ``error`` / ``never_run`` / ``syncing``;
+    the counts and the last-run timestamp live as attributes so they can
+    be put on a dashboard or used in automations.
     """
 
     _attr_attribution = ATTRIBUTION
@@ -57,7 +57,9 @@ class BookStackSyncStatusSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        """Top-level status: ``ok``, ``error`` or ``never_run``."""
+        """Top-level status: ``syncing``, ``ok``, ``error`` or ``never_run``."""
+        if self.coordinator.is_syncing:
+            return "syncing"
         report = self.coordinator.last_report
         if report is None:
             return "never_run"

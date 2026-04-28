@@ -6,6 +6,7 @@ import asyncio
 import socket
 from http import HTTPStatus
 from typing import Any
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -71,6 +72,25 @@ class BookStackApiClient:
     def base_url(self) -> str:
         """Return the BookStack base URL without trailing slash."""
         return self._base_url
+
+    def _scrub(self, err: Exception) -> str:
+        """
+        Return a stringified ``err`` with the BookStack URL / hostname masked.
+
+        Why: aiohttp's ``ClientResponseError`` includes the full request URL
+        in its repr; ``socket.gaierror`` includes the hostname. Both end up
+        in ``home-assistant.log`` via ``LOGGER.exception`` and via
+        ``UpdateFailed(str(err))`` rendered in HA's notifications. The token
+        itself never travels via URL (it's in the ``Authorization`` header),
+        but the hostname is potentially private and has no place leaking
+        into logs the user might paste into a forum.
+        """
+        text = str(err)
+        text = text.replace(self._base_url, "<bookstack>")
+        host = urlparse(self._base_url).hostname
+        if host:
+            text = text.replace(host, "<bookstack>")
+        return text
 
     async def list_books(self) -> list[dict[str, Any]]:
         """Return all books visible to the configured token."""
@@ -207,20 +227,21 @@ class BookStackApiClient:
                         path,
                         attempt + 1,
                         MAX_REQUEST_ATTEMPTS,
-                        err,
+                        self._scrub(err),
                         backoff,
                     )
                     await asyncio.sleep(backoff)
                     continue
                 msg = (
                     f"BookStack request failed after {MAX_REQUEST_ATTEMPTS} "
-                    f"attempts: {err}"
+                    f"attempts: {self._scrub(err)}"
                 )
                 raise BookStackApiCommunicationError(msg) from err
             except (aiohttp.ClientError, socket.gaierror) as err:
-                msg = f"BookStack request failed: {err}"
+                msg = f"BookStack request failed: {self._scrub(err)}"
                 raise BookStackApiCommunicationError(msg) from err
         # The retry loop above either returns, raises, or reaches its final
         # iteration which always raises. This line is purely a safety net.
-        msg = f"BookStack request retry loop exited unexpectedly: {last_err}"
+        scrubbed = self._scrub(last_err) if last_err else "no error captured"
+        msg = f"BookStack request retry loop exited unexpectedly: {scrubbed}"
         raise BookStackApiCommunicationError(msg)

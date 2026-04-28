@@ -47,12 +47,20 @@ def _md_escape(value: str) -> str:
     BookStack renders markdown safely by default but we don't want a device
     named ``Living Room | <script>`` to either break the table layout or end
     up as an inline HTML tag if a user enables raw-HTML in BookStack.
+
+    ``[`` / ``]`` are escaped to defuse a name like
+    ``Lampe](javascript:alert(1))`` from breaking out of a markdown link
+    label and injecting a clickable ``javascript:`` URL. BookStack's own
+    sanitiser strips ``javascript:`` schemes on render, but treating that
+    as defence-in-depth lets us not depend on it.
     """
     if not value:
         return value
     return (
         value.replace("\\", "\\\\")
         .replace("|", "\\|")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace("\n", " ")

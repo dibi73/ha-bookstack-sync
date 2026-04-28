@@ -109,6 +109,28 @@ class TestMdEscape:
     def test_no_special_chars_unchanged(self) -> None:
         assert _md_escape("Living Room") == "Living Room"
 
+    def test_square_brackets_escaped(self) -> None:
+        # Defence-in-depth against link-label breakout: a device named
+        # ``Lampe](javascript:alert(1))`` must not break out of
+        # ``[label](page:N)`` and inject a clickable javascript: URL.
+        assert _md_escape("Lampe](javascript:alert(1))") == (
+            "Lampe\\](javascript:alert(1))"
+        )
+        assert _md_escape("[note]") == "\\[note\\]"
+
+    def test_link_label_breakout_defused(self) -> None:
+        # End-to-end: when a malicious name is rendered into a markdown
+        # link, the close-bracket of the malicious name must arrive in
+        # the output as ``\]`` (backslash-escaped) so the markdown parser
+        # treats it as a literal character and does NOT close the link
+        # label early. Note: the substring ``](`` is still present in the
+        # raw text (``\]`` followed by ``(`` shares the two characters
+        # ``](`` if you ignore the backslash) — what matters is the
+        # parser sees the backslash, not a real link terminator.
+        rendered = f"[{_md_escape('Lampe](javascript:alert(1))')}](page:42)"
+        assert "\\]" in rendered, "close-bracket must be escaped"
+        assert rendered.endswith("](page:42)")
+
 
 class TestDeterminism:
     """Same input must produce byte-identical output across calls."""
