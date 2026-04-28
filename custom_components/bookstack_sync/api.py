@@ -141,11 +141,11 @@ class BookStackApiClient:
                     headers=headers,
                 )
                 _raise_for_status(response)
-                if (
-                    response.status == HTTPStatus.NO_CONTENT
-                    or not response.content_length
-                ):
+                if response.status == HTTPStatus.NO_CONTENT:
                     return {}
+                # Don't gate on Content-Length: BookStack uses chunked
+                # transfer encoding, so content_length is None even when
+                # there is a JSON body to parse.
                 return await response.json()
         except BookStackApiError:
             raise
