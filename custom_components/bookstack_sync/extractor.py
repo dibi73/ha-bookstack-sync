@@ -59,16 +59,6 @@ class DeviceSnapshot:
 
 
 @dataclass
-class AreaSnapshot:
-    """One Home Assistant area with the devices/entities assigned to it."""
-
-    area_id: str
-    name: str
-    devices: list[DeviceSnapshot] = field(default_factory=list)
-    orphan_entities: list[EntitySnapshot] = field(default_factory=list)
-
-
-@dataclass
 class AutomationSnapshot:
     """One automation, scraped from the automation domain's state."""
 
@@ -78,6 +68,7 @@ class AutomationSnapshot:
     state: str | None
     mode: str | None
     last_triggered: str | None
+    area_id: str | None = None
 
 
 @dataclass
@@ -89,6 +80,7 @@ class ScriptSnapshot:
     description: str | None
     state: str | None
     last_triggered: str | None
+    area_id: str | None = None
 
 
 @dataclass
@@ -97,6 +89,20 @@ class SceneSnapshot:
 
     entity_id: str
     name: str
+    area_id: str | None = None
+
+
+@dataclass
+class AreaSnapshot:
+    """One Home Assistant area with the devices/entities assigned to it."""
+
+    area_id: str
+    name: str
+    devices: list[DeviceSnapshot] = field(default_factory=list)
+    orphan_entities: list[EntitySnapshot] = field(default_factory=list)
+    automations: list[AutomationSnapshot] = field(default_factory=list)
+    scripts: list[ScriptSnapshot] = field(default_factory=list)
+    scenes: list[SceneSnapshot] = field(default_factory=list)
 
 
 @dataclass
@@ -136,7 +142,7 @@ class HASnapshot:
     addons: list[AddonSnapshot]
 
 
-def extract_snapshot(
+def extract_snapshot(  # noqa: PLR0912 - cohesive registry walk; splitting hurts clarity
     hass: HomeAssistant,
     *,
     excluded_area_ids: Iterable[str] = (),
@@ -226,14 +232,32 @@ def extract_snapshot(
         )
 
     unassigned.sort(key=lambda d: (d.name.lower(), d.device_id))
+
+    automations = _extract_automations(hass, entity_reg)
+    scripts = _extract_scripts(hass, entity_reg)
+    scenes = _extract_scenes(hass, entity_reg)
+
+    # Route automations / scripts / scenes that carry an area_id (set in the
+    # HA entity registry) onto the corresponding area page. They still
+    # appear on the bundle pages too - the bundle is the master index.
+    for automation in automations:
+        if automation.area_id and automation.area_id in areas:
+            areas[automation.area_id].automations.append(automation)
+    for script in scripts:
+        if script.area_id and script.area_id in areas:
+            areas[script.area_id].scripts.append(script)
+    for scene in scenes:
+        if scene.area_id and scene.area_id in areas:
+            areas[scene.area_id].scenes.append(scene)
+
     sorted_areas = sorted(areas.values(), key=lambda a: (a.name.lower(), a.area_id))
 
     return HASnapshot(
         areas=sorted_areas,
         unassigned_devices=unassigned,
-        automations=_extract_automations(hass),
-        scripts=_extract_scripts(hass),
-        scenes=_extract_scenes(hass),
+        automations=automations,
+        scripts=scripts,
+        scenes=scenes,
         integrations=_extract_integrations(hass, device_reg, entity_reg),
         addons=_extract_addons(hass),
     )
@@ -248,7 +272,19 @@ def _mqtt_topic_from(attrs: dict) -> str | None:
     return None
 
 
-def _extract_automations(hass: HomeAssistant) -> list[AutomationSnapshot]:
+def _entity_area(
+    entity_reg: er.EntityRegistry,
+    entity_id: str,
+) -> str | None:
+    """Look up ``entity_id``'s ``area_id`` in the entity registry, if any."""
+    entry = entity_reg.async_get(entity_id)
+    return entry.area_id if entry else None
+
+
+def _extract_automations(
+    hass: HomeAssistant,
+    entity_reg: er.EntityRegistry,
+) -> list[AutomationSnapshot]:
     automations: list[AutomationSnapshot] = []
     for state in hass.states.async_all("automation"):
         attrs = state.attributes
@@ -261,13 +297,17 @@ def _extract_automations(hass: HomeAssistant) -> list[AutomationSnapshot]:
                 state=state.state,
                 mode=attrs.get("mode"),
                 last_triggered=last.isoformat() if hasattr(last, "isoformat") else last,
+                area_id=_entity_area(entity_reg, state.entity_id),
             ),
         )
     automations.sort(key=lambda a: (a.name.lower(), a.entity_id))
     return automations
 
 
-def _extract_scripts(hass: HomeAssistant) -> list[ScriptSnapshot]:
+def _extract_scripts(
+    hass: HomeAssistant,
+    entity_reg: er.EntityRegistry,
+) -> list[ScriptSnapshot]:
     scripts: list[ScriptSnapshot] = []
     for state in hass.states.async_all("script"):
         attrs = state.attributes
@@ -279,13 +319,17 @@ def _extract_scripts(hass: HomeAssistant) -> list[ScriptSnapshot]:
                 description=attrs.get("description") or None,
                 state=state.state,
                 last_triggered=last.isoformat() if hasattr(last, "isoformat") else last,
+                area_id=_entity_area(entity_reg, state.entity_id),
             ),
         )
     scripts.sort(key=lambda s: (s.name.lower(), s.entity_id))
     return scripts
 
 
-def _extract_scenes(hass: HomeAssistant) -> list[SceneSnapshot]:
+def _extract_scenes(
+    hass: HomeAssistant,
+    entity_reg: er.EntityRegistry,
+) -> list[SceneSnapshot]:
     scenes: list[SceneSnapshot] = []
     for state in hass.states.async_all("scene"):
         attrs = state.attributes
@@ -293,6 +337,7 @@ def _extract_scenes(hass: HomeAssistant) -> list[SceneSnapshot]:
             SceneSnapshot(
                 entity_id=state.entity_id,
                 name=attrs.get("friendly_name") or state.entity_id,
+                area_id=_entity_area(entity_reg, state.entity_id),
             ),
         )
     scenes.sort(key=lambda s: (s.name.lower(), s.entity_id))

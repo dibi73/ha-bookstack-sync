@@ -132,6 +132,29 @@ async def test_first_sync_creates_chapters_and_pages(
     assert report.errors == []
 
 
+async def test_first_sync_tags_pages_as_managed(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """Every newly-created page carries the bookstack_sync=managed tag."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    # Inspect every kwargs the fake client received during create_page.
+    create_calls = client.create_page.call_args_list
+    assert create_calls, "first sync must have created at least one page"
+    for call in create_calls:
+        tags = call.kwargs.get("tags")
+        assert tags == [{"name": "bookstack_sync", "value": "managed"}], (
+            f"expected managed tag on every create_page, got {tags!r}"
+        )
+
+
 async def test_second_sync_with_unchanged_data_makes_no_changes(
     hass: HomeAssistant,
     store: BookStackSyncStore,

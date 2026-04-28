@@ -57,6 +57,12 @@ PAGE_KIND_ADDONS = "addons"
 CHAPTER_KEY_AREAS = "areas"
 CHAPTER_KEY_DEVICES = "devices"
 
+# BookStack page tags applied by the integration so users can filter
+# the book by tag in BookStack's UI ("Filter by tag" → bookstack_sync ...).
+TAG_NAME = "bookstack_sync"
+TAG_VALUE_MANAGED = "managed"
+TAG_VALUE_ORPHANED = "orphaned"
+
 SERVICE_RUN_NOW = "run_now"
 SERVICE_PREVIEW = "preview"
 

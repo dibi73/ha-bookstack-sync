@@ -133,11 +133,14 @@ class BookStackApiClient:
         *,
         book_id: int | None = None,
         chapter_id: int | None = None,
+        tags: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         """
         Create a markdown page either at book-level or inside a chapter.
 
         Exactly one of ``book_id`` and ``chapter_id`` must be provided.
+        ``tags`` is forwarded as BookStack's tag array
+        (``[{"name": "...", "value": "..."}]``).
         """
         if (book_id is None) == (chapter_id is None):
             msg = "create_page needs exactly one of book_id or chapter_id"
@@ -147,6 +150,8 @@ class BookStackApiClient:
             body["chapter_id"] = chapter_id
         else:
             body["book_id"] = book_id
+        if tags is not None:
+            body["tags"] = tags
         return await self._request("post", "/api/pages", json=body)
 
     async def update_page(
@@ -156,11 +161,21 @@ class BookStackApiClient:
         markdown: str,
         *,
         chapter_id: int | None = None,
+        tags: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        """Update an existing markdown page; optionally move it to a chapter."""
+        """
+        Update an existing markdown page; optionally move it to a chapter.
+
+        ``tags`` is forwarded as BookStack's tag array
+        (``[{"name": "...", "value": "..."}]``); BookStack overwrites the
+        full tag set on update, so passing the full intended list each
+        write keeps things idempotent.
+        """
         body: dict[str, Any] = {"name": name, "markdown": markdown}
         if chapter_id is not None:
             body["chapter_id"] = chapter_id
+        if tags is not None:
+            body["tags"] = tags
         return await self._request("put", f"/api/pages/{page_id}", json=body)
 
     async def _list_paginated(

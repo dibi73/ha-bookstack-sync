@@ -38,6 +38,9 @@ from .const import (
     PAGE_KIND_OVERVIEW,
     PAGE_KIND_SCENES,
     PAGE_KIND_SCRIPTS,
+    TAG_NAME,
+    TAG_VALUE_MANAGED,
+    TAG_VALUE_ORPHANED,
 )
 from .extractor import extract_snapshot
 from .merge import (
@@ -58,6 +61,17 @@ from .renderer import (
     render_tombstone_auto_block,
 )
 from .store import PageMapping
+
+
+def _managed_tags() -> list[dict[str, str]]:
+    """Tag set applied to a healthy page on every write."""
+    return [{"name": TAG_NAME, "value": TAG_VALUE_MANAGED}]
+
+
+def _orphaned_tags() -> list[dict[str, str]]:
+    """Tag set applied to a tombstoned page (overwrites the managed tag)."""
+    return [{"name": TAG_NAME, "value": TAG_VALUE_ORPHANED}]
+
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -397,12 +411,14 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
                 page.title,
                 body,
                 chapter_id=chapter_id,
+                tags=_managed_tags(),
             )
         else:
             created = await client.create_page(
                 page.title,
                 body,
                 book_id=book_id,
+                tags=_managed_tags(),
             )
         page_id = int(created["id"])
         store.set(
@@ -455,6 +471,7 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
         page.title,
         merged.body,
         chapter_id=chapter_id if needs_move else None,
+        tags=_managed_tags(),
     )
     store.set(
         page.key,
@@ -581,7 +598,12 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
         report.tombstoned.append(existing_name)
         return
 
-    await client.update_page(mapping.page_id, existing_name, merged.body)
+    await client.update_page(
+        mapping.page_id,
+        existing_name,
+        merged.body,
+        tags=_orphaned_tags(),
+    )
     store.set(
         key,
         PageMapping(
