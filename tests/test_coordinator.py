@@ -1,0 +1,139 @@
+"""Tests for the sync coordinator.
+
+Covers two important behaviours:
+* The internal lock prevents two syncs from running concurrently
+  (the fix from V0.1 against duplicate-page creation on first run).
+* `BookStackApiAuthError` from a sync run is translated to
+  `ConfigEntryAuthFailed` so HA's reauth flow gets triggered.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from homeassistant.exceptions import ConfigEntryAuthFailed
+
+from custom_components.bookstack_sync.api import BookStackApiAuthError
+from custom_components.bookstack_sync.coordinator import BookStackSyncCoordinator
+from custom_components.bookstack_sync.sync import SyncReport
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+
+def _make_coordinator(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+) -> BookStackSyncCoordinator:
+    return BookStackSyncCoordinator(hass, entry)
+
+
+async def test_concurrent_calls_serialised(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """Two parallel async_run_sync calls execute one after the other."""
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+
+    started = []
+    finished = []
+
+    async def fake_run_sync(*args: object, **kwargs: object) -> SyncReport:
+        marker = object()
+        started.append(marker)
+        # Yield once so a second call has a chance to enter the lock if it could.
+        await asyncio.sleep(0)
+        finished.append(marker)
+        return SyncReport(dry_run=bool(kwargs.get("dry_run")))
+
+    # Patch sync.run_sync where coordinator imports it
+    with patch(
+        "custom_components.bookstack_sync.coordinator.run_sync",
+        new=fake_run_sync,
+    ):
+        # Build minimal runtime_data so coordinator.async_run_sync can read it
+        config_entry.runtime_data = type(
+            "RD", (), {"client": object(), "store": object()}
+        )()
+        await asyncio.gather(
+            coord.async_run_sync(),
+            coord.async_run_sync(),
+        )
+
+    # Both ran, but were serialised: the start of the second must come
+    # AFTER the finish of the first.
+    assert len(started) == 2
+    assert len(finished) == 2
+    assert started.index(finished[0]) == 0
+
+
+async def test_auth_failure_raises_config_entry_auth_failed(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+
+    with (
+        patch(
+            "custom_components.bookstack_sync.coordinator.run_sync",
+            new=AsyncMock(side_effect=BookStackApiAuthError("token rotated")),
+        ),
+        pytest.raises(ConfigEntryAuthFailed),
+    ):
+        await coord._async_update_data()
+
+
+async def test_last_run_recorded_after_successful_sync(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+    report = SyncReport()
+
+    with patch(
+        "custom_components.bookstack_sync.coordinator.run_sync",
+        new=AsyncMock(return_value=report),
+    ):
+        await coord.async_run_sync()
+
+    assert coord.last_run is not None
+    assert coord.last_report is report
+
+
+async def test_dry_run_does_not_record_last_run(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+
+    with patch(
+        "custom_components.bookstack_sync.coordinator.run_sync",
+        new=AsyncMock(return_value=SyncReport(dry_run=True)),
+    ):
+        await coord.async_run_sync(dry_run=True)
+
+    assert coord.last_run is None
+    assert coord.last_report is None

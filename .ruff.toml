@@ -26,3 +26,17 @@ keep-runtime-typing = true
 
 [lint.mccabe]
 max-complexity = 25
+
+[lint.per-file-ignores]
+# Tests have legitimately different conventions: assert is the tool, hardcoded
+# tokens are fixtures, shorter docstrings are idiomatic, etc.
+"tests/**/*.py" = [
+    "ANN",     # type annotations are nice-to-have, not load-bearing in tests
+    "ARG",     # unused fixture parameters are normal
+    "D",       # docstring style is overkill for assertion-only test bodies
+    "PLR2004", # magic numbers in assertions are usually clearer than constants
+    "S101",    # `assert` IS the tool
+    "S105",    # hardcoded "passwords" are fixture inputs, not real secrets
+    "S106",    # same, as keyword args
+    "SLF001",  # accessing _private members of own code is fine in tests
+]

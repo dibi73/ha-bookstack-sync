@@ -74,7 +74,10 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             runtime = self.config_entry.runtime_data
             options = self.config_entry.options
             data = self.config_entry.data
-            book_id = int((options or data)[CONF_BOOK_ID])
+            # Initial setup stores book_id in `data`, but the options flow
+            # rewrites it into `options`. Look in options first, then fall
+            # back to data so both layouts work without crashing.
+            book_id = int(options.get(CONF_BOOK_ID) or data[CONF_BOOK_ID])
             excluded_areas = options.get(CONF_EXCLUDED_AREAS, []) or []
             report = await run_sync(
                 self.hass,
