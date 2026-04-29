@@ -600,11 +600,13 @@ def render_network_auto_block(  # noqa: PLR0912 - cohesive table renderer
     ]
     if not devices:
         lines.append(strings["empty_network"])
-        return "\n".join(lines).rstrip() + "\n"
+        # Don't return here — unknown_clients / DHCP block below may still
+        # have content when only UniFi sees the network but HA tracks
+        # nothing as a Device.
 
     has_unifi = any(d.network and d.network.source_platform == "unifi" for d in devices)
 
-    if has_unifi:
+    if devices and has_unifi:
         header = (
             f"| {strings['network_col_hostname']} "
             f"| {strings['network_col_mac']} "
@@ -616,7 +618,7 @@ def render_network_auto_block(  # noqa: PLR0912 - cohesive table renderer
             f"| {strings['network_col_last_seen']} |"
         )
         lines.extend([header, "| --- | --- | --- | --- | --- | --- | --- | --- |"])
-    else:
+    elif devices:
         header = (
             f"| {strings['network_col_hostname']} "
             f"| {strings['network_col_mac']} "
