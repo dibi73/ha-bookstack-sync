@@ -33,6 +33,7 @@ from .const import (
     PAGE_KIND_ADDONS,
     PAGE_KIND_AREA,
     PAGE_KIND_AUTOMATIONS,
+    PAGE_KIND_BLUETOOTH,
     PAGE_KIND_DEVICE,
     PAGE_KIND_INTEGRATIONS,
     PAGE_KIND_NETWORK,
@@ -54,6 +55,7 @@ from .renderer import (
     render_addons_auto_block,
     render_area_auto_block,
     render_automations_auto_block,
+    render_bluetooth_auto_block,
     render_device_auto_block,
     render_integrations_auto_block,
     render_network_auto_block,
@@ -99,6 +101,13 @@ class SyncReport:
     unchanged: list[str] = field(default_factory=list)
     tombstoned: list[str] = field(default_factory=list)
     skipped_conflict: list[str] = field(default_factory=list)
+    # Stable page keys (e.g. ``device:UUID``) of pages whose AUTO block
+    # was tampered with this run. Used by the coordinator to drive HA
+    # repair-issues without having to re-derive keys from titles.
+    tampered_page_keys: list[str] = field(default_factory=list)
+    # Human-readable titles paired with the keys above (same length,
+    # same order). Lets repair-issue translations show the page name.
+    tampered_page_titles: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     dry_run: bool = False
 
@@ -190,7 +199,8 @@ def _plan_pages(
             ),
         )
     network_devices = _devices_with_network(snapshot)
-    if network_devices or snapshot.unknown_unifi_clients:
+    has_topology = bool(snapshot.unifi_topology and snapshot.unifi_topology.nodes)
+    if network_devices or snapshot.unknown_unifi_clients or has_topology:
         planned.append(
             _PlannedPage(
                 key=f"{PAGE_KIND_NETWORK}:_",
@@ -200,6 +210,20 @@ def _plan_pages(
                     now,
                     strings,
                     unknown_clients=snapshot.unknown_unifi_clients,
+                    topology=snapshot.unifi_topology,
+                    snapshot=snapshot,
+                ),
+            ),
+        )
+    if snapshot.bluetooth and snapshot.bluetooth.scanners:
+        planned.append(
+            _PlannedPage(
+                key=f"{PAGE_KIND_BLUETOOTH}:_",
+                title=strings["title_bluetooth"],
+                auto_body=render_bluetooth_auto_block(
+                    snapshot.bluetooth,
+                    now,
+                    strings,
                 ),
             ),
         )
@@ -470,6 +494,8 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
             mapping.page_id,
         )
         report.skipped_conflict.append(page.title)
+        report.tampered_page_keys.append(page.key)
+        report.tampered_page_titles.append(page.title)
         return mapping.page_id
 
     if existing_auto_hash == new_hash and not needs_move:
@@ -521,7 +547,7 @@ def _needs_move(
     raw = existing.get("chapter_id")
     try:
         actual = int(raw) if raw is not None else 0
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         LOGGER.warning(
             "BookStack returned non-numeric chapter_id %r for %s "
             "(page id=%s); treating as needs-move",

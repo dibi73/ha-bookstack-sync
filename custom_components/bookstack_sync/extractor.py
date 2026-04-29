@@ -173,6 +173,64 @@ class AddonSnapshot:
 
 
 @dataclass
+class UnifiInfraNode:
+    """
+    One UniFi infrastructure device (gateway / switch / AP).
+
+    ``role`` is heuristically derived from the device's model string
+    (USG/UDM → gateway, USW → switch, UAP/U6 → ap). Sub-classification
+    drives the topology-tree rendering.
+    """
+
+    device_id: str
+    name: str
+    model: str
+    role: str  # "gateway" / "switch" / "ap" / "other"
+    mac: str | None
+    ip: str | None
+    parent_device_id: str | None  # via_device_id, None if root
+    # Resolved post-walk: list of children's device_ids, sorted.
+    child_device_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
+class UnifiTopology:
+    """Snapshot of UniFi LAN topology at sync time."""
+
+    nodes: dict[str, UnifiInfraNode] = field(default_factory=dict)
+    root_device_ids: list[str] = field(default_factory=list)
+    # client device_id → infra device_id it physically connects to (switch
+    # for wired, AP for wireless). Built by joining NetworkInfo's
+    # ``switch_mac`` / ``ap_mac`` against UniFi infra MACs.
+    client_to_infra: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class BluetoothDeviceHeard:
+    """One BT device heard by a scanner."""
+
+    name: str
+    address: str  # MAC
+    last_seen: str | None = None
+
+
+@dataclass
+class BluetoothScanner:
+    """One BT scanner — HA's local adapter or an ESPHome proxy."""
+
+    name: str
+    is_proxy: bool  # False = HA-host's own BT adapter
+    devices_heard: list[BluetoothDeviceHeard] = field(default_factory=list)
+
+
+@dataclass
+class BluetoothNetwork:
+    """Snapshot of all BT scanners + the BT devices each heard."""
+
+    scanners: list[BluetoothScanner] = field(default_factory=list)
+
+
+@dataclass
 class HASnapshot:
     """Deterministic, fully-sorted view of HA used by the renderer."""
 
@@ -187,6 +245,12 @@ class HASnapshot:
     # device — clients UniFi sees but HA doesn't know about. Useful for
     # spotting unknown / unwanted devices on the LAN.
     unknown_unifi_clients: list[NetworkInfo] = field(default_factory=list)
+    # UniFi LAN topology (gateway / switches / APs) when the unifi
+    # integration is loaded; empty otherwise.
+    unifi_topology: UnifiTopology | None = None
+    # Bluetooth scanners + heard devices when at least one BT proxy or
+    # native HA BT adapter is configured; ``None`` otherwise.
+    bluetooth: BluetoothNetwork | None = None
 
 
 def extract_snapshot(  # noqa: PLR0912 - cohesive registry walk; splitting hurts clarity
@@ -300,7 +364,7 @@ def extract_snapshot(  # noqa: PLR0912 - cohesive registry walk; splitting hurts
 
     sorted_areas = sorted(areas.values(), key=lambda a: (a.name.lower(), a.area_id))
 
-    return HASnapshot(
+    snapshot = HASnapshot(
         areas=sorted_areas,
         unassigned_devices=unassigned,
         automations=automations,
@@ -310,6 +374,9 @@ def extract_snapshot(  # noqa: PLR0912 - cohesive registry walk; splitting hurts
         addons=_extract_addons(hass),
         unknown_unifi_clients=_extract_unknown_unifi_clients(hass, entity_reg),
     )
+    snapshot.unifi_topology = _extract_unifi_topology(device_reg, snapshot)
+    snapshot.bluetooth = _extract_bluetooth_network(device_reg)
+    return snapshot
 
 
 def _mqtt_topic_from(attrs: dict) -> str | None:
@@ -632,3 +699,193 @@ def _extract_unknown_unifi_clients(
 
     unknown.sort(key=lambda i: (i.last_seen or "", i.hostname or ""), reverse=True)
     return unknown
+
+
+def _classify_unifi_role(model: str) -> str:
+    """Heuristically classify a UniFi device's role from its model string."""
+    upper = model.upper() if model else ""
+    if any(t in upper for t in ("USG", "UDM", "UCG", "GATEWAY")):
+        return "gateway"
+    if any(t in upper for t in ("USW", "US-", "SWITCH")):
+        return "switch"
+    if any(t in upper for t in ("UAP", "U6", "U7", "UB", "ACCESS POINT")):
+        return "ap"
+    return "other"
+
+
+def _device_first_mac(device: dr.DeviceEntry) -> str | None:
+    """Return the first MAC address on a device, or None."""
+    for conn_type, value in device.connections:
+        if conn_type == dr.CONNECTION_NETWORK_MAC and isinstance(value, str):
+            return value
+    return None
+
+
+_UNIFI_MANUFACTURERS = frozenset(
+    {"Ubiquiti", "Ubiquiti Inc.", "Ubiquiti Networks"},
+)
+
+
+def _extract_unifi_topology(
+    device_reg: dr.DeviceRegistry,
+    snapshot: HASnapshot,
+) -> UnifiTopology | None:
+    """
+    Build a UniFi topology snapshot by walking the HA device registry.
+
+    Returns ``None`` when no UniFi infra is found (integration not
+    installed or only clients tracked).
+    """
+    nodes: dict[str, UnifiInfraNode] = {}
+    for device in device_reg.devices.values():
+        if device.manufacturer not in _UNIFI_MANUFACTURERS:
+            continue
+        role = _classify_unifi_role(device.model or "")
+        if role == "other":
+            # Probably a client device the UniFi integration created (rare);
+            # skip it to keep the topology focused on infra.
+            continue
+        nodes[device.id] = UnifiInfraNode(
+            device_id=device.id,
+            name=device.name_by_user or device.name or device.model or device.id,
+            model=device.model or "",
+            role=role,
+            mac=_device_first_mac(device),
+            ip=None,  # Filled if a tracker links this device — not always
+            parent_device_id=device.via_device_id,
+        )
+
+    if not nodes:
+        return None
+
+    # Resolve children + roots.
+    for node in nodes.values():
+        if node.parent_device_id and node.parent_device_id in nodes:
+            nodes[node.parent_device_id].child_device_ids.append(node.device_id)
+    for node in nodes.values():
+        node.child_device_ids.sort(
+            key=lambda cid: (nodes[cid].role, nodes[cid].name.lower()),
+        )
+    roots = sorted(
+        (
+            n.device_id
+            for n in nodes.values()
+            if not n.parent_device_id or n.parent_device_id not in nodes
+        ),
+        key=lambda did: (nodes[did].role != "gateway", nodes[did].name.lower()),
+    )
+
+    # Build client → infra map: walk every device in the snapshot, look
+    # at switch_mac (wired) or ap_mac (wireless), match against infra MAC.
+    mac_to_infra_id = {n.mac.lower(): n.device_id for n in nodes.values() if n.mac}
+    client_to_infra: dict[str, str] = {}
+
+    def visit_device(device_snap: DeviceSnapshot) -> None:
+        info = device_snap.network
+        if info is None:
+            return
+        target_mac = (info.switch_mac or info.ap_mac or "").lower()
+        if target_mac and target_mac in mac_to_infra_id:
+            client_to_infra[device_snap.device_id] = mac_to_infra_id[target_mac]
+
+    for area in snapshot.areas:
+        for d in area.devices:
+            visit_device(d)
+    for d in snapshot.unassigned_devices:
+        visit_device(d)
+
+    return UnifiTopology(
+        nodes=nodes,
+        root_device_ids=roots,
+        client_to_infra=client_to_infra,
+    )
+
+
+def _device_first_bt_address(device: dr.DeviceEntry) -> str | None:
+    """Return the first Bluetooth MAC on a device, or None."""
+    for conn_type, value in device.connections:
+        if conn_type == dr.CONNECTION_BLUETOOTH and isinstance(value, str):
+            return value
+    return None
+
+
+def _is_bt_proxy_device(device: dr.DeviceEntry) -> bool:
+    """
+    Heuristic: ESPHome devices with bluetooth_proxy entities act as proxies.
+
+    ESPHome's BT-proxy support exposes the underlying BT adapter as a
+    HA device that other BLE devices link to via ``via_device_id``. We
+    detect proxies by:
+    - manufacturer mention "ESPHome"
+    - or model containing "bluetooth proxy" / "ble proxy"
+    - or any HA device with at least one ``via_device_id`` pointing here
+      AND that pointer-device has CONNECTION_BLUETOOTH (i.e. children
+      are BT devices)
+    The third heuristic is left to caller — it has the registry to walk.
+    """
+    manuf = (device.manufacturer or "").lower()
+    model = (device.model or "").lower()
+    if "esphome" in manuf:
+        return True
+    return "bluetooth proxy" in model or "ble proxy" in model
+
+
+def _extract_bluetooth_network(
+    device_reg: dr.DeviceRegistry,
+) -> BluetoothNetwork | None:
+    """
+    Group BT-tracked HA devices by the proxy / scanner that heard them.
+
+    Returns ``None`` when no Bluetooth-connected device exists.
+    """
+    bt_devices: list[dr.DeviceEntry] = [
+        d
+        for d in device_reg.devices.values()
+        if any(c[0] == dr.CONNECTION_BLUETOOTH for c in d.connections)
+    ]
+    if not bt_devices:
+        return None
+
+    # device_id → proxy device (None = local HA adapter)
+    by_proxy: dict[str | None, list[dr.DeviceEntry]] = {}
+    for d in bt_devices:
+        proxy_id = d.via_device_id or None
+        # Skip proxies themselves from the heard-list.
+        by_proxy.setdefault(proxy_id, []).append(d)
+
+    # Build BluetoothScanner entries.
+    scanners: list[BluetoothScanner] = []
+
+    for proxy_id, heard in by_proxy.items():
+        if proxy_id is None:
+            scanner = BluetoothScanner(name="local", is_proxy=False)
+        else:
+            proxy_device = device_reg.async_get(proxy_id)
+            if proxy_device is None:
+                continue
+            scanner = BluetoothScanner(
+                name=(
+                    proxy_device.name_by_user
+                    or proxy_device.name
+                    or proxy_device.model
+                    or proxy_id
+                ),
+                is_proxy=True,
+            )
+        for hd in sorted(heard, key=lambda d: (d.name or d.id).lower()):
+            display_name = hd.name_by_user or hd.name or hd.id
+            address = _device_first_bt_address(hd) or "—"
+            scanner.devices_heard.append(
+                BluetoothDeviceHeard(
+                    name=display_name,
+                    address=address,
+                ),
+            )
+        scanners.append(scanner)
+
+    # Order: local first, then proxies alphabetically.
+    scanners.sort(key=lambda s: (s.is_proxy, s.name.lower()))
+
+    if not scanners:
+        return None
+    return BluetoothNetwork(scanners=scanners)

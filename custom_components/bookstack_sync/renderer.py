@@ -32,6 +32,7 @@ if TYPE_CHECKING:
         AddonSnapshot,
         AreaSnapshot,
         AutomationSnapshot,
+        BluetoothNetwork,
         DeviceSnapshot,
         EntitySnapshot,
         HASnapshot,
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
         NetworkInfo,
         SceneSnapshot,
         ScriptSnapshot,
+        UnifiTopology,
     )
 
 
@@ -152,6 +154,7 @@ def render_overview_auto_block(
         ("scenes:_", strings["bundle_scenes"]),
         ("addons:_", strings["bundle_addons"]),
         ("network:_", strings["bundle_network"]),
+        ("bluetooth:_", strings["bundle_bluetooth"]),
     )
     for key, label in bundle_links:
         page_id = links.get(key)
@@ -576,11 +579,13 @@ def render_integrations_auto_block(
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_network_auto_block(  # noqa: PLR0912 - cohesive table renderer
+def render_network_auto_block(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive renderer
     devices: list[DeviceSnapshot],
     now: datetime,
     strings: dict[str, str],
     unknown_clients: list[NetworkInfo] | None = None,
+    topology: UnifiTopology | None = None,
+    snapshot: HASnapshot | None = None,
 ) -> str:
     """
     Render the AUTO block of the standalone Network page.
@@ -662,6 +667,10 @@ def render_network_auto_block(  # noqa: PLR0912 - cohesive table renderer
                 f"| **{hostname}** | `{mac}` | {ip} | {conn} | {vlan_or_ssid} "
                 f"| {last_seen} |",
             )
+
+    # UniFi-Topologie ASCII-Baum (#29) — directly after the flat table.
+    if topology and snapshot:
+        lines.extend(render_topology_section(topology, snapshot, strings))
 
     # Unknown UniFi clients (#28 cross-reference)
     if unknown_clients:
@@ -784,3 +793,171 @@ def _script_block(
         block.extend(["", f"> {script.description}"])
     block.append("")
     return block
+
+
+# Threshold above which a switch's wired-clients are grouped by VLAN
+# rather than listed flat (#29 issue decision).
+_TOPOLOGY_GROUP_BY_VLAN_THRESHOLD = 10
+
+
+def render_topology_section(  # noqa: PLR0915 - cohesive recursive walk
+    topology: UnifiTopology,
+    snapshot: HASnapshot,
+    strings: dict[str, str],
+) -> list[str]:
+    """
+    Render the ASCII tree of UniFi infrastructure as section lines.
+
+    Returns ``[]`` when the topology has no infrastructure nodes — the
+    caller decides whether to skip the whole section.
+    """
+    if not topology.nodes:
+        return []
+
+    # device_id → DeviceSnapshot for quick lookup.
+    snap_devices: dict[str, DeviceSnapshot] = {}
+    for area in snapshot.areas:
+        for d in area.devices:
+            snap_devices[d.device_id] = d
+    for d in snapshot.unassigned_devices:
+        snap_devices[d.device_id] = d
+
+    # Reverse map: infra_device_id → list[client device_ids]
+    children_by_infra: dict[str, list[str]] = {}
+    for client_id, infra_id in topology.client_to_infra.items():
+        children_by_infra.setdefault(infra_id, []).append(client_id)
+
+    lines: list[str] = ["", f"## {strings['section_topology']}", "", "```"]
+
+    def role_label(role: str) -> str:
+        return {
+            "gateway": "Gateway",
+            "switch": "Switch",
+            "ap": "AP",
+        }.get(role, role)
+
+    def render_clients_under_infra(
+        infra_id: str,
+        prefix: str,
+    ) -> list[str]:
+        client_ids = sorted(
+            children_by_infra.get(infra_id, []),
+            key=lambda did: (
+                snap_devices[did].network.vlan or ""
+                if did in snap_devices and snap_devices[did].network
+                else "",
+                snap_devices[did].name.lower() if did in snap_devices else did,
+            ),
+        )
+        out: list[str] = []
+        if len(client_ids) >= _TOPOLOGY_GROUP_BY_VLAN_THRESHOLD:
+            # Group by VLAN.
+            by_vlan: dict[str, list[str]] = {}
+            for cid in client_ids:
+                d = snap_devices.get(cid)
+                vlan = (d.network.vlan if d and d.network else None) or "—"
+                by_vlan.setdefault(vlan, []).append(cid)
+            sorted_vlans = sorted(by_vlan.items(), key=lambda kv: kv[0])
+            for v_idx, (vlan, members) in enumerate(sorted_vlans):
+                last_v = v_idx == len(sorted_vlans) - 1
+                vlan_branch = "└──" if last_v else "├──"
+                out.append(f"{prefix}{vlan_branch} VLAN {vlan} ({len(members)})")
+                sub = prefix + ("    " if last_v else "│   ")
+                for c_idx, cid in enumerate(members):
+                    last_c = c_idx == len(members) - 1
+                    branch = "└──" if last_c else "├──"
+                    out.append(f"{sub}{branch} {render_client_label(cid)}")
+        else:
+            for c_idx, cid in enumerate(client_ids):
+                last = c_idx == len(client_ids) - 1
+                branch = "└──" if last else "├──"
+                out.append(f"{prefix}{branch} {render_client_label(cid)}")
+        return out
+
+    def render_client_label(client_id: str) -> str:
+        d = snap_devices.get(client_id)
+        if d is None:
+            return f"(unknown {client_id})"
+        info = d.network
+        if info is None:
+            return d.name
+        ip = info.ip or "—"
+        conn = "WLAN" if info.connection_type == "wireless" else "LAN"
+        port_suffix = (
+            f" port {info.switch_port}"
+            if info.switch_port and info.connection_type == "wired"
+            else ""
+        )
+        return f"{d.name} ({ip}) [{conn}]{port_suffix}"
+
+    def walk_infra(node_id: str, prefix: str, *, is_last: bool) -> None:
+        node = topology.nodes[node_id]
+        branch = "└──" if is_last else "├──"
+        # Root nodes shouldn't get a tree branch; they're emitted as headers.
+        header = f"{role_label(node.role)}: {node.name}"
+        if node.mac:
+            header += f" — `{node.mac}`"
+        if prefix == "":
+            lines.append(header)
+        else:
+            lines.append(f"{prefix}{branch} {header}")
+
+        child_prefix = prefix + ("    " if is_last else "│   ") if prefix else ""
+
+        # Mid-tier infra (switches under gateway, APs under switch/gateway):
+        # render their child infra nodes first, then their clients.
+        for c_idx, child_id in enumerate(node.child_device_ids):
+            child_last = (
+                c_idx == len(node.child_device_ids) - 1
+                and node_id not in children_by_infra
+            )
+            walk_infra(child_id, child_prefix, is_last=child_last)
+
+        # Then render clients connected to THIS infra node.
+        client_lines = render_clients_under_infra(node_id, child_prefix)
+        lines.extend(client_lines)
+
+    for r_idx, root_id in enumerate(topology.root_device_ids):
+        last_root = r_idx == len(topology.root_device_ids) - 1
+        if r_idx > 0:
+            lines.append("")
+        walk_infra(root_id, "", is_last=last_root)
+
+    lines.append("```")
+    return lines
+
+
+def render_bluetooth_auto_block(
+    network: BluetoothNetwork,
+    now: datetime,
+    strings: dict[str, str],
+) -> str:
+    """Render the AUTO block of the standalone Bluetooth page (#32)."""
+    lines: list[str] = [
+        _format_attribution(strings, now),
+        "",
+        "## "
+        + strings["section_bluetooth_count_template"].format(
+            count=len(network.scanners),
+        ),
+        "",
+    ]
+    if not network.scanners:
+        lines.append(strings["empty_bluetooth"])
+        return "\n".join(lines).rstrip() + "\n"
+
+    lines.append("```")
+    for s_idx, scanner in enumerate(network.scanners):
+        if s_idx > 0:
+            lines.append("")
+        if scanner.is_proxy:
+            header = strings["bt_proxy_label_template"].format(name=scanner.name)
+        else:
+            header = strings["bt_local_label"]
+        lines.append(header)
+        for d_idx, dev in enumerate(scanner.devices_heard):
+            last = d_idx == len(scanner.devices_heard) - 1
+            branch = "└──" if last else "├──"
+            lines.append(f"{branch} {dev.name} (`{dev.address}`)")
+    lines.append("```")
+    return "\n".join(lines).rstrip() + "\n"

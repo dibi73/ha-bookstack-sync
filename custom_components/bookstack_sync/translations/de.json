@@ -104,5 +104,23 @@
         }
       }
     }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack ist nicht erreichbar",
+      "description": "Die BookStack-Sync-Integration kann seit {count} Sync-Läufen in Folge die BookStack-Instanz nicht erreichen. Häufige Ursachen: BookStack-Container ist gestoppt, Netzwerk-Problem, oder Reverse-Proxy lehnt Verbindungen ab. Sobald die Verbindung wieder steht, verschwindet diese Meldung beim nächsten erfolgreichen Sync automatisch."
+    },
+    "page_tampered": {
+      "title": "AUTO-Block einer Page wurde manuell editiert",
+      "description": "Die Page „{page_title}\" in BookStack hat einen AUTO-Block der außerhalb von Home Assistant verändert wurde. Die Integration hat diese Page beim Sync übersprungen, um deine Änderungen nicht zu überschreiben. Verschiebe deine Notizen in den MANUAL-Block oder verwirf die Änderung im AUTO-Block, damit der nächste Sync die Page wieder aktualisieren kann."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "BookStack-Instanz nicht erreichbar (siehe Home-Assistant-Log für Details)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack hat das API-Token abgelehnt. Erneuere den Token in BookStack und nutze den Reauth-Flow."
+    }
   }
 }

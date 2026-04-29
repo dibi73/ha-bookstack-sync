@@ -104,5 +104,23 @@
         }
       }
     }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack is unreachable",
+      "description": "The BookStack Sync integration has been unable to reach the BookStack instance for {count} consecutive sync runs. Common causes: the BookStack container is stopped, a network issue, or a reverse proxy is rejecting connections. The next successful sync auto-resolves this notification."
+    },
+    "page_tampered": {
+      "title": "A page's AUTO block has been edited manually",
+      "description": "The page \"{page_title}\" in BookStack has an AUTO block that was edited outside Home Assistant. The integration skipped that page on sync to avoid overwriting your edits. Move your notes into the MANUAL block, or revert the AUTO-block change, so the next sync can update the page again."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "BookStack instance unreachable (see Home Assistant log for details)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack rejected the API token. Refresh the token in BookStack and use the Reauth flow."
+    }
   }
 }
