@@ -20,6 +20,7 @@ from custom_components.bookstack_sync.extractor import (
     EntitySnapshot,
     HASnapshot,
     IntegrationSnapshot,
+    NetworkInfo,
     SceneSnapshot,
     ScriptSnapshot,
 )
@@ -30,6 +31,7 @@ from custom_components.bookstack_sync.renderer import (
     render_automations_auto_block,
     render_device_auto_block,
     render_integrations_auto_block,
+    render_network_auto_block,
     render_overview_auto_block,
     render_scenes_auto_block,
     render_scripts_auto_block,
@@ -457,6 +459,69 @@ class TestAreaToc:
         assert "**Inhalt**" not in out
 
 
+class TestDeviceNetworkSection:
+    """Network section on device pages (issue #26)."""
+
+    def test_no_network_section_when_no_data(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device(name="Plain Device")
+        out = render_device_auto_block(device, fixed_now, strings_de)
+        assert "## Netzwerk" not in out
+        assert "### Netzwerk" not in out
+
+    def test_network_section_with_primary_only(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device(name="NUC")
+        device.network = NetworkInfo(
+            ip="192.168.1.10",
+            mac="aa:bb:cc:dd:ee:ff",
+            hostname="nuc-server",
+            connection_type="wired",
+            vlan="LAN",
+            last_seen="2026-04-29T20:00:00",
+        )
+        out = render_device_auto_block(device, fixed_now, strings_de)
+        assert "### Netzwerk" in out
+        assert "192.168.1.10" in out
+        assert "aa:bb:cc:dd:ee:ff" in out
+        assert "nuc-server" in out
+        assert "LAN" in out
+        assert "auch:" not in out
+
+    def test_network_section_with_extra_connections(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device(name="NUC")
+        device.network = NetworkInfo(
+            ip="192.168.5.10",
+            mac="11:22:33:44:55:66",
+            hostname="nuc-server",
+            connection_type="wireless",
+            ssid="Home",
+        )
+        device.network_extra = [
+            NetworkInfo(
+                ip="192.168.1.10",
+                mac="aa:bb:cc:dd:ee:ff",
+                hostname="nuc-server",
+                connection_type="wired",
+            ),
+        ]
+        out = render_device_auto_block(device, fixed_now, strings_de)
+        # Both IPs visible, primary first, secondary in parens.
+        assert "192.168.5.10 (auch: 192.168.1.10)" in out
+        # Both connection types visible.
+        assert "WLAN (auch: LAN)" in out
+
+
 class TestBundlePages:
     """The five bundle-list renderers."""
 
@@ -639,3 +704,85 @@ def test_all_renderers_include_attribution(
     else:
         out = render_device_auto_block(_device(), fixed_now, strings_de)
     assert "2026-04-28 12:00 UTC" in out
+
+
+class TestNetworkPage:
+    """Network overview page rendering (#27 + #28)."""
+
+    def test_lean_table_when_no_unifi_data(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device(name="Aqara Sensor")
+        device.network = NetworkInfo(
+            mac="00:11:22:33:44:55",
+            source_platform="registry",
+        )
+        out = render_network_auto_block([device], fixed_now, strings_de)
+        assert "## Geräte mit Netzwerkdaten (1)" in out
+        assert "AP / Switch-Port" not in out
+        assert "00:11:22:33:44:55" in out
+
+    def test_unifi_columns_when_any_device_has_unifi_data(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        unifi = _device(name="NUC")
+        unifi.network = NetworkInfo(
+            ip="192.168.1.10",
+            mac="aa:bb:cc:dd:ee:ff",
+            hostname="nuc-server",
+            connection_type="wired",
+            switch_mac="f0:9f:c2:11:22:33",
+            switch_port=4,
+            oui="Intel Corp",
+            source_platform="unifi",
+        )
+        out = render_network_auto_block([unifi], fixed_now, strings_de)
+        assert "AP / Switch-Port" in out
+        assert "Hersteller (OUI)" in out
+        assert "Intel Corp" in out
+        assert "f0:9f:c2:11:22:33" in out
+
+    def test_dhcp_export_block(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        d = _device(name="Lampe")
+        d.network = NetworkInfo(
+            mac="aa:bb:cc:dd:ee:ff",
+            ip="192.168.1.42",
+            hostname="lampe-eg",
+        )
+        out = render_network_auto_block([d], fixed_now, strings_de)
+        assert "## DHCP-Reservierungen" in out
+        assert "aa:bb:cc:dd:ee:ff" in out
+        assert "192.168.1.42" in out
+        assert "lampe-eg" in out
+
+    def test_unknown_clients_section(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        unknown = [
+            NetworkInfo(
+                mac="12:34:56:78:9a:bc",
+                ip="192.168.1.99",
+                hostname="unknown-12-34",
+                last_seen="2026-04-29T20:00:00",
+                source_platform="unifi",
+            ),
+        ]
+        out = render_network_auto_block(
+            [],
+            fixed_now,
+            strings_de,
+            unknown_clients=unknown,
+        )
+        assert "## Unbekannte Clients (1)" in out
+        assert "12:34:56:78:9a:bc" in out
+        assert "192.168.1.99" in out

@@ -50,6 +50,7 @@ PAGE_KIND_SCRIPTS = "scripts"
 PAGE_KIND_SCENES = "scenes"
 PAGE_KIND_INTEGRATIONS = "integrations"
 PAGE_KIND_ADDONS = "addons"
+PAGE_KIND_NETWORK = "network"
 
 # Chapters group the many area/device pages so the book stays readable.
 # Titles + descriptions come from `_strings.py` so they follow the user's

@@ -27,6 +27,16 @@ if TYPE_CHECKING:
 # use to expose the topic, in priority order.
 _MQTT_TOPIC_KEYS = ("topic", "state_topic", "command_topic", "mqtt_topic")
 
+# Attribute keys we accept as IP / hostname on a device_tracker. UniFi,
+# the generic device_tracker, ASUSWRT and FRITZ!Box all use slight
+# variations. First match wins.
+_TRACKER_IP_KEYS = ("ip", "ip_address", "address")
+_TRACKER_HOST_KEYS = ("hostname", "host", "host_name")
+_TRACKER_MAC_KEYS = ("mac", "mac_address")
+_TRACKER_LAST_SEEN_KEYS = ("last_seen", "last_time_reachable")
+_TRACKER_SSID_KEYS = ("essid", "ssid")
+_TRACKER_VLAN_KEYS = ("network", "vlan", "vlan_name")
+
 
 @dataclass
 class EntitySnapshot:
@@ -44,6 +54,34 @@ class EntitySnapshot:
 
 
 @dataclass
+class NetworkInfo:
+    """
+    Network connection metadata for one HA device.
+
+    Sourced from a ``device_tracker.*`` entity attached to the device
+    (preferred — has live IP / last-seen) or from the device-registry's
+    ``connections`` set (fallback — gives MAC only). UniFi-specific
+    fields are populated when the source tracker comes from the
+    ``unifi`` platform.
+    """
+
+    ip: str | None = None
+    mac: str | None = None
+    hostname: str | None = None
+    connection_type: str | None = None  # "wired" / "wireless" / "unknown"
+    last_seen: str | None = None
+    ssid: str | None = None
+    vlan: str | None = None
+    signal_strength: int | None = None
+    # UniFi-specific (None when source isn't UniFi)
+    switch_mac: str | None = None
+    switch_port: int | None = None
+    ap_mac: str | None = None
+    oui: str | None = None
+    source_platform: str | None = None  # "unifi", "device_tracker", "registry"
+
+
+@dataclass
 class DeviceSnapshot:
     """One Home Assistant device with its entity list."""
 
@@ -56,6 +94,11 @@ class DeviceSnapshot:
     area_id: str | None
     config_entries: tuple[str, ...]
     entities: list[EntitySnapshot] = field(default_factory=list)
+    # Primary network identity for this device. ``network_extra`` lists
+    # additional concurrent connections (e.g. NUC plugged in via both
+    # ethernet and WiFi). Sorted by ``last_seen`` desc, primary first.
+    network: NetworkInfo | None = None
+    network_extra: list[NetworkInfo] = field(default_factory=list)
 
 
 @dataclass
@@ -140,6 +183,10 @@ class HASnapshot:
     scenes: list[SceneSnapshot]
     integrations: list[IntegrationSnapshot]
     addons: list[AddonSnapshot]
+    # UniFi device_trackers whose target entity is NOT linked to any HA
+    # device — clients UniFi sees but HA doesn't know about. Useful for
+    # spotting unknown / unwanted devices on the LAN.
+    unknown_unifi_clients: list[NetworkInfo] = field(default_factory=list)
 
 
 def extract_snapshot(  # noqa: PLR0912 - cohesive registry walk; splitting hurts clarity
@@ -219,6 +266,7 @@ def extract_snapshot(  # noqa: PLR0912 - cohesive registry walk; splitting hurts
     unassigned: list[DeviceSnapshot] = []
     for device in devices.values():
         device.entities.sort(key=lambda e: e.entity_id)
+        _populate_network_info(device, device_reg)
         if device.area_id and device.area_id in areas:
             areas[device.area_id].devices.append(device)
         else:
@@ -260,6 +308,7 @@ def extract_snapshot(  # noqa: PLR0912 - cohesive registry walk; splitting hurts
         scenes=scenes,
         integrations=_extract_integrations(hass, device_reg, entity_reg),
         addons=_extract_addons(hass),
+        unknown_unifi_clients=_extract_unknown_unifi_clients(hass, entity_reg),
     )
 
 
@@ -413,3 +462,173 @@ def _extract_addons(hass: HomeAssistant) -> list[AddonSnapshot]:
         )
     addons.sort(key=lambda a: (a.name.lower(), a.slug))
     return addons
+
+
+def _device_macs_from_connections(device: dr.DeviceEntry) -> list[str]:
+    """Pull MAC addresses out of ``device.connections`` (set of tuples)."""
+    macs: list[str] = []
+    for conn_type, value in device.connections:
+        if conn_type == dr.CONNECTION_NETWORK_MAC and isinstance(value, str):
+            macs.append(value)
+    return sorted(macs)
+
+
+def _first_str(attrs: dict, keys: tuple[str, ...]) -> str | None:
+    """Return the first non-empty string-valued attribute among ``keys``."""
+    for key in keys:
+        value = attrs.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _detect_connection_type(attrs: dict) -> str | None:
+    """Infer ``wired`` / ``wireless`` / ``None`` from a tracker's attributes."""
+    if attrs.get("switch_mac") or attrs.get("switch_port") is not None:
+        return "wired"
+    if attrs.get("ap_mac") or _first_str(attrs, _TRACKER_SSID_KEYS):
+        return "wireless"
+    return None
+
+
+def _build_network_info(
+    entity: EntitySnapshot,
+    fallback_macs: list[str],
+) -> NetworkInfo | None:
+    """
+    Build a ``NetworkInfo`` from one device_tracker entity's state.
+
+    Returns ``None`` if the tracker has no useful network data (no IP and
+    no MAC anywhere — pure presence sensor or stale registration).
+    """
+    attrs = entity.attributes
+    ip = _first_str(attrs, _TRACKER_IP_KEYS)
+    mac = _first_str(attrs, _TRACKER_MAC_KEYS) or (
+        fallback_macs[0] if fallback_macs else None
+    )
+    if not (ip or mac):
+        return None
+
+    hostname = _first_str(attrs, _TRACKER_HOST_KEYS) or entity.name
+    last_seen_value = attrs.get("last_seen") or attrs.get("last_time_reachable")
+    last_seen = (
+        last_seen_value.isoformat()
+        if hasattr(last_seen_value, "isoformat")
+        else (last_seen_value if isinstance(last_seen_value, str) else None)
+    )
+    connection_type = _detect_connection_type(attrs)
+    ssid = (
+        _first_str(attrs, _TRACKER_SSID_KEYS) if connection_type == "wireless" else None
+    )
+    vlan = _first_str(attrs, _TRACKER_VLAN_KEYS)
+
+    rssi_raw = attrs.get("rssi")
+    signal = rssi_raw if isinstance(rssi_raw, int) else None
+
+    switch_port_raw = attrs.get("switch_port")
+    switch_port = switch_port_raw if isinstance(switch_port_raw, int) else None
+
+    return NetworkInfo(
+        ip=ip,
+        mac=mac,
+        hostname=hostname,
+        connection_type=connection_type,
+        last_seen=last_seen,
+        ssid=ssid,
+        vlan=vlan,
+        signal_strength=signal,
+        switch_mac=attrs.get("switch_mac")
+        if isinstance(attrs.get("switch_mac"), str)
+        else None,
+        switch_port=switch_port,
+        ap_mac=attrs.get("ap_mac") if isinstance(attrs.get("ap_mac"), str) else None,
+        oui=attrs.get("oui") if isinstance(attrs.get("oui"), str) else None,
+        source_platform=entity.platform,
+    )
+
+
+def _populate_network_info(
+    device_snap: DeviceSnapshot,
+    device_reg: dr.DeviceRegistry,
+) -> None:
+    """
+    Fill ``device_snap.network`` and ``.network_extra`` from trackers + connections.
+
+    Strategy:
+    1. For every ``device_tracker.*`` entity attached to this device, build
+       a ``NetworkInfo`` from its state attributes.
+    2. Sort by ``last_seen`` desc — primary connection (most recent) first.
+    3. If no tracker carried useful data, fall back to a MAC-only NetworkInfo
+       sourced from the device-registry's ``connections`` set (Zigbee /
+       Matter devices often have a MAC there but no live tracker).
+    """
+    device = device_reg.async_get(device_snap.device_id)
+    fallback_macs = _device_macs_from_connections(device) if device else []
+
+    trackers = [
+        e for e in device_snap.entities if e.entity_id.startswith("device_tracker.")
+    ]
+    infos: list[NetworkInfo] = []
+    for tracker in trackers:
+        info = _build_network_info(tracker, fallback_macs)
+        if info:
+            infos.append(info)
+
+    infos.sort(key=lambda i: i.last_seen or "", reverse=True)
+
+    if not infos and fallback_macs:
+        infos = [
+            NetworkInfo(
+                mac=fallback_macs[0],
+                source_platform="registry",
+            ),
+        ]
+
+    if infos:
+        device_snap.network = infos[0]
+        device_snap.network_extra = infos[1:]
+
+
+def _extract_unknown_unifi_clients(
+    hass: HomeAssistant,
+    entity_reg: er.EntityRegistry,
+) -> list[NetworkInfo]:
+    """
+    Return UniFi-tracked clients that are NOT linked to any HA device.
+
+    These are clients UniFi sees on the network but the user has not
+    promoted to a full HA device — phones of guests, raw IoT gadgets,
+    forgotten LAN cabling. Useful for the cross-reference section on
+    the Netzwerk page.
+    """
+    unknown: list[NetworkInfo] = []
+    for entity_entry in entity_reg.entities.values():
+        if entity_entry.platform != "unifi":
+            continue
+        if not entity_entry.entity_id.startswith("device_tracker."):
+            continue
+        if entity_entry.device_id:
+            # Has a HA device — already represented on the main table.
+            continue
+        state_obj = hass.states.get(entity_entry.entity_id)
+        if state_obj is None:
+            continue
+        attrs = dict(state_obj.attributes)
+        synthetic = EntitySnapshot(
+            entity_id=entity_entry.entity_id,
+            name=entity_entry.name
+            or entity_entry.original_name
+            or entity_entry.entity_id,
+            platform="unifi",
+            device_id=None,
+            area_id=None,
+            state=state_obj.state,
+            attributes=attrs,
+            disabled=entity_entry.disabled,
+        )
+        info = _build_network_info(synthetic, fallback_macs=[])
+        if info:
+            unknown.append(info)
+
+    unknown.sort(key=lambda i: (i.last_seen or "", i.hostname or ""), reverse=True)
+    return unknown

@@ -36,6 +36,7 @@ if TYPE_CHECKING:
         EntitySnapshot,
         HASnapshot,
         IntegrationSnapshot,
+        NetworkInfo,
         SceneSnapshot,
         ScriptSnapshot,
     )
@@ -150,6 +151,7 @@ def render_overview_auto_block(
         ("scripts:_", strings["bundle_scripts"]),
         ("scenes:_", strings["bundle_scenes"]),
         ("addons:_", strings["bundle_addons"]),
+        ("network:_", strings["bundle_network"]),
     )
     for key, label in bundle_links:
         page_id = links.get(key)
@@ -359,15 +361,84 @@ def render_device_auto_block(
         f"## {strings['section_master_data']}",
         "",
         _device_facts_table(device, strings),
-        "",
-        f"## {strings['section_entities']}",
-        "",
     ]
+    if device.network is not None:
+        lines.extend(_network_section(device, strings))
+    lines.extend(["", f"## {strings['section_entities']}", ""])
     if device.entities:
         lines.extend(_entity_lines(device.entities, strings))
     else:
         lines.append(strings["empty_entities_in_device"])
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _network_section(
+    device: DeviceSnapshot,
+    strings: dict[str, str],
+) -> list[str]:
+    """
+    Render the network sub-section of a device page.
+
+    Primary connection (most-recent ``last_seen``) is shown as bullet
+    points; additional concurrent connections (e.g. NUC plugged in via
+    both ethernet and WiFi) are appended as ``(also: ...)``-style
+    parenthetical entries.
+    """
+    primary = device.network
+    if primary is None:
+        return []
+
+    def conn_label(info_obj: object) -> str:
+        ct = getattr(info_obj, "connection_type", None)
+        if ct == "wired":
+            return strings["connection_wired"]
+        if ct == "wireless":
+            return strings["connection_wireless"]
+        return strings.get("connection_unknown", "?")
+
+    lines: list[str] = ["", f"### {strings['section_network']}", ""]
+
+    def with_extra(label: str, primary_val: str | None, attr: str) -> str | None:
+        """Format ``- label: primary (also: extra1, extra2)`` if any value."""
+        if primary_val is None and not any(
+            getattr(e, attr, None) for e in device.network_extra
+        ):
+            return None
+        extras = [
+            getattr(e, attr) for e in device.network_extra if getattr(e, attr, None)
+        ]
+        body = primary_val or "—"
+        if extras:
+            also = strings["network_also_template"].format(values=", ".join(extras))
+            body += f" ({also})"
+        return f"- {label}: {body}"
+
+    ip_line = with_extra(strings["field_ip"], primary.ip, "ip")
+    if ip_line:
+        lines.append(ip_line)
+    mac_line = with_extra(strings["field_mac"], primary.mac, "mac")
+    if mac_line:
+        lines.append(mac_line)
+    host_line = with_extra(strings["field_hostname"], primary.hostname, "hostname")
+    if host_line:
+        lines.append(host_line)
+    if primary.connection_type:
+        suffix = ""
+        extra_types = [conn_label(e) for e in device.network_extra if e.connection_type]
+        if extra_types:
+            also = strings["network_also_template"].format(
+                values=", ".join(extra_types),
+            )
+            suffix = f" ({also})"
+        lines.append(f"- {strings['field_connection']}: {conn_label(primary)}{suffix}")
+    if primary.vlan:
+        lines.append(f"- {strings['field_vlan']}: {_md_escape(primary.vlan)}")
+    if primary.ssid:
+        lines.append(f"- {strings['field_ssid']}: {_md_escape(primary.ssid)}")
+    if primary.last_seen:
+        lines.append(f"- {strings['field_last_seen']}: {primary.last_seen}")
+
+    return lines
 
 
 def render_addons_auto_block(
@@ -502,6 +573,142 @@ def render_integrations_auto_block(
         f"| {i.device_count} | {i.entity_count} |"
         for i in integrations
     )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_network_auto_block(  # noqa: PLR0912 - cohesive table renderer
+    devices: list[DeviceSnapshot],
+    now: datetime,
+    strings: dict[str, str],
+    unknown_clients: list[NetworkInfo] | None = None,
+) -> str:
+    """
+    Render the AUTO block of the standalone Network page.
+
+    One row per device that carries a primary ``NetworkInfo``. Rows are
+    pre-sorted by the caller (sync.py: VLAN then IP). UniFi-specific
+    columns (AP/Switch-Port, OUI) only render when at least one device
+    in the list has UniFi data — keeps the table lean for non-UniFi
+    setups. ``unknown_clients`` (UniFi-only) get a dedicated section
+    below the main table for cross-reference cleanup.
+    """
+    lines: list[str] = [
+        _format_attribution(strings, now),
+        "",
+        "## " + strings["section_network_count_template"].format(count=len(devices)),
+        "",
+    ]
+    if not devices:
+        lines.append(strings["empty_network"])
+        # Don't return here — unknown_clients / DHCP block below may still
+        # have content when only UniFi sees the network but HA tracks
+        # nothing as a Device.
+
+    has_unifi = any(d.network and d.network.source_platform == "unifi" for d in devices)
+
+    if devices and has_unifi:
+        header = (
+            f"| {strings['network_col_hostname']} "
+            f"| {strings['network_col_mac']} "
+            f"| {strings['network_col_ip']} "
+            f"| {strings['network_col_connection']} "
+            f"| {strings['network_col_vlan']} "
+            f"| {strings['network_col_ap_switch']} "
+            f"| {strings['network_col_oui']} "
+            f"| {strings['network_col_last_seen']} |"
+        )
+        lines.extend([header, "| --- | --- | --- | --- | --- | --- | --- | --- |"])
+    elif devices:
+        header = (
+            f"| {strings['network_col_hostname']} "
+            f"| {strings['network_col_mac']} "
+            f"| {strings['network_col_ip']} "
+            f"| {strings['network_col_connection']} "
+            f"| {strings['network_col_vlan']} "
+            f"| {strings['network_col_last_seen']} |"
+        )
+        lines.extend([header, "| --- | --- | --- | --- | --- | --- |"])
+
+    for device in devices:
+        info = device.network
+        if info is None:
+            continue
+        hostname = _md_escape(info.hostname or device.name)
+        mac = info.mac or "—"
+        ip = info.ip or "—"
+        if info.connection_type == "wired":
+            conn = strings["connection_wired"]
+        elif info.connection_type == "wireless":
+            conn = strings["connection_wireless"]
+        else:
+            conn = "—"
+        vlan_or_ssid = _md_escape(info.ssid or info.vlan or "—")
+        last_seen = info.last_seen or "—"
+        if has_unifi:
+            ap_switch = "—"
+            if info.switch_mac:
+                ap_switch = f"`{info.switch_mac}`" + (
+                    f" / port {info.switch_port}" if info.switch_port else ""
+                )
+            elif info.ap_mac:
+                ap_switch = f"`{info.ap_mac}`"
+            oui = _md_escape(info.oui or "—")
+            lines.append(
+                f"| **{hostname}** | `{mac}` | {ip} | {conn} | {vlan_or_ssid} "
+                f"| {ap_switch} | {oui} | {last_seen} |",
+            )
+        else:
+            lines.append(
+                f"| **{hostname}** | `{mac}` | {ip} | {conn} | {vlan_or_ssid} "
+                f"| {last_seen} |",
+            )
+
+    # Unknown UniFi clients (#28 cross-reference)
+    if unknown_clients:
+        lines.extend(
+            [
+                "",
+                "## "
+                + strings["section_unknown_clients_template"].format(
+                    count=len(unknown_clients),
+                ),
+                "",
+                strings["section_unknown_clients_intro"],
+                "",
+                f"| {strings['network_col_hostname']} "
+                f"| {strings['network_col_mac']} "
+                f"| {strings['network_col_ip']} "
+                f"| {strings['network_col_last_seen']} |",
+                "| --- | --- | --- | --- |",
+            ],
+        )
+        for client in unknown_clients:
+            host = _md_escape(client.hostname or "—")
+            mac = client.mac or "—"
+            ip = client.ip or "—"
+            last_seen = client.last_seen or "—"
+            lines.append(f"| `{host}` | `{mac}` | {ip} | {last_seen} |")
+
+    # DHCP-reservation export block (#28). Generic format, sortable for
+    # paste into FritzBox / OPNsense / pfsense / UniFi controller.
+    dhcp_eligible = [d for d in devices if d.network and d.network.mac and d.network.ip]
+    if dhcp_eligible:
+        lines.extend(
+            [
+                "",
+                f"## {strings['section_dhcp_export']}",
+                "",
+                "```",
+                "# Format: <MAC>  <IP>  <Hostname>",
+            ],
+        )
+        for d in dhcp_eligible:
+            info = d.network
+            assert info is not None  # noqa: S101 - filtered above
+            host = info.hostname or d.name
+            lines.append(f"{info.mac}   {info.ip}   {host}")
+        lines.append("```")
+
     return "\n".join(lines).rstrip() + "\n"
 
 

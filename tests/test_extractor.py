@@ -209,3 +209,131 @@ async def test_automation_without_area_only_in_bundle(
         assert "Morning Routine" not in names
     # But the bundle has it.
     assert any(a.name == "Morning Routine" for a in snap.automations)
+
+
+async def test_device_network_from_tracker(hass: HomeAssistant) -> None:
+    """A device with a linked device_tracker gets NetworkInfo populated."""
+    entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi", title="UniFi")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    nuc = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "nuc")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "aa:bb:cc:dd:ee:ff")},
+        name="NUC Server",
+    )
+    tracker = entity_reg.async_get_or_create(
+        domain="device_tracker",
+        platform="unifi",
+        unique_id="nuc_tracker",
+        device_id=nuc.id,
+        suggested_object_id="nuc_server",
+    )
+    hass.states.async_set(
+        tracker.entity_id,
+        "home",
+        {
+            "ip": "192.168.1.10",
+            "mac": "aa:bb:cc:dd:ee:ff",
+            "host": "nuc-server",
+            "switch_mac": "f0:9f:c2:11:22:33",
+            "switch_port": 4,
+            "network": "LAN",
+            "oui": "Intel Corp",
+            "last_seen": "2026-04-29T20:00:00",
+        },
+    )
+
+    snap = extract_snapshot(hass)
+    nuc_snap = next(d for d in snap.unassigned_devices if d.name == "NUC Server")
+    assert nuc_snap.network is not None
+    assert nuc_snap.network.ip == "192.168.1.10"
+    assert nuc_snap.network.mac == "aa:bb:cc:dd:ee:ff"
+    assert nuc_snap.network.hostname == "nuc-server"
+    assert nuc_snap.network.connection_type == "wired"
+    assert nuc_snap.network.vlan == "LAN"
+    assert nuc_snap.network.switch_port == 4
+
+
+async def test_device_network_mac_only_fallback(hass: HomeAssistant) -> None:
+    """A device with only a MAC connection (no tracker) still gets MAC info."""
+    entry = MockConfigEntry(domain="zha", entry_id="entry_zha", title="Zigbee")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    device_reg.async_get_or_create(
+        config_entry_id="entry_zha",
+        identifiers={("zigbee", "00:11:22:33:44:55")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "00:11:22:33:44:55")},
+        name="Aqara Sensor",
+    )
+
+    snap = extract_snapshot(hass)
+    sensor_snap = next(d for d in snap.unassigned_devices if d.name == "Aqara Sensor")
+    assert sensor_snap.network is not None
+    assert sensor_snap.network.mac == "00:11:22:33:44:55"
+    assert sensor_snap.network.ip is None
+    assert sensor_snap.network.source_platform == "registry"
+
+
+async def test_device_with_multiple_trackers_primary_first(
+    hass: HomeAssistant,
+) -> None:
+    """Two trackers attached → primary is the most recent, others land in extra."""
+    entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi", title="UniFi")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    nuc = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "nuc")},
+        name="NUC Server",
+    )
+    wired_entry = entity_reg.async_get_or_create(
+        domain="device_tracker",
+        platform="unifi",
+        unique_id="nuc_wired",
+        device_id=nuc.id,
+        suggested_object_id="nuc_wired",
+    )
+    wifi_entry = entity_reg.async_get_or_create(
+        domain="device_tracker",
+        platform="unifi",
+        unique_id="nuc_wifi",
+        device_id=nuc.id,
+        suggested_object_id="nuc_wifi",
+    )
+    hass.states.async_set(
+        wired_entry.entity_id,
+        "home",
+        {
+            "ip": "192.168.1.10",
+            "mac": "aa:bb:cc:dd:ee:ff",
+            "switch_mac": "f0:9f:c2:11:22:33",
+            "last_seen": "2026-04-29T19:00:00",
+        },
+    )
+    hass.states.async_set(
+        wifi_entry.entity_id,
+        "home",
+        {
+            "ip": "192.168.5.10",
+            "mac": "11:22:33:44:55:66",
+            "essid": "Home",
+            "last_seen": "2026-04-29T20:00:00",
+        },
+    )
+
+    snap = extract_snapshot(hass)
+    nuc_snap = next(d for d in snap.unassigned_devices if d.name == "NUC Server")
+    # Primary = most recent (WiFi: 20:00 > 19:00)
+    assert nuc_snap.network is not None
+    assert nuc_snap.network.ip == "192.168.5.10"
+    assert nuc_snap.network.connection_type == "wireless"
+    # Extra holds the wired tracker
+    assert len(nuc_snap.network_extra) == 1
+    assert nuc_snap.network_extra[0].ip == "192.168.1.10"
+    assert nuc_snap.network_extra[0].connection_type == "wired"

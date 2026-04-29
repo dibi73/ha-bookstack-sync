@@ -35,6 +35,7 @@ from .const import (
     PAGE_KIND_AUTOMATIONS,
     PAGE_KIND_DEVICE,
     PAGE_KIND_INTEGRATIONS,
+    PAGE_KIND_NETWORK,
     PAGE_KIND_OVERVIEW,
     PAGE_KIND_SCENES,
     PAGE_KIND_SCRIPTS,
@@ -55,6 +56,7 @@ from .renderer import (
     render_automations_auto_block,
     render_device_auto_block,
     render_integrations_auto_block,
+    render_network_auto_block,
     render_overview_auto_block,
     render_scenes_auto_block,
     render_scripts_auto_block,
@@ -185,6 +187,20 @@ def _plan_pages(
                 key=f"{PAGE_KIND_ADDONS}:_",
                 title=strings["title_addons"],
                 auto_body=render_addons_auto_block(snapshot.addons, now, strings),
+            ),
+        )
+    network_devices = _devices_with_network(snapshot)
+    if network_devices or snapshot.unknown_unifi_clients:
+        planned.append(
+            _PlannedPage(
+                key=f"{PAGE_KIND_NETWORK}:_",
+                title=strings["title_network"],
+                auto_body=render_network_auto_block(
+                    network_devices,
+                    now,
+                    strings,
+                    unknown_clients=snapshot.unknown_unifi_clients,
+                ),
             ),
         )
     for area in snapshot.areas:
@@ -614,3 +630,33 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
         ),
     )
     report.tombstoned.append(existing_name)
+
+
+def _devices_with_network(snapshot: HASnapshot) -> list[DeviceSnapshot]:
+    """
+    Return devices that have a primary NetworkInfo, sorted for the table.
+
+    Sorted by VLAN (alphabetic) then IP (numeric octet-by-octet) so the
+    output is byte-identical between runs and matches typical DHCP-lease
+    listings.
+    """
+    devices: list[DeviceSnapshot] = []
+    for area in snapshot.areas:
+        devices.extend(d for d in area.devices if d.network is not None)
+    devices.extend(d for d in snapshot.unassigned_devices if d.network is not None)
+
+    placeholder_ip = "0.0.0.0"  # noqa: S104 - sort placeholder, not a bind addr
+
+    def ip_key(d: DeviceSnapshot) -> tuple[int, ...]:
+        ip = d.network.ip if d.network and d.network.ip else placeholder_ip
+        try:
+            parts = tuple(int(o) for o in ip.split(".")[:4])
+        except ValueError:
+            return (0, 0, 0, 0)
+        return parts + (0,) * (4 - len(parts))
+
+    def vlan_key(d: DeviceSnapshot) -> str:
+        return (d.network.vlan or "") if d.network else ""
+
+    devices.sort(key=lambda d: (vlan_key(d), ip_key(d), d.name.lower()))
+    return devices
