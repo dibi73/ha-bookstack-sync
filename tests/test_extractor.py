@@ -401,3 +401,30 @@ async def test_router_prefers_private_ip_over_wan(hass: HomeAssistant) -> None:
     # Extra contains the WAN IP.
     assert len(udm.network_extra) == 1
     assert udm.network_extra[0].ip == "85.20.30.40"
+
+
+async def test_disabled_automation_still_extracted(hass: HomeAssistant) -> None:
+    """Regression for #39: an automation with no state object still appears.
+
+    Previously the extractor used hass.states.async_all('automation') which
+    returns 0 results when entities exist in the registry but their states
+    aren't yet hydrated (early-startup race) or when the user has disabled
+    automations. The fix walks the entity registry instead.
+    """
+    entity_reg = er.async_get(hass)
+    entry = entity_reg.async_get_or_create(
+        domain="automation",
+        platform="automation",
+        unique_id="never_started",
+        suggested_object_id="never_started",
+    )
+    # Crucially: do NOT set hass.states for this entity. It exists only
+    # in the registry (e.g. disabled, or hydration not yet done).
+
+    snap = extract_snapshot(hass)
+    names = [a.name for a in snap.automations]
+    assert entry.entity_id in names or any(
+        a.entity_id == entry.entity_id for a in snap.automations
+    )
+    found = next(a for a in snap.automations if a.entity_id == entry.entity_id)
+    assert found.state == "disabled"
