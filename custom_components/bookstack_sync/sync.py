@@ -35,11 +35,16 @@ from .const import (
     PAGE_KIND_AUTOMATIONS,
     PAGE_KIND_BLUETOOTH,
     PAGE_KIND_DEVICE,
+    PAGE_KIND_ENERGY,
+    PAGE_KIND_HELPERS,
     PAGE_KIND_INTEGRATIONS,
+    PAGE_KIND_MQTT,
     PAGE_KIND_NETWORK,
     PAGE_KIND_OVERVIEW,
+    PAGE_KIND_RECORDER,
     PAGE_KIND_SCENES,
     PAGE_KIND_SCRIPTS,
+    PAGE_KIND_SERVICES,
     TAG_NAME,
     TAG_VALUE_MANAGED,
     TAG_VALUE_ORPHANED,
@@ -57,11 +62,16 @@ from .renderer import (
     render_automations_auto_block,
     render_bluetooth_auto_block,
     render_device_auto_block,
+    render_energy_auto_block,
+    render_helpers_auto_block,
     render_integrations_auto_block,
+    render_mqtt_auto_block,
     render_network_auto_block,
     render_overview_auto_block,
+    render_recorder_auto_block,
     render_scenes_auto_block,
     render_scripts_auto_block,
+    render_services_auto_block,
     render_tombstone_auto_block,
 )
 from .store import PageMapping
@@ -222,6 +232,67 @@ def _plan_pages(
                 title=strings["title_bluetooth"],
                 auto_body=render_bluetooth_auto_block(
                     snapshot.bluetooth,
+                    now,
+                    strings,
+                ),
+            ),
+        )
+    if snapshot.notify_services or snapshot.tts_services:
+        planned.append(
+            _PlannedPage(
+                key=f"{PAGE_KIND_SERVICES}:_",
+                title=strings["title_services"],
+                auto_body=render_services_auto_block(
+                    snapshot.notify_services,
+                    snapshot.tts_services,
+                    now,
+                    strings,
+                ),
+            ),
+        )
+    if snapshot.recorder is not None:
+        planned.append(
+            _PlannedPage(
+                key=f"{PAGE_KIND_RECORDER}:_",
+                title=strings["title_recorder"],
+                auto_body=render_recorder_auto_block(
+                    snapshot.recorder,
+                    now,
+                    strings,
+                ),
+            ),
+        )
+    if snapshot.mqtt_tree is not None:
+        planned.append(
+            _PlannedPage(
+                key=f"{PAGE_KIND_MQTT}:_",
+                title=strings["title_mqtt"],
+                auto_body=render_mqtt_auto_block(
+                    snapshot.mqtt_tree,
+                    now,
+                    strings,
+                ),
+            ),
+        )
+    if snapshot.energy is not None:
+        planned.append(
+            _PlannedPage(
+                key=f"{PAGE_KIND_ENERGY}:_",
+                title=strings["title_energy"],
+                auto_body=render_energy_auto_block(
+                    snapshot.energy,
+                    now,
+                    strings,
+                ),
+            ),
+        )
+    if snapshot.helpers:
+        planned.append(
+            _PlannedPage(
+                key=f"{PAGE_KIND_HELPERS}:_",
+                title=strings["title_helpers"],
+                auto_body=render_helpers_auto_block(
+                    snapshot.helpers,
                     now,
                     strings,
                 ),

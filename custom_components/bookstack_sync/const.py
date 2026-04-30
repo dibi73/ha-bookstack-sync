@@ -52,6 +52,11 @@ PAGE_KIND_INTEGRATIONS = "integrations"
 PAGE_KIND_ADDONS = "addons"
 PAGE_KIND_NETWORK = "network"
 PAGE_KIND_BLUETOOTH = "bluetooth"
+PAGE_KIND_SERVICES = "services"
+PAGE_KIND_RECORDER = "recorder"
+PAGE_KIND_MQTT = "mqtt"
+PAGE_KIND_ENERGY = "energy"
+PAGE_KIND_HELPERS = "helpers"
 
 # Chapters group the many area/device pages so the book stays readable.
 # Titles + descriptions come from `_strings.py` so they follow the user's

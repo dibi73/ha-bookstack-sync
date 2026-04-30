@@ -160,6 +160,7 @@ class IntegrationSnapshot:
     source: str
     device_count: int
     entity_count: int
+    documentation_url: str | None = None
 
 
 @dataclass
@@ -232,6 +233,15 @@ class BluetoothNetwork:
 
 
 @dataclass
+class ServiceInfo:
+    """A registered HA service (notify, tts, ...)."""
+
+    domain: str  # "notify" or "tts"
+    name: str  # e.g. "mobile_app_my_phone"
+    description: str | None = None
+
+
+@dataclass
 class HASnapshot:
     """Deterministic, fully-sorted view of HA used by the renderer."""
 
@@ -252,9 +262,20 @@ class HASnapshot:
     # Bluetooth scanners + heard devices when at least one BT proxy or
     # native HA BT adapter is configured; ``None`` otherwise.
     bluetooth: BluetoothNetwork | None = None
+    # Notify and TTS services registered with HA. Empty when none.
+    notify_services: list[ServiceInfo] = field(default_factory=list)
+    tts_services: list[ServiceInfo] = field(default_factory=list)
+    # Recorder configuration when the recorder integration is loaded.
+    recorder: RecorderConfig | None = None
+    # MQTT topic hierarchy when at least one entity has an mqtt_topic.
+    mqtt_tree: MqttTopicTree | None = None
+    # Energy-Dashboard configuration when ``.storage/energy`` exists.
+    energy: EnergyConfig | None = None
+    # Helper entities (input_*, timer, counter, schedule, ...) per domain.
+    helpers: list[HelperGroup] = field(default_factory=list)
 
 
-def extract_snapshot(  # noqa: PLR0912 - cohesive registry walk; splitting hurts clarity
+def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     hass: HomeAssistant,
     *,
     excluded_area_ids: Iterable[str] = (),
@@ -377,6 +398,12 @@ def extract_snapshot(  # noqa: PLR0912 - cohesive registry walk; splitting hurts
     )
     snapshot.unifi_topology = _extract_unifi_topology(device_reg, snapshot)
     snapshot.bluetooth = _extract_bluetooth_network(device_reg)
+    snapshot.notify_services = _extract_services(hass, "notify")
+    snapshot.tts_services = _extract_services(hass, "tts")
+    snapshot.recorder = _extract_recorder_config(hass)
+    snapshot.mqtt_tree = _build_mqtt_topic_tree(snapshot)
+    snapshot.energy = _extract_energy_config(hass)
+    snapshot.helpers = _extract_helpers(hass, entity_reg)
     return snapshot
 
 
@@ -551,10 +578,34 @@ def _extract_integrations(
                 source=entry.source,
                 device_count=devices_per_entry.get(entry.entry_id, 0),
                 entity_count=entities_per_entry.get(entry.entry_id, 0),
+                documentation_url=_documentation_url_for(hass, entry.domain),
             ),
         )
     integrations.sort(key=lambda i: (i.domain, i.title.lower(), i.entry_id))
     return integrations
+
+
+def _documentation_url_for(hass: HomeAssistant, domain: str) -> str | None:
+    """
+    Return the integration's documentation URL, or None.
+
+    Uses HAs already-loaded integration registry (sync) so we don't have
+    to await anything. For core integrations this resolves to the
+    canonical ``home-assistant.io/integrations/<domain>/``; for custom
+    integrations to whatever the manifest's ``documentation`` field points
+    at (typically the GitHub repo).
+    """
+    try:
+        from homeassistant.loader import (  # noqa: PLC0415 - local import keeps top clean
+            async_get_loaded_integration,
+        )
+    except ImportError:
+        return None
+    try:
+        integration = async_get_loaded_integration(hass, domain)
+    except Exception:  # noqa: BLE001 - best-effort enrichment, never fatal
+        return None
+    return getattr(integration, "documentation", None) or None
 
 
 def _extract_addons(hass: HomeAssistant) -> list[AddonSnapshot]:
@@ -978,3 +1029,281 @@ def _extract_bluetooth_network(
     if not scanners:
         return None
     return BluetoothNetwork(scanners=scanners)
+
+
+def _extract_services(hass: HomeAssistant, domain: str) -> list[ServiceInfo]:
+    """List services registered under ``domain`` (e.g. ``notify`` / ``tts``)."""
+    domain_services = hass.services.async_services().get(domain, {})
+    services = [ServiceInfo(domain=domain, name=name) for name in domain_services]
+    services.sort(key=lambda s: s.name.lower())
+    return services
+
+
+# Temporary file — content will be appended to extractor.py and deleted.
+
+
+# ----- #48 Recorder -----------------------------------------------------------
+
+
+@dataclass
+class RecorderConfig:
+    """Snapshot of HA's recorder configuration."""
+
+    db_engine: str | None = None
+    db_url_redacted: str | None = None
+    purge_keep_days: int | None = None
+    excluded_domains: list[str] = field(default_factory=list)
+    excluded_entities: list[str] = field(default_factory=list)
+    included_domains: list[str] = field(default_factory=list)
+    included_entities: list[str] = field(default_factory=list)
+
+
+def _extract_recorder_config(hass: HomeAssistant) -> RecorderConfig | None:
+    """Best-effort recorder config snapshot. Returns None when not available."""
+    recorder_data = hass.data.get("recorder_instance") or hass.data.get("recorder")
+    if recorder_data is None:
+        return None
+
+    rc = RecorderConfig()
+    keep_days = getattr(recorder_data, "keep_days", None) or getattr(
+        recorder_data,
+        "purge_keep_days",
+        None,
+    )
+    if isinstance(keep_days, int):
+        rc.purge_keep_days = keep_days
+
+    db_url = getattr(recorder_data, "db_url", None)
+    if isinstance(db_url, str):
+        import re  # noqa: PLC0415 - one-shot use
+
+        rc.db_url_redacted = re.sub(r"//[^@]+@", "//<redacted>@", db_url)
+        if db_url.startswith("sqlite:"):
+            rc.db_engine = "sqlite"
+        elif db_url.startswith("mysql"):
+            rc.db_engine = "mariadb/mysql"
+        elif db_url.startswith("postgres"):
+            rc.db_engine = "postgresql"
+
+    entity_filter = getattr(recorder_data, "entity_filter", None)
+    if entity_filter is not None:
+        for attr_name, target in (
+            ("_exclude_d", "excluded_domains"),
+            ("_exclude_e", "excluded_entities"),
+            ("_include_d", "included_domains"),
+            ("_include_e", "included_entities"),
+        ):
+            value = getattr(entity_filter, attr_name, None)
+            if isinstance(value, (list, set, tuple)):
+                getattr(rc, target).extend(sorted(str(v) for v in value))
+
+    return rc
+
+
+# ----- #52 MQTT topic tree ----------------------------------------------------
+
+
+@dataclass
+class MqttTopicNode:
+    """One node in the MQTT topic tree."""
+
+    name: str
+    children: dict[str, MqttTopicNode] = field(default_factory=dict)
+    entities: list[str] = field(default_factory=list)
+
+
+@dataclass
+class MqttTopicTree:
+    """Hierarchical view of MQTT topics, entity_ids attached at leaves."""
+
+    root: MqttTopicNode = field(default_factory=lambda: MqttTopicNode(name=""))
+    total_entities: int = 0
+
+
+def _build_mqtt_topic_tree(snapshot: HASnapshot) -> MqttTopicTree | None:
+    """Group every entity that carries an mqtt_topic into a topic-prefix tree."""
+    tree = MqttTopicTree()
+    count = 0
+    seen: list[EntitySnapshot] = []
+    for area in snapshot.areas:
+        for d in area.devices:
+            seen.extend(d.entities)
+    for d in snapshot.unassigned_devices:
+        seen.extend(d.entities)
+
+    for entity in seen:
+        topic = entity.mqtt_topic
+        if not topic:
+            continue
+        count += 1
+        node = tree.root
+        for seg in topic.strip("/").split("/"):
+            if seg not in node.children:
+                node.children[seg] = MqttTopicNode(name=seg)
+            node = node.children[seg]
+        node.entities.append(entity.entity_id)
+
+    if count == 0:
+        return None
+    tree.total_entities = count
+    return tree
+
+
+# ----- #46 Energy -------------------------------------------------------------
+
+
+@dataclass
+class EnergySource:
+    """One entry in the Energy-Dashboard config."""
+
+    type: str
+    label: str
+    consumption_entity: str | None = None
+    production_entity: str | None = None
+    cost_entity: str | None = None
+
+
+@dataclass
+class EnergyConfig:
+    """Energy-Dashboard configuration extracted from .storage/energy."""
+
+    sources: list[EnergySource] = field(default_factory=list)
+    individual_devices: list[str] = field(default_factory=list)
+
+
+def _extract_energy_config(hass: HomeAssistant) -> EnergyConfig | None:
+    """Read .storage/energy directly. Returns None when no Energy dashboard."""
+    from pathlib import Path  # noqa: PLC0415 - one-shot use
+
+    storage_path = Path(hass.config.path(".storage", "energy"))
+    if not storage_path.is_file():
+        return None
+    try:
+        import json  # noqa: PLC0415 - one-shot use
+
+        with storage_path.open(encoding="utf-8") as f:
+            payload = json.load(f)
+    except (OSError, ValueError) as err:
+        LOGGER.debug("Could not read .storage/energy: %s", err)
+        return None
+
+    data = (payload.get("data") if isinstance(payload, dict) else None) or {}
+    cfg = EnergyConfig()
+
+    for entry in data.get("energy_sources", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        kind = str(entry.get("type", "unknown"))
+        label_field = entry.get("name") or entry.get("stat_consumption") or kind
+        cfg.sources.append(
+            EnergySource(
+                type=kind,
+                label=str(label_field),
+                consumption_entity=entry.get("stat_consumption")
+                or entry.get("stat_energy_from"),
+                production_entity=entry.get("stat_energy_to")
+                or entry.get("stat_production"),
+                cost_entity=entry.get("entity_energy_price") or entry.get("stat_cost"),
+            ),
+        )
+
+    for entry in data.get("device_consumption", []) or []:
+        if isinstance(entry, dict) and entry.get("stat_consumption"):
+            cfg.individual_devices.append(str(entry["stat_consumption"]))
+
+    if not cfg.sources and not cfg.individual_devices:
+        return None
+    return cfg
+
+
+# ----- #42 Helpers ------------------------------------------------------------
+
+
+_HELPER_DOMAINS = (
+    "input_boolean",
+    "input_number",
+    "input_select",
+    "input_text",
+    "input_datetime",
+    "input_button",
+    "timer",
+    "counter",
+    "schedule",
+    "todo",
+    "template",
+    "group",
+)
+
+
+@dataclass
+class HelperEntry:
+    """One HA helper entity with its current state + key attributes."""
+
+    entity_id: str
+    name: str
+    domain: str
+    state: str | None
+    attributes: dict
+
+
+@dataclass
+class HelperGroup:
+    """All helpers of one domain."""
+
+    domain: str
+    entries: list[HelperEntry] = field(default_factory=list)
+
+
+def _extract_helpers(
+    hass: HomeAssistant,
+    entity_reg: er.EntityRegistry,
+) -> list[HelperGroup]:
+    """Walk entity registry for all helper-domain entities."""
+    by_domain: dict[str, list[HelperEntry]] = {d: [] for d in _HELPER_DOMAINS}
+    for entry in entity_reg.entities.values():
+        domain = entry.entity_id.split(".", 1)[0]
+        if domain not in by_domain:
+            continue
+        state_obj = hass.states.get(entry.entity_id)
+        attrs = state_obj.attributes if state_obj else {}
+        name = (
+            entry.name
+            or entry.original_name
+            or attrs.get("friendly_name")
+            or entry.entity_id
+        )
+        by_domain[domain].append(
+            HelperEntry(
+                entity_id=entry.entity_id,
+                name=name,
+                domain=domain,
+                state=state_obj.state if state_obj else None,
+                attributes=dict(attrs),
+            ),
+        )
+
+    for state in hass.states.async_all():
+        domain = state.entity_id.split(".", 1)[0]
+        if domain not in by_domain:
+            continue
+        if any(h.entity_id == state.entity_id for h in by_domain[domain]):
+            continue
+        attrs = state.attributes
+        by_domain[domain].append(
+            HelperEntry(
+                entity_id=state.entity_id,
+                name=attrs.get("friendly_name") or state.entity_id,
+                domain=domain,
+                state=state.state,
+                attributes=dict(attrs),
+            ),
+        )
+
+    groups: list[HelperGroup] = []
+    for domain in _HELPER_DOMAINS:
+        entries = by_domain[domain]
+        if not entries:
+            continue
+        entries.sort(key=lambda e: (e.name.lower(), e.entity_id))
+        groups.append(HelperGroup(domain=domain, entries=entries))
+    return groups
