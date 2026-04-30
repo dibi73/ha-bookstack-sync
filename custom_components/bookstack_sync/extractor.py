@@ -402,7 +402,8 @@ def _automation_entity_ids(
     hass: HomeAssistant,
     entity_reg: er.EntityRegistry,
 ) -> set[str]:
-    """Union of entity_ids in registry + state-machine for one domain.
+    """
+    Return union of entity_ids in registry + state-machine.
 
     Walking only the entity_registry misses YAML-defined automations
     that show up in ``hass.states`` but not the registry; walking only
