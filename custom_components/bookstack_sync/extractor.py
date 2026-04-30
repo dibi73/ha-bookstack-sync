@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -614,6 +615,24 @@ def _build_network_info(
     )
 
 
+def _is_private_ip(ip: str | None) -> bool:
+    """
+    Return ``True`` when ``ip`` is in an RFC1918 / link-local range.
+
+    Used to prefer LAN-side IPs over WAN-side ones when ranking the
+    connections of a router / gateway. WAN IPs change frequently with
+    DHCP from the ISP and are operationally less interesting than the
+    static internal management IP.
+    """
+    if not ip:
+        return False
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return addr.is_private or addr.is_link_local
+
+
 def _populate_network_info(
     device_snap: DeviceSnapshot,
     device_reg: dr.DeviceRegistry,
@@ -624,7 +643,10 @@ def _populate_network_info(
     Strategy:
     1. For every ``device_tracker.*`` entity attached to this device, build
        a ``NetworkInfo`` from its state attributes.
-    2. Sort by ``last_seen`` desc — primary connection (most recent) first.
+    2. Sort: private (RFC1918 / link-local) IPs first, then by
+       ``last_seen`` desc within each group. Routers / gateways have both
+       a public WAN IP and a private LAN IP; the LAN one is always the
+       useful one for documentation purposes.
     3. If no tracker carried useful data, fall back to a MAC-only NetworkInfo
        sourced from the device-registry's ``connections`` set (Zigbee /
        Matter devices often have a MAC there but no live tracker).
@@ -641,7 +663,14 @@ def _populate_network_info(
         if info:
             infos.append(info)
 
+    # Two-pass stable sort: first break ties by last_seen desc (most
+    # recent first), then prepend the private-IP entries. End result:
+    # private IPs in last-seen-desc order, then non-private IPs in
+    # last-seen-desc order. Critical for routers / gateways which carry
+    # both a public WAN IP and a private LAN IP — the LAN one is always
+    # the useful one for documentation.
     infos.sort(key=lambda i: i.last_seen or "", reverse=True)
+    infos.sort(key=lambda i: 0 if _is_private_ip(i.ip) else 1)
 
     if not infos and fallback_macs:
         infos = [

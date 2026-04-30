@@ -337,3 +337,67 @@ async def test_device_with_multiple_trackers_primary_first(
     assert len(nuc_snap.network_extra) == 1
     assert nuc_snap.network_extra[0].ip == "192.168.1.10"
     assert nuc_snap.network_extra[0].connection_type == "wired"
+
+
+async def test_router_prefers_private_ip_over_wan(hass: HomeAssistant) -> None:
+    """A device with two trackers (WAN + LAN) shows the LAN IP as primary.
+
+    Regression for issue #37: routers / gateways have a public WAN IP
+    that's frequently fresher (ISP heartbeats) and used to win the
+    ``last_seen`` race. The LAN IP is always the documentation-relevant
+    one even when last-seen older.
+    """
+    entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi", title="UniFi")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    gateway = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "udm")},
+        name="UDM Pro",
+        model="UDM-Pro",
+        manufacturer="Ubiquiti",
+    )
+    wan_tracker = entity_reg.async_get_or_create(
+        domain="device_tracker",
+        platform="unifi",
+        unique_id="udm_wan",
+        device_id=gateway.id,
+        suggested_object_id="udm_wan",
+    )
+    lan_tracker = entity_reg.async_get_or_create(
+        domain="device_tracker",
+        platform="unifi",
+        unique_id="udm_lan",
+        device_id=gateway.id,
+        suggested_object_id="udm_lan",
+    )
+    # WAN tracker has a fresher last_seen — would win without the fix.
+    hass.states.async_set(
+        wan_tracker.entity_id,
+        "home",
+        {
+            "ip": "85.20.30.40",
+            "mac": "aa:bb:cc:dd:ee:ff",
+            "last_seen": "2026-04-30T20:00:00",
+        },
+    )
+    hass.states.async_set(
+        lan_tracker.entity_id,
+        "home",
+        {
+            "ip": "192.168.1.1",
+            "mac": "11:22:33:44:55:66",
+            "last_seen": "2026-04-30T19:00:00",
+        },
+    )
+
+    snap = extract_snapshot(hass)
+    udm = next(d for d in snap.unassigned_devices if d.name == "UDM Pro")
+    # Primary must be the private LAN IP, despite older last_seen.
+    assert udm.network is not None
+    assert udm.network.ip == "192.168.1.1"
+    # Extra contains the WAN IP.
+    assert len(udm.network_extra) == 1
+    assert udm.network_extra[0].ip == "85.20.30.40"
