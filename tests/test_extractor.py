@@ -439,7 +439,7 @@ async def test_reverse_usage_from_automations_yaml(
     # Use HA's canonical path API so we hit exactly the file the
     # extractor reads (hass.config.path joins to hass.config.config_dir).
     target = Path(hass.config.path("automations.yaml"))
-    target.write_text(
+    target.write_text(  # noqa: ASYNC240 - test setup, sync write is fine
         "- alias: Morning Lights\n"
         "  trigger:\n"
         "    - platform: time\n"
