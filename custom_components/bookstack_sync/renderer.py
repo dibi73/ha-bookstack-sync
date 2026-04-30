@@ -34,12 +34,18 @@ if TYPE_CHECKING:
         AutomationSnapshot,
         BluetoothNetwork,
         DeviceSnapshot,
+        EnergyConfig,
         EntitySnapshot,
         HASnapshot,
+        HelperGroup,
         IntegrationSnapshot,
+        MqttTopicNode,
+        MqttTopicTree,
         NetworkInfo,
+        RecorderConfig,
         SceneSnapshot,
         ScriptSnapshot,
+        ServiceInfo,
         UnifiTopology,
     )
 
@@ -152,9 +158,14 @@ def render_overview_auto_block(
         ("automations:_", strings["bundle_automations"]),
         ("scripts:_", strings["bundle_scripts"]),
         ("scenes:_", strings["bundle_scenes"]),
+        ("helpers:_", strings["bundle_helpers"]),
         ("addons:_", strings["bundle_addons"]),
         ("network:_", strings["bundle_network"]),
         ("bluetooth:_", strings["bundle_bluetooth"]),
+        ("services:_", strings["bundle_services"]),
+        ("recorder:_", strings["bundle_recorder"]),
+        ("mqtt:_", strings["bundle_mqtt"]),
+        ("energy:_", strings["bundle_energy"]),
     )
     for key, label in bundle_links:
         page_id = links.get(key)
@@ -568,14 +579,19 @@ def render_integrations_auto_block(
         f"| {strings['integration_col_state']} "
         f"| {strings['integration_col_source']} "
         f"| {strings['integration_col_devices']} "
-        f"| {strings['integration_col_entities']} |"
+        f"| {strings['integration_col_entities']} "
+        f"| {strings['integration_col_docs']} |"
     )
-    lines.extend([header, "| --- | --- | --- | --- | ---: | ---: |"])
-    lines.extend(
-        f"| `{i.domain}` | {_md_escape(i.title)} | {i.state} | {i.source} "
-        f"| {i.device_count} | {i.entity_count} |"
-        for i in integrations
-    )
+    lines.extend([header, "| --- | --- | --- | --- | ---: | ---: | --- |"])
+    docs_label = strings["integration_docs_link_label"]
+    for i in integrations:
+        docs_cell = (
+            f"[{docs_label}]({i.documentation_url})" if i.documentation_url else "—"
+        )
+        lines.append(
+            f"| `{i.domain}` | {_md_escape(i.title)} | {i.state} | {i.source} "
+            f"| {i.device_count} | {i.entity_count} | {docs_cell} |",
+        )
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -739,6 +755,11 @@ def _device_facts_table(device: DeviceSnapshot, strings: dict[str, str]) -> str:
     return "\n".join(out)
 
 
+_STATE_CLASS_LONG_TERM_STATS = frozenset(
+    {"measurement", "total", "total_increasing"},
+)
+
+
 def _entity_lines(
     entities: list[EntitySnapshot],
     strings: dict[str, str],
@@ -746,10 +767,16 @@ def _entity_lines(
     state_label = strings["entity_state_label"]
     topic_label = strings["entity_topic_label"]
     disabled = strings["entity_disabled_marker"]
+    stats_marker = strings["entity_stats_marker"]
     return [
         f"- `{e.entity_id}` – {_md_escape(e.name)}"
         + (f" ({state_label}: `{e.state}`)" if e.state is not None else "")
         + (f" ({topic_label}: `{e.mqtt_topic}`)" if e.mqtt_topic else "")
+        + (
+            f" {stats_marker}"
+            if e.attributes.get("state_class") in _STATE_CLASS_LONG_TERM_STATS
+            else ""
+        )
         + (f" {disabled}" if e.disabled else "")
         for e in entities
     ]
@@ -960,4 +987,208 @@ def render_bluetooth_auto_block(
             branch = "└──" if last else "├──"
             lines.append(f"{branch} {dev.name} (`{dev.address}`)")
     lines.append("```")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# Temporary file — content will be appended to renderer.py and deleted.
+
+
+# ----- #49 Services (notify + tts) --------------------------------------------
+
+
+def render_services_auto_block(
+    notify: list[ServiceInfo],
+    tts: list[ServiceInfo],
+    now: datetime,
+    strings: dict[str, str],
+) -> str:
+    """Render the AUTO block of the standalone Services page (#49)."""
+    lines: list[str] = [_format_attribution(strings, now), ""]
+    if notify:
+        notify_header = strings["section_notify_count_template"].format(
+            count=len(notify),
+        )
+        lines.extend(
+            [
+                f"## {notify_header}",
+                "",
+                "| Service | Domain |",
+                "| --- | --- |",
+            ],
+        )
+        lines.extend(f"| `{s.domain}.{s.name}` | {s.domain} |" for s in notify)
+        lines.append("")
+    if tts:
+        tts_header = strings["section_tts_count_template"].format(count=len(tts))
+        lines.extend(
+            [
+                f"## {tts_header}",
+                "",
+                "| Service | Domain |",
+                "| --- | --- |",
+            ],
+        )
+        lines.extend(f"| `{s.domain}.{s.name}` | {s.domain} |" for s in tts)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# ----- #48 Recorder -----------------------------------------------------------
+
+
+def render_recorder_auto_block(
+    config: RecorderConfig,
+    now: datetime,
+    strings: dict[str, str],
+) -> str:
+    """Render the AUTO block of the Recorder configuration page (#48)."""
+    lines: list[str] = [
+        _format_attribution(strings, now),
+        "",
+        f"## {strings['section_recorder_basic']}",
+        "",
+        f"- {strings['recorder_field_engine']}: {_md_escape(config.db_engine or '—')}",
+        f"- {strings['recorder_field_url']}: `{config.db_url_redacted or '—'}`",
+        f"- {strings['recorder_field_keep_days']}: "
+        f"{config.purge_keep_days if config.purge_keep_days is not None else '—'}",
+    ]
+    for label_key, items in (
+        ("section_recorder_excluded_domains", config.excluded_domains),
+        ("section_recorder_excluded_entities", config.excluded_entities),
+        ("section_recorder_included_domains", config.included_domains),
+        ("section_recorder_included_entities", config.included_entities),
+    ):
+        if not items:
+            continue
+        lines.extend(["", f"## {strings[label_key]}", ""])
+        lines.extend(f"- `{item}`" for item in items)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# ----- #52 MQTT topic tree ----------------------------------------------------
+
+
+def render_mqtt_auto_block(
+    tree: MqttTopicTree,
+    now: datetime,
+    strings: dict[str, str],
+) -> str:
+    """Render the AUTO block of the MQTT topic tree page (#52)."""
+    mqtt_header = strings["section_mqtt_count_template"].format(
+        count=tree.total_entities,
+    )
+    lines: list[str] = [
+        _format_attribution(strings, now),
+        "",
+        f"## {mqtt_header}",
+        "",
+        "```",
+    ]
+
+    def walk(node: MqttTopicNode, prefix: str, *, is_last: bool) -> None:
+        if node is not tree.root:
+            branch = "└── " if is_last else "├── "
+            label = node.name + ("/" if node.children else "")
+            entities_label = (
+                f"  ({len(node.entities)} entit"
+                f"{'y' if len(node.entities) == 1 else 'ies'})"
+                if node.entities
+                else ""
+            )
+            lines.append(f"{prefix}{branch}{label}{entities_label}")
+            child_prefix = prefix + ("    " if is_last else "│   ")
+        else:
+            child_prefix = prefix
+        children = sorted(node.children.items(), key=lambda kv: kv[0])
+        for idx, (_seg, child) in enumerate(children):
+            walk(child, child_prefix, is_last=idx == len(children) - 1)
+
+    walk(tree.root, "", is_last=True)
+    lines.append("```")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# ----- #46 Energy -------------------------------------------------------------
+
+
+def render_energy_auto_block(
+    config: EnergyConfig,
+    now: datetime,
+    strings: dict[str, str],
+) -> str:
+    """Render the AUTO block of the Energy-Dashboard page (#46)."""
+    lines: list[str] = [_format_attribution(strings, now), ""]
+    if config.sources:
+        lines.extend(
+            [
+                f"## {strings['section_energy_sources']}",
+                "",
+                "| Typ | Bezeichnung | Verbrauch | Erzeugung | Kosten |",
+                "| --- | --- | --- | --- | --- |",
+            ],
+        )
+        lines.extend(
+            f"| {_md_escape(s.type)} | {_md_escape(s.label)} "
+            f"| `{s.consumption_entity or '—'}` "
+            f"| `{s.production_entity or '—'}` "
+            f"| `{s.cost_entity or '—'}` |"
+            for s in config.sources
+        )
+    if config.individual_devices:
+        lines.extend(
+            [
+                "",
+                f"## {strings['section_energy_devices']}",
+                "",
+            ],
+        )
+        lines.extend(f"- `{entity_id}`" for entity_id in config.individual_devices)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# ----- #42 Helpers ------------------------------------------------------------
+
+
+_HELPER_DOMAIN_LABELS = {
+    "input_boolean": "Boolesche Schalter (input_boolean)",
+    "input_number": "Zahlen-Helpers (input_number)",
+    "input_select": "Auswahl-Helpers (input_select)",
+    "input_text": "Text-Helpers (input_text)",
+    "input_datetime": "Datum/Zeit-Helpers (input_datetime)",
+    "input_button": "Button-Helpers (input_button)",
+    "timer": "Timer",
+    "counter": "Zähler (counter)",
+    "schedule": "Zeitpläne (schedule)",
+    "todo": "Aufgaben-Listen (todo)",
+    "template": "Template-Helpers",
+    "group": "Gruppen (group)",
+}
+
+
+def render_helpers_auto_block(
+    groups: list[HelperGroup],
+    now: datetime,
+    strings: dict[str, str],
+) -> str:
+    """Render the AUTO block of the Helpers page (#42)."""
+    lines: list[str] = [_format_attribution(strings, now), ""]
+    if not groups:
+        lines.append(strings["empty_helpers"])
+        return "\n".join(lines).rstrip() + "\n"
+
+    for group in groups:
+        label = _HELPER_DOMAIN_LABELS.get(group.domain, group.domain)
+        lines.extend(
+            [
+                f"## {label} ({len(group.entries)})",
+                "",
+                "| Name | Entity | State |",
+                "| --- | --- | --- |",
+            ],
+        )
+        for entry in group.entries:
+            state = entry.state if entry.state is not None else "—"
+            lines.append(
+                f"| **{_md_escape(entry.name)}** | `{entry.entity_id}` | `{state}` |",
+            )
+        lines.append("")
     return "\n".join(lines).rstrip() + "\n"
