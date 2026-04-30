@@ -171,7 +171,12 @@ def render_overview_auto_block(
     for key, label in bundle_links:
         page_id = links.get(key)
         if page_id is not None:
-            lines.append(f"- [{label}](page:{page_id})")
+            # BookStack expands ``{{@<id>}}`` server-side into a clickable
+            # link to the page with that id (rendered with the actual
+            # page title). Plain markdown ``[label](page:id)`` doesn't
+            # work — BookStack treats ``page:id`` as a relative URL and
+            # 404s on click.
+            lines.append(f"- {{{{@{page_id}}}}}")
         else:
             lines.append(f"- {label}")
 
@@ -180,9 +185,7 @@ def render_overview_auto_block(
         for area in snapshot.areas:
             label = _md_escape(area.name)
             page_id = links.get(f"area:{area.area_id}")
-            link = (
-                f"[{label}](page:{page_id})" if page_id is not None else f"**{label}**"
-            )
+            link = f"{{{{@{page_id}}}}}" if page_id is not None else f"**{label}**"
             lines.append(
                 f"- {link} – {len(area.devices)} {strings['stat_devices']}",
             )
@@ -200,7 +203,7 @@ def render_overview_auto_block(
         for device in snapshot.unassigned_devices:
             label = _md_escape(device.name)
             page_id = links.get(f"device:{device.device_id}")
-            link = f"[{label}](page:{page_id})" if page_id is not None else label
+            link = f"{{{{@{page_id}}}}}" if page_id is not None else label
             lines.append(f"- {link}")
 
     return "\n".join(lines)
