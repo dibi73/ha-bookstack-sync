@@ -348,20 +348,19 @@ class TestOverviewLinks:
                 f"legacy [label](page:N) syntax found in output: {out[:200]!r}"
             )
 
-    def test_special_chars_in_area_name_escaped(
+    def test_special_chars_in_area_name_escaped_when_no_link(
         self,
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
+        # When a page-link IS available, BookStack's ``{{@id}}`` expands
+        # to the page title server-side — our custom label is dropped.
+        # When NO page-link exists we fall back to ``**escaped_label**``
+        # — and that path must still escape special chars.
         area = AreaSnapshot(area_id="living", name="Wohn|zimmer <stage>")
         snap = _empty_snapshot()
         snap.areas.append(area)
-        out = render_overview_auto_block(
-            snap,
-            fixed_now,
-            strings_de,
-            page_links={"area:living": 99},
-        )
+        out = render_overview_auto_block(snap, fixed_now, strings_de)  # no links
         assert r"Wohn\|zimmer &lt;stage&gt;" in out
 
 
