@@ -262,7 +262,8 @@ class TestOverviewLinks:
             strings_de,
             page_links={"area:living": 42},
         )
-        assert "[Living Room](page:42)" in out
+        # BookStack-internal cross-link syntax — server expands {{@N}}.
+        assert "{{@42}}" in out
 
     def test_area_falls_back_to_bold_when_no_link(
         self,
@@ -274,7 +275,7 @@ class TestOverviewLinks:
         snap.areas.append(area)
         out = render_overview_auto_block(snap, fixed_now, strings_de)
         assert "**Living Room**" in out
-        assert "page:" not in out
+        assert "{{@" not in out
 
     def test_bundle_links_rendered(
         self,
@@ -294,11 +295,58 @@ class TestOverviewLinks:
                 "addons:_": 5,
             },
         )
-        assert "[Integrations](page:1)" in out
-        assert "[Automations](page:2)" in out
-        assert "[Scripts](page:3)" in out
-        assert "[Scenes](page:4)" in out
-        assert "[Add-ons](page:5)" in out
+        assert "{{@1}}" in out
+        assert "{{@2}}" in out
+        assert "{{@3}}" in out
+        assert "{{@4}}" in out
+        assert "{{@5}}" in out
+
+    def test_no_legacy_page_link_syntax_anywhere(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """
+        Regression #55: never emit ``](page:`` anywhere in any rendered page.
+
+        The naïve markdown link form ``[label](page:42)`` is treated by
+        BookStack as a relative URL ``page:42`` and 404s on click. The
+        correct format is the BookStack server-side template
+        ``{{@42}}``. This test calls every ``render_*_auto_block`` we
+        ship and asserts the bad pattern never appears.
+        """
+        # Exercise a snapshot with all the page-link entry-points populated.
+        area = AreaSnapshot(area_id="living", name="Wohnzimmer")
+        snap = _empty_snapshot()
+        snap.areas.append(area)
+        snap.unassigned_devices.append(_device(name="Some Unassigned Device"))
+
+        outputs: list[str] = [
+            render_overview_auto_block(
+                snap,
+                fixed_now,
+                strings_de,
+                page_links={
+                    "integrations:_": 1,
+                    "automations:_": 2,
+                    "scripts:_": 3,
+                    "scenes:_": 4,
+                    "addons:_": 5,
+                    "area:living": 99,
+                    "device:dev1": 100,
+                },
+            ),
+            render_area_auto_block(area, fixed_now, strings_de),
+            render_device_auto_block(
+                _device(name="Plain Device"),
+                fixed_now,
+                strings_de,
+            ),
+        ]
+        for out in outputs:
+            assert "](page:" not in out, (
+                f"legacy [label](page:N) syntax found in output: {out[:200]!r}"
+            )
 
     def test_special_chars_in_area_name_escaped(
         self,
