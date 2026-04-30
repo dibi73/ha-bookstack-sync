@@ -428,3 +428,56 @@ async def test_disabled_automation_still_extracted(hass: HomeAssistant) -> None:
     )
     found = next(a for a in snap.automations if a.entity_id == entry.entity_id)
     assert found.state == "disabled"
+
+
+async def test_reverse_usage_from_automations_yaml(
+    hass: HomeAssistant,
+    tmp_path,
+) -> None:
+    """An automations.yaml referencing an entity populates reverse_usage."""
+    # Drop a fake automations.yaml with one automation referencing light.foo.
+    yaml_content = (
+        "- alias: Morning Lights\n"
+        "  trigger:\n"
+        "    - platform: time\n"
+        "      at: '07:00'\n"
+        "  action:\n"
+        "    - service: light.turn_on\n"
+        "      target:\n"
+        "        entity_id: light.foo\n"
+    )
+    automations_path = (
+        tmp_path / "automations.yaml" if hasattr(tmp_path, "__truediv__") else None
+    )
+    # tmp_path is a pytest fixture but our test fixture for hass uses its
+    # own config dir. Use that instead.
+    config_dir = hass.config.config_dir if hasattr(hass.config, "config_dir") else None
+    if config_dir is None:
+        return
+    target = automations_path or (
+        __import__("pathlib").Path(config_dir) / "automations.yaml"
+    )
+    target.write_text(yaml_content, encoding="utf-8")
+
+    snap = extract_snapshot(hass)
+    assert "light.foo" in snap.reverse_usage
+    refs = snap.reverse_usage["light.foo"]
+    assert any(e.domain == "automation" and e.name == "Morning Lights" for e in refs)
+
+
+def test_package_modules_all_parse() -> None:
+    """
+    Regression guard: every Python file in the package must parse cleanly.
+
+    The Python-2-syntax ``except TypeError, ValueError`` bug in
+    sync.py:_needs_move keeps regressing during rebases (fixed in v0.5.1,
+    v0.8.0, v0.8.2, v0.9.0). This test fails fast when any file in the
+    package can't be byte-compiled.
+    """
+    import ast  # noqa: PLC0415 - test-only
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    pkg = Path(__file__).parent.parent / "custom_components" / "bookstack_sync"
+    for py_file in pkg.rglob("*.py"):
+        with py_file.open(encoding="utf-8") as f:
+            ast.parse(f.read(), filename=str(py_file))

@@ -43,6 +43,7 @@ if TYPE_CHECKING:
         MqttTopicTree,
         NetworkInfo,
         RecorderConfig,
+        ReverseUsageEntry,
         SceneSnapshot,
         ScriptSnapshot,
         ServiceInfo,
@@ -367,6 +368,7 @@ def render_device_auto_block(
     device: DeviceSnapshot,
     now: datetime,
     strings: dict[str, str],
+    reverse_usage: dict[str, list[ReverseUsageEntry]] | None = None,
 ) -> str:
     """Render the AUTO block of one device page."""
     lines: list[str] = [
@@ -383,7 +385,47 @@ def render_device_auto_block(
         lines.extend(_entity_lines(device.entities, strings))
     else:
         lines.append(strings["empty_entities_in_device"])
+    if reverse_usage:
+        lines.extend(_used_by_section(device, strings, reverse_usage))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _used_by_section(
+    device: DeviceSnapshot,
+    strings: dict[str, str],
+    reverse_usage: dict[str, list[ReverseUsageEntry]],
+) -> list[str]:
+    """
+    Render the ``Verwendet in`` block for a device page (#43).
+
+    Aggregates reverse-usage across all entities of the device. Output
+    grouped by domain (automation / script / scene). Returns ``[]`` when
+    no entity is referenced anywhere — keeps unused devices clean.
+    """
+    by_domain: dict[str, set[str]] = {
+        "automation": set(),
+        "script": set(),
+        "scene": set(),
+    }
+    for entity in device.entities:
+        for entry in reverse_usage.get(entity.entity_id, []):
+            if entry.domain in by_domain:
+                by_domain[entry.domain].add(entry.name)
+    if not any(by_domain.values()):
+        return []
+
+    lines: list[str] = ["", f"## {strings['section_used_by']}", ""]
+    for domain, domain_label_key in (
+        ("automation", "used_by_automations"),
+        ("script", "used_by_scripts"),
+        ("scene", "used_by_scenes"),
+    ):
+        names = by_domain[domain]
+        if not names:
+            continue
+        lines.extend(["", f"### {strings[domain_label_key]}", ""])
+        lines.extend(f"- {_md_escape(name)}" for name in sorted(names, key=str.lower))
+    return lines
 
 
 def _network_section(

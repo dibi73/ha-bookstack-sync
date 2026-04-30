@@ -155,11 +155,17 @@ def _device_page(
     device: DeviceSnapshot,
     now: datetime,
     strings: dict[str, str],
+    reverse_usage: dict[str, list] | None = None,
 ) -> _PlannedPage:
     return _PlannedPage(
         key=f"{PAGE_KIND_DEVICE}:{device.device_id}",
         title=strings["title_device_template"].format(name=device.name),
-        auto_body=render_device_auto_block(device, now, strings),
+        auto_body=render_device_auto_block(
+            device,
+            now,
+            strings,
+            reverse_usage=reverse_usage,
+        ),
         chapter_key=CHAPTER_KEY_DEVICES,
     )
 
@@ -307,8 +313,13 @@ def _plan_pages(
                 chapter_key=CHAPTER_KEY_AREAS,
             ),
         )
-        planned.extend(_device_page(d, now, strings) for d in area.devices)
-    planned.extend(_device_page(d, now, strings) for d in snapshot.unassigned_devices)
+        planned.extend(
+            _device_page(d, now, strings, snapshot.reverse_usage) for d in area.devices
+        )
+    planned.extend(
+        _device_page(d, now, strings, snapshot.reverse_usage)
+        for d in snapshot.unassigned_devices
+    )
     return planned
 
 
