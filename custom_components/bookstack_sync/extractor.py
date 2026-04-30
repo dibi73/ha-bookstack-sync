@@ -403,18 +403,31 @@ def _extract_automations(
     entity_reg: er.EntityRegistry,
 ) -> list[AutomationSnapshot]:
     automations: list[AutomationSnapshot] = []
-    for state in hass.states.async_all("automation"):
-        attrs = state.attributes
+    # Walk the entity registry rather than hass.states so we also capture
+    # disabled automations and survive the early-startup race where
+    # automations exist in the registry but their states haven't been
+    # hydrated yet (issue #39).
+    for entry in entity_reg.entities.values():
+        if not entry.entity_id.startswith("automation."):
+            continue
+        state_obj = hass.states.get(entry.entity_id)
+        attrs = state_obj.attributes if state_obj else {}
         last = attrs.get("last_triggered")
+        name = (
+            entry.name
+            or entry.original_name
+            or attrs.get("friendly_name")
+            or entry.entity_id
+        )
         automations.append(
             AutomationSnapshot(
-                entity_id=state.entity_id,
-                name=attrs.get("friendly_name") or state.entity_id,
+                entity_id=entry.entity_id,
+                name=name,
                 description=attrs.get("description") or None,
-                state=state.state,
+                state=state_obj.state if state_obj else "disabled",
                 mode=attrs.get("mode"),
                 last_triggered=last.isoformat() if hasattr(last, "isoformat") else last,
-                area_id=_entity_area(entity_reg, state.entity_id),
+                area_id=entry.area_id,
             ),
         )
     automations.sort(key=lambda a: (a.name.lower(), a.entity_id))
@@ -426,17 +439,28 @@ def _extract_scripts(
     entity_reg: er.EntityRegistry,
 ) -> list[ScriptSnapshot]:
     scripts: list[ScriptSnapshot] = []
-    for state in hass.states.async_all("script"):
-        attrs = state.attributes
+    # See _extract_automations: entity-registry walk catches disabled
+    # entries + survives startup race (issue #39).
+    for entry in entity_reg.entities.values():
+        if not entry.entity_id.startswith("script."):
+            continue
+        state_obj = hass.states.get(entry.entity_id)
+        attrs = state_obj.attributes if state_obj else {}
         last = attrs.get("last_triggered")
+        name = (
+            entry.name
+            or entry.original_name
+            or attrs.get("friendly_name")
+            or entry.entity_id
+        )
         scripts.append(
             ScriptSnapshot(
-                entity_id=state.entity_id,
-                name=attrs.get("friendly_name") or state.entity_id,
+                entity_id=entry.entity_id,
+                name=name,
                 description=attrs.get("description") or None,
-                state=state.state,
+                state=state_obj.state if state_obj else "disabled",
                 last_triggered=last.isoformat() if hasattr(last, "isoformat") else last,
-                area_id=_entity_area(entity_reg, state.entity_id),
+                area_id=entry.area_id,
             ),
         )
     scripts.sort(key=lambda s: (s.name.lower(), s.entity_id))
@@ -448,13 +472,23 @@ def _extract_scenes(
     entity_reg: er.EntityRegistry,
 ) -> list[SceneSnapshot]:
     scenes: list[SceneSnapshot] = []
-    for state in hass.states.async_all("scene"):
-        attrs = state.attributes
+    # See _extract_automations: entity-registry walk (issue #39).
+    for entry in entity_reg.entities.values():
+        if not entry.entity_id.startswith("scene."):
+            continue
+        state_obj = hass.states.get(entry.entity_id)
+        attrs = state_obj.attributes if state_obj else {}
+        name = (
+            entry.name
+            or entry.original_name
+            or attrs.get("friendly_name")
+            or entry.entity_id
+        )
         scenes.append(
             SceneSnapshot(
-                entity_id=state.entity_id,
-                name=attrs.get("friendly_name") or state.entity_id,
-                area_id=_entity_area(entity_reg, state.entity_id),
+                entity_id=entry.entity_id,
+                name=name,
+                area_id=entry.area_id,
             ),
         )
     scenes.sort(key=lambda s: (s.name.lower(), s.entity_id))
