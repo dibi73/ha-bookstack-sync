@@ -432,11 +432,14 @@ async def test_disabled_automation_still_extracted(hass: HomeAssistant) -> None:
 
 async def test_reverse_usage_from_automations_yaml(
     hass: HomeAssistant,
-    tmp_path,
 ) -> None:
     """An automations.yaml referencing an entity populates reverse_usage."""
-    # Drop a fake automations.yaml with one automation referencing light.foo.
-    yaml_content = (
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    # Use HA's canonical path API so we hit exactly the file the
+    # extractor reads (hass.config.path joins to hass.config.config_dir).
+    target = Path(hass.config.path("automations.yaml"))
+    target.write_text(
         "- alias: Morning Lights\n"
         "  trigger:\n"
         "    - platform: time\n"
@@ -444,23 +447,14 @@ async def test_reverse_usage_from_automations_yaml(
         "  action:\n"
         "    - service: light.turn_on\n"
         "      target:\n"
-        "        entity_id: light.foo\n"
+        "        entity_id: light.foo\n",
+        encoding="utf-8",
     )
-    automations_path = (
-        tmp_path / "automations.yaml" if hasattr(tmp_path, "__truediv__") else None
-    )
-    # tmp_path is a pytest fixture but our test fixture for hass uses its
-    # own config dir. Use that instead.
-    config_dir = hass.config.config_dir if hasattr(hass.config, "config_dir") else None
-    if config_dir is None:
-        return
-    target = automations_path or (
-        __import__("pathlib").Path(config_dir) / "automations.yaml"
-    )
-    target.write_text(yaml_content, encoding="utf-8")
 
     snap = extract_snapshot(hass)
-    assert "light.foo" in snap.reverse_usage
+    assert "light.foo" in snap.reverse_usage, (
+        f"reverse_usage was {snap.reverse_usage!r}"
+    )
     refs = snap.reverse_usage["light.foo"]
     assert any(e.domain == "automation" and e.name == "Morning Lights" for e in refs)
 
