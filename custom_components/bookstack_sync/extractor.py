@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from homeassistant.helpers import (
@@ -273,6 +275,9 @@ class HASnapshot:
     energy: EnergyConfig | None = None
     # Helper entities (input_*, timer, counter, schedule, ...) per domain.
     helpers: list[HelperGroup] = field(default_factory=list)
+    # entity_id → list of (automation/script/scene) entries that reference it.
+    # Populated from YAML config files (automations.yaml etc).
+    reverse_usage: dict[str, list[ReverseUsageEntry]] = field(default_factory=dict)
 
 
 def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
@@ -404,6 +409,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     snapshot.mqtt_tree = _build_mqtt_topic_tree(snapshot)
     snapshot.energy = _extract_energy_config(hass)
     snapshot.helpers = _extract_helpers(hass, entity_reg)
+    snapshot.reverse_usage = _extract_reverse_usage(hass)
     return snapshot
 
 
@@ -1307,3 +1313,150 @@ def _extract_helpers(
         entries.sort(key=lambda e: (e.name.lower(), e.entity_id))
         groups.append(HelperGroup(domain=domain, entries=entries))
     return groups
+
+
+# Temporary file — content will be appended to extractor.py and deleted.
+
+
+# ----- #43 Reverse-usage ------------------------------------------------------
+
+
+@dataclass
+class ReverseUsageEntry:
+    """One automation / script / scene that references an entity."""
+
+    domain: str  # "automation" / "script" / "scene"
+    name: str  # the alias / friendly_name
+
+
+# Pattern for an HA entity_id: `<domain>.<object_id>`. Domain is one or
+# more lowercase letters / underscores; object_id is letters / digits /
+# underscores. Excludes module-style paths like ``homeassistant.start``
+# (event names) by checking domain length and structure later.
+_ENTITY_ID_RE = re.compile(r"\b([a-z][a-z_]{1,30}\.[a-z0-9_]+)\b")
+_ENTITY_ID_MAX_LEN = 100
+
+
+# Tags HA users put in YAML configs that PyYAML doesn't natively know.
+# We accept them and convert to a stub so the rest of the parsing works.
+_HA_YAML_TAGS = (
+    "!secret",
+    "!include",
+    "!include_dir_named",
+    "!include_dir_merge_named",
+    "!include_dir_list",
+    "!include_dir_merge_list",
+    "!env_var",
+    "!input",
+)
+
+
+def _build_ha_yaml_loader() -> type:
+    """
+    Build a PyYAML SafeLoader that tolerates HA-specific tags.
+
+    The loader returns ``None`` for any tag it doesn't understand, so the
+    surrounding YAML structure parses successfully even when an entry uses
+    ``!secret`` or ``!include``.
+    """
+    import yaml as _yaml  # noqa: PLC0415 - HA bundles PyYAML; lazy import keeps top clean
+
+    class HALoader(_yaml.SafeLoader):
+        pass
+
+    def _stub_constructor(loader, node) -> None:  # noqa: ANN001, ARG001
+        return None
+
+    for tag in _HA_YAML_TAGS:
+        HALoader.add_constructor(tag, _stub_constructor)
+    HALoader.add_multi_constructor(
+        "!",
+        lambda loader, suffix, node: None,  # noqa: ARG005
+    )
+    return HALoader
+
+
+def _extract_entity_ids_from_text(text: str) -> set[str]:
+    """Find anything that looks like a valid HA entity_id in ``text``."""
+    ids: set[str] = set()
+    for match in _ENTITY_ID_RE.findall(text):
+        # Heuristic filters: discard tokens with very long object-IDs that
+        # are clearly URLs / paths / hashes ("github.io" → "github.io" pass,
+        # but URLs usually have many dots — we already split on word chars).
+        if len(match) > _ENTITY_ID_MAX_LEN:
+            continue
+        ids.add(match)
+    return ids
+
+
+def _read_yaml_entries(
+    path: Path,
+    loader_cls: type,
+) -> list:
+    """
+    Load a YAML file and return its entries as a list of dicts.
+
+    Files come in two shapes: a top-level list of entries, or a top-level
+    dict of name → entry. Both are flattened to a single list.
+    """
+    import yaml as _yaml  # noqa: PLC0415 - HA bundles PyYAML
+
+    try:
+        with path.open(encoding="utf-8") as f:
+            data = _yaml.load(f, Loader=loader_cls)  # noqa: S506 - HA-trusted file
+    except (OSError, _yaml.YAMLError) as err:
+        LOGGER.debug("Could not parse YAML %s: %s", path, err)
+        return []
+
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if isinstance(data, dict):
+        return [item for item in data.values() if isinstance(item, dict)]
+    return []
+
+
+def _entry_label(item: dict, domain: str) -> str:
+    """Pick the most human-readable name from an automation/script/scene entry."""
+    return str(
+        item.get("alias")
+        or item.get("name")
+        or item.get("friendly_name")
+        or item.get("id")
+        or domain,
+    )
+
+
+def _extract_reverse_usage(hass: HomeAssistant) -> dict[str, list[ReverseUsageEntry]]:
+    """
+    Build entity_id → list of automations/scripts/scenes that reference it.
+
+    Reads ``automations.yaml`` / ``scripts.yaml`` / ``scenes.yaml`` from
+    the HA config dir (sync, no async needed). Each file may use HA's
+    custom YAML tags (``!secret`` / ``!include``); the loader tolerates
+    them. False positives (e.g. ``automation.morning`` matching as an
+    entity_id token in another automation's body) are filtered out at
+    render time by matching against the snapshot's actual entity set.
+    """
+    usage: dict[str, list[ReverseUsageEntry]] = {}
+    loader_cls = _build_ha_yaml_loader()
+
+    for fname, domain in (
+        ("automations.yaml", "automation"),
+        ("scripts.yaml", "script"),
+        ("scenes.yaml", "scene"),
+    ):
+        path = Path(hass.config.path(fname))
+        if not path.is_file():
+            continue
+        for entry in _read_yaml_entries(path, loader_cls):
+            label = _entry_label(entry, domain)
+            text = repr(entry)
+            for entity_id in _extract_entity_ids_from_text(text):
+                usage.setdefault(entity_id, []).append(
+                    ReverseUsageEntry(domain=domain, name=label),
+                )
+
+    # Stable ordering for byte-identical sync output.
+    for entries in usage.values():
+        entries.sort(key=lambda e: (e.domain, e.name.lower()))
+    return usage

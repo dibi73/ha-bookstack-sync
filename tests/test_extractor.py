@@ -428,3 +428,50 @@ async def test_disabled_automation_still_extracted(hass: HomeAssistant) -> None:
     )
     found = next(a for a in snap.automations if a.entity_id == entry.entity_id)
     assert found.state == "disabled"
+
+
+async def test_reverse_usage_from_automations_yaml(
+    hass: HomeAssistant,
+) -> None:
+    """An automations.yaml referencing an entity populates reverse_usage."""
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    # Use HA's canonical path API so we hit exactly the file the
+    # extractor reads (hass.config.path joins to hass.config.config_dir).
+    target = Path(hass.config.path("automations.yaml"))
+    target.write_text(  # noqa: ASYNC240 - test setup, sync write is fine
+        "- alias: Morning Lights\n"
+        "  trigger:\n"
+        "    - platform: time\n"
+        "      at: '07:00'\n"
+        "  action:\n"
+        "    - service: light.turn_on\n"
+        "      target:\n"
+        "        entity_id: light.foo\n",
+        encoding="utf-8",
+    )
+
+    snap = extract_snapshot(hass)
+    assert "light.foo" in snap.reverse_usage, (
+        f"reverse_usage was {snap.reverse_usage!r}"
+    )
+    refs = snap.reverse_usage["light.foo"]
+    assert any(e.domain == "automation" and e.name == "Morning Lights" for e in refs)
+
+
+def test_package_modules_all_parse() -> None:
+    """
+    Regression guard: every Python file in the package must parse cleanly.
+
+    The Python-2-syntax ``except TypeError, ValueError`` bug in
+    sync.py:_needs_move keeps regressing during rebases (fixed in v0.5.1,
+    v0.8.0, v0.8.2, v0.9.0). This test fails fast when any file in the
+    package can't be byte-compiled.
+    """
+    import ast  # noqa: PLC0415 - test-only
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    pkg = Path(__file__).parent.parent / "custom_components" / "bookstack_sync"
+    for py_file in pkg.rglob("*.py"):
+        with py_file.open(encoding="utf-8") as f:
+            ast.parse(f.read(), filename=str(py_file))
