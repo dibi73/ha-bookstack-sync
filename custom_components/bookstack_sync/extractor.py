@@ -398,36 +398,52 @@ def _entity_area(
     return entry.area_id if entry else None
 
 
+def _automation_entity_ids(
+    hass: HomeAssistant,
+    entity_reg: er.EntityRegistry,
+) -> set[str]:
+    """Union of entity_ids in registry + state-machine for one domain.
+
+    Walking only the entity_registry misses YAML-defined automations
+    that show up in ``hass.states`` but not the registry; walking only
+    ``hass.states`` misses disabled automations + ones lost to startup
+    race conditions. Union of both (issue #39).
+    """
+    ids: set[str] = {
+        e.entity_id
+        for e in entity_reg.entities.values()
+        if e.entity_id.startswith("automation.")
+    }
+    ids.update(s.entity_id for s in hass.states.async_all("automation"))
+    return ids
+
+
 def _extract_automations(
     hass: HomeAssistant,
     entity_reg: er.EntityRegistry,
 ) -> list[AutomationSnapshot]:
     automations: list[AutomationSnapshot] = []
-    # Walk the entity registry rather than hass.states so we also capture
-    # disabled automations and survive the early-startup race where
-    # automations exist in the registry but their states haven't been
-    # hydrated yet (issue #39).
-    for entry in entity_reg.entities.values():
-        if not entry.entity_id.startswith("automation."):
-            continue
-        state_obj = hass.states.get(entry.entity_id)
+    for entity_id in _automation_entity_ids(hass, entity_reg):
+        registry_entry = entity_reg.async_get(entity_id)
+        state_obj = hass.states.get(entity_id)
         attrs = state_obj.attributes if state_obj else {}
         last = attrs.get("last_triggered")
         name = (
-            entry.name
-            or entry.original_name
+            (registry_entry.name if registry_entry else None)
+            or (registry_entry.original_name if registry_entry else None)
             or attrs.get("friendly_name")
-            or entry.entity_id
+            or entity_id
         )
+        area_id = registry_entry.area_id if registry_entry else None
         automations.append(
             AutomationSnapshot(
-                entity_id=entry.entity_id,
+                entity_id=entity_id,
                 name=name,
                 description=attrs.get("description") or None,
                 state=state_obj.state if state_obj else "disabled",
                 mode=attrs.get("mode"),
                 last_triggered=last.isoformat() if hasattr(last, "isoformat") else last,
-                area_id=entry.area_id,
+                area_id=area_id,
             ),
         )
     automations.sort(key=lambda a: (a.name.lower(), a.entity_id))
@@ -439,28 +455,32 @@ def _extract_scripts(
     entity_reg: er.EntityRegistry,
 ) -> list[ScriptSnapshot]:
     scripts: list[ScriptSnapshot] = []
-    # See _extract_automations: entity-registry walk catches disabled
-    # entries + survives startup race (issue #39).
-    for entry in entity_reg.entities.values():
-        if not entry.entity_id.startswith("script."):
-            continue
-        state_obj = hass.states.get(entry.entity_id)
+    ids: set[str] = {
+        e.entity_id
+        for e in entity_reg.entities.values()
+        if e.entity_id.startswith("script.")
+    }
+    ids.update(s.entity_id for s in hass.states.async_all("script"))
+    for entity_id in ids:
+        registry_entry = entity_reg.async_get(entity_id)
+        state_obj = hass.states.get(entity_id)
         attrs = state_obj.attributes if state_obj else {}
         last = attrs.get("last_triggered")
         name = (
-            entry.name
-            or entry.original_name
+            (registry_entry.name if registry_entry else None)
+            or (registry_entry.original_name if registry_entry else None)
             or attrs.get("friendly_name")
-            or entry.entity_id
+            or entity_id
         )
+        area_id = registry_entry.area_id if registry_entry else None
         scripts.append(
             ScriptSnapshot(
-                entity_id=entry.entity_id,
+                entity_id=entity_id,
                 name=name,
                 description=attrs.get("description") or None,
                 state=state_obj.state if state_obj else "disabled",
                 last_triggered=last.isoformat() if hasattr(last, "isoformat") else last,
-                area_id=entry.area_id,
+                area_id=area_id,
             ),
         )
     scripts.sort(key=lambda s: (s.name.lower(), s.entity_id))
@@ -472,23 +492,28 @@ def _extract_scenes(
     entity_reg: er.EntityRegistry,
 ) -> list[SceneSnapshot]:
     scenes: list[SceneSnapshot] = []
-    # See _extract_automations: entity-registry walk (issue #39).
-    for entry in entity_reg.entities.values():
-        if not entry.entity_id.startswith("scene."):
-            continue
-        state_obj = hass.states.get(entry.entity_id)
+    ids: set[str] = {
+        e.entity_id
+        for e in entity_reg.entities.values()
+        if e.entity_id.startswith("scene.")
+    }
+    ids.update(s.entity_id for s in hass.states.async_all("scene"))
+    for entity_id in ids:
+        registry_entry = entity_reg.async_get(entity_id)
+        state_obj = hass.states.get(entity_id)
         attrs = state_obj.attributes if state_obj else {}
         name = (
-            entry.name
-            or entry.original_name
+            (registry_entry.name if registry_entry else None)
+            or (registry_entry.original_name if registry_entry else None)
             or attrs.get("friendly_name")
-            or entry.entity_id
+            or entity_id
         )
+        area_id = registry_entry.area_id if registry_entry else None
         scenes.append(
             SceneSnapshot(
-                entity_id=entry.entity_id,
+                entity_id=entity_id,
                 name=name,
-                area_id=entry.area_id,
+                area_id=area_id,
             ),
         )
     scenes.sort(key=lambda s: (s.name.lower(), s.entity_id))
