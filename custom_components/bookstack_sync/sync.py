@@ -676,8 +676,10 @@ def _needs_move(
     if expected_chapter_id is None:
         return False
     raw = existing.get("chapter_id")
+    if raw is None:
+        return expected_chapter_id != 0
     try:
-        actual = int(raw) if raw is not None else 0
+        actual = int(raw)
     except TypeError, ValueError:
         LOGGER.warning(
             "BookStack returned non-numeric chapter_id %r for %s "

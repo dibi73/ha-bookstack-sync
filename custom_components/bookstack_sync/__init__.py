@@ -24,6 +24,7 @@ from .const import (
 )
 from .coordinator import BookStackSyncCoordinator
 from .data import BookStackSyncData
+from .export_store import BookStackSyncExportStore
 from .services import async_register_services, async_unregister_services
 from .store import BookStackSyncStore
 
@@ -50,6 +51,9 @@ async def async_setup_entry(
     store = BookStackSyncStore(hass, entry.entry_id)
     await store.async_load()
 
+    export_store = BookStackSyncExportStore(hass, entry.entry_id)
+    await export_store.async_load()
+
     coordinator = BookStackSyncCoordinator(hass, entry)
 
     entry.runtime_data = BookStackSyncData(
@@ -57,6 +61,7 @@ async def async_setup_entry(
         coordinator=coordinator,
         integration=async_get_loaded_integration(hass, entry.domain),
         store=store,
+        export_store=export_store,
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

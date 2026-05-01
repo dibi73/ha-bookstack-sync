@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -26,11 +27,17 @@ from .const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
     CONF_EXCLUDED_AREAS,
+    CONF_EXPORT_AFTER_SYNC,
+    CONF_EXPORT_ENABLED,
+    CONF_EXPORT_PATH,
     CONF_OUTPUT_LANGUAGE,
     CONF_SYNC_INTERVAL,
     CONF_TOKEN_ID,
     CONF_TOKEN_SECRET,
     CONF_VERIFY_SSL,
+    DEFAULT_EXPORT_AFTER_SYNC,
+    DEFAULT_EXPORT_ENABLED,
+    DEFAULT_EXPORT_SUBDIR,
     DEFAULT_INTERVAL,
     DEFAULT_OUTPUT_LANGUAGE,
     DEFAULT_VERIFY_SSL,
@@ -44,6 +51,7 @@ from .const import (
 
 _ERR_INVALID_SCHEME = "base_url_invalid_scheme"
 _ERR_MISSING_HOST = "base_url_missing_host"
+_ERR_PATH_INVALID = "path_invalid"
 
 
 def _validate_base_url(raw: str) -> str:
@@ -412,19 +420,41 @@ class BookStackSyncOptionsFlow(OptionsFlow):
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Show the options form / persist the new options."""
+        errors: dict[str, str] = {}
+
         if user_input is not None:
-            return self.async_create_entry(
-                title="",
-                data={
-                    CONF_BOOK_ID: int(user_input[CONF_BOOK_ID]),
-                    CONF_SYNC_INTERVAL: user_input[CONF_SYNC_INTERVAL],
-                    CONF_EXCLUDED_AREAS: user_input.get(CONF_EXCLUDED_AREAS, []),
-                    CONF_OUTPUT_LANGUAGE: user_input.get(
-                        CONF_OUTPUT_LANGUAGE,
-                        DEFAULT_OUTPUT_LANGUAGE,
-                    ),
-                },
+            export_enabled = bool(
+                user_input.get(CONF_EXPORT_ENABLED, DEFAULT_EXPORT_ENABLED),
             )
+            export_path = (user_input.get(CONF_EXPORT_PATH) or "").strip()
+            if export_enabled:
+                if not export_path:
+                    errors[CONF_EXPORT_PATH] = _ERR_PATH_INVALID
+                else:
+                    candidate = Path(export_path)
+                    if not candidate.is_absolute() or not candidate.parent.exists():
+                        errors[CONF_EXPORT_PATH] = _ERR_PATH_INVALID
+            if not errors:
+                return self.async_create_entry(
+                    title="",
+                    data={
+                        CONF_BOOK_ID: int(user_input[CONF_BOOK_ID]),
+                        CONF_SYNC_INTERVAL: user_input[CONF_SYNC_INTERVAL],
+                        CONF_EXCLUDED_AREAS: user_input.get(CONF_EXCLUDED_AREAS, []),
+                        CONF_OUTPUT_LANGUAGE: user_input.get(
+                            CONF_OUTPUT_LANGUAGE,
+                            DEFAULT_OUTPUT_LANGUAGE,
+                        ),
+                        CONF_EXPORT_ENABLED: export_enabled,
+                        CONF_EXPORT_PATH: export_path,
+                        CONF_EXPORT_AFTER_SYNC: bool(
+                            user_input.get(
+                                CONF_EXPORT_AFTER_SYNC,
+                                DEFAULT_EXPORT_AFTER_SYNC,
+                            ),
+                        ),
+                    },
+                )
 
         verify_ssl = self.config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
         client = BookStackApiClient(
@@ -449,6 +479,20 @@ class BookStackSyncOptionsFlow(OptionsFlow):
         current_language = self.config_entry.options.get(
             CONF_OUTPUT_LANGUAGE,
             DEFAULT_OUTPUT_LANGUAGE,
+        )
+        current_export_enabled = self.config_entry.options.get(
+            CONF_EXPORT_ENABLED,
+            DEFAULT_EXPORT_ENABLED,
+        )
+        # Default path: <config>/bookstack_export — surfaced as a real
+        # absolute path so the user immediately sees where files would land.
+        current_export_path = self.config_entry.options.get(
+            CONF_EXPORT_PATH,
+            self.hass.config.path(DEFAULT_EXPORT_SUBDIR),
+        )
+        current_export_after_sync = self.config_entry.options.get(
+            CONF_EXPORT_AFTER_SYNC,
+            DEFAULT_EXPORT_AFTER_SYNC,
         )
 
         return self.async_show_form(
@@ -484,6 +528,21 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         CONF_OUTPUT_LANGUAGE,
                         default=current_language,
                     ): _output_language_selector(),
+                    # Markdown back-export. Off by default — costs disk
+                    # space and CPU, so the user must consciously enable it.
+                    vol.Required(
+                        CONF_EXPORT_ENABLED,
+                        default=current_export_enabled,
+                    ): selector.BooleanSelector(),
+                    vol.Optional(
+                        CONF_EXPORT_PATH,
+                        default=current_export_path,
+                    ): selector.TextSelector(),
+                    vol.Required(
+                        CONF_EXPORT_AFTER_SYNC,
+                        default=current_export_after_sync,
+                    ): selector.BooleanSelector(),
                 },
             ),
+            errors=errors,
         )

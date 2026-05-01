@@ -15,8 +15,13 @@ from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     CONF_BOOK_ID,
     CONF_EXCLUDED_AREAS,
+    CONF_EXPORT_AFTER_SYNC,
+    CONF_EXPORT_ENABLED,
+    CONF_EXPORT_PATH,
     CONF_OUTPUT_LANGUAGE,
     CONF_SYNC_INTERVAL,
+    DEFAULT_EXPORT_AFTER_SYNC,
+    DEFAULT_EXPORT_ENABLED,
     DEFAULT_INTERVAL,
     DEFAULT_OUTPUT_LANGUAGE,
     DOMAIN,
@@ -28,6 +33,8 @@ from .const import (
     REPAIR_ISSUE_UNREACHABLE_THRESHOLD,
     SYNC_INTERVALS,
 )
+from .export import ExportResult
+from .export import export as export_run
 from .sync import SyncReport, run_sync
 
 if TYPE_CHECKING:
@@ -65,6 +72,10 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         self.config_entry = entry
         self.last_run: datetime | None = None
         self.last_report: SyncReport | None = None
+        # Set by the markdown back-export (issue #61). Stays None until
+        # the user opts in via the options flow and either calls the
+        # service or the post-sync auto-trigger fires.
+        self.last_export_result: ExportResult | None = None
         # Surfaced via the status sensor so the dashboard can show
         # "syncing" while a run is in progress. Toggled in
         # ``async_run_sync`` (try/finally so failed runs also clear it).
@@ -181,10 +192,43 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 if not dry_run:
                     self.last_run = datetime.now(tz=UTC)
                     self.last_report = report
-                return report
             finally:
                 self.is_syncing = False
                 self.async_update_listeners()
+        # Lock is released. Opt-in markdown back-export runs here so it
+        # cannot deadlock against itself if it ever calls back into a
+        # locked sync path.
+        if not dry_run:
+            await self._maybe_export_after_sync()
+        return report
+
+    async def _maybe_export_after_sync(self) -> None:
+        """
+        Run the markdown back-export if the user has explicitly opted in.
+
+        Both flags must be true: ``export_enabled`` is the master kill
+        switch (default off), ``export_after_sync`` chooses *when* to
+        run (post-sync vs only on explicit service call). Errors are
+        logged but never raised — the sync itself already succeeded
+        and we don't want a missing folder to flip the sensor red.
+        """
+        options = self.config_entry.options or {}
+        if not options.get(CONF_EXPORT_ENABLED, DEFAULT_EXPORT_ENABLED):
+            return
+        if not options.get(CONF_EXPORT_AFTER_SYNC, DEFAULT_EXPORT_AFTER_SYNC):
+            return
+        try:
+            result = await export_run(
+                self.hass,
+                self.config_entry,
+                dry_run=False,
+                output_path=options.get(CONF_EXPORT_PATH),
+            )
+        except Exception:  # noqa: BLE001 - export must not break the sync sensor
+            LOGGER.exception("BookStack markdown export after sync failed")
+            return
+        self.last_export_result = result
+        self.async_update_listeners()
 
     def _resolve_output_language(self) -> str:
         """

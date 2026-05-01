@@ -44,7 +44,8 @@
       "no_books": "Tästä BookStack-instanssista ei löytynyt kirjaa. Luo ensin kohdekirja.",
       "unknown": "Odottamaton virhe — tarkista Home Assistantin loki.",
       "base_url_invalid_scheme": "URL:n on alettava merkinnällä http:// tai https://.",
-      "base_url_missing_host": "URL on epätäydellinen — isäntänimi puuttuu."
+      "base_url_missing_host": "URL on epätäydellinen — isäntänimi puuttuu.",
+      "path_invalid": "Path must be absolute and the parent directory must already exist."
     },
     "abort": {
       "already_configured": "Tämä BookStack-instanssi on jo määritetty.",
@@ -61,7 +62,15 @@
           "book_id": "Kohdekirja",
           "sync_interval": "Synkronointiväli",
           "excluded_areas": "Pois jätetyt alueet (ei synkronoida)",
-          "output_language": "BookStack-sivujen kieli"
+          "output_language": "BookStack-sivujen kieli",
+          "export_enabled": "Enable Markdown back-export (off by default)",
+          "export_path": "Export folder (absolute path)",
+          "export_after_sync": "Run export automatically after each sync"
+        },
+        "data_description": {
+          "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
+          "export_after_sync": "Only effective when 'Enable Markdown back-export' is on."
         }
       }
     }
@@ -90,6 +99,20 @@
     "preview": {
       "name": "Synkronoinnin esikatselu",
       "description": "Kirjaa, mitkä sivut luotaisiin/päivitettäisiin, mutta ei kirjoita mitään BookStackiin."
+    },
+    "export_markdown": {
+      "name": "Export Markdown (opt-in)",
+      "description": "Exports every managed BookStack page as a plain Markdown file with YAML frontmatter, idempotent. Disabled by default - enable it in the integration's options first.",
+      "fields": {
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Log what would be written without touching the filesystem."
+        },
+        "output_path": {
+          "name": "Output path override",
+          "description": "Override the configured export path for this call only."
+        }
+      }
     }
   },
   "entity": {
@@ -129,6 +152,9 @@
     },
     "bookstack_auth_failed": {
       "message": "BookStack hylkäsi API-tunnuksen. Päivitä tunnus BookStackissa ja käytä Reauth-prosessia."
+    },
+    "export_disabled": {
+      "message": "Markdown export is disabled. Enable it in the integration's options under 'Enable Markdown back-export' before calling this service."
     }
   }
 }

@@ -44,7 +44,8 @@
       "no_books": "在此 BookStack 实例中未找到书籍。请先创建目标书籍。",
       "unknown": "意外错误 — 请检查 Home Assistant 日志。",
       "base_url_invalid_scheme": "URL 必须以 http:// 或 https:// 开头。",
-      "base_url_missing_host": "URL 不完整 — 缺少主机名。"
+      "base_url_missing_host": "URL 不完整 — 缺少主机名。",
+      "path_invalid": "Path must be absolute and the parent directory must already exist."
     },
     "abort": {
       "already_configured": "此 BookStack 实例已配置。",
@@ -61,7 +62,15 @@
           "book_id": "目标书籍",
           "sync_interval": "同步间隔",
           "excluded_areas": "排除的区域（不会被同步）",
-          "output_language": "BookStack 页面语言"
+          "output_language": "BookStack 页面语言",
+          "export_enabled": "Enable Markdown back-export (off by default)",
+          "export_path": "Export folder (absolute path)",
+          "export_after_sync": "Run export automatically after each sync"
+        },
+        "data_description": {
+          "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
+          "export_after_sync": "Only effective when 'Enable Markdown back-export' is on."
         }
       }
     }
@@ -90,6 +99,20 @@
     "preview": {
       "name": "同步预览",
       "description": "记录将创建/更新哪些页面，但不向 BookStack 写入任何内容。"
+    },
+    "export_markdown": {
+      "name": "Export Markdown (opt-in)",
+      "description": "Exports every managed BookStack page as a plain Markdown file with YAML frontmatter, idempotent. Disabled by default - enable it in the integration's options first.",
+      "fields": {
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Log what would be written without touching the filesystem."
+        },
+        "output_path": {
+          "name": "Output path override",
+          "description": "Override the configured export path for this call only."
+        }
+      }
     }
   },
   "entity": {
@@ -129,6 +152,9 @@
     },
     "bookstack_auth_failed": {
       "message": "BookStack 拒绝了 API 令牌。请在 BookStack 中更新令牌并使用 Reauth 流程。"
+    },
+    "export_disabled": {
+      "message": "Markdown export is disabled. Enable it in the integration's options under 'Enable Markdown back-export' before calling this service."
     }
   }
 }

@@ -44,7 +44,8 @@
       "no_books": "V tem primerku BookStack ni najdene nobene knjige. Najprej ustvarite ciljno knjigo.",
       "unknown": "Nepričakovana napaka — preverite dnevnik Home Assistant.",
       "base_url_invalid_scheme": "URL se mora začeti s http:// ali https://.",
-      "base_url_missing_host": "URL je nepopoln — manjka ime gostitelja."
+      "base_url_missing_host": "URL je nepopoln — manjka ime gostitelja.",
+      "path_invalid": "Path must be absolute and the parent directory must already exist."
     },
     "abort": {
       "already_configured": "Ta primerek BookStack je že konfiguriran.",
@@ -61,7 +62,15 @@
           "book_id": "Ciljna knjiga",
           "sync_interval": "Interval sinhronizacije",
           "excluded_areas": "Izključena območja (ne bodo sinhronizirana)",
-          "output_language": "Jezik strani BookStack"
+          "output_language": "Jezik strani BookStack",
+          "export_enabled": "Enable Markdown back-export (off by default)",
+          "export_path": "Export folder (absolute path)",
+          "export_after_sync": "Run export automatically after each sync"
+        },
+        "data_description": {
+          "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
+          "export_after_sync": "Only effective when 'Enable Markdown back-export' is on."
         }
       }
     }
@@ -90,6 +99,20 @@
     "preview": {
       "name": "Predogled sinhronizacije",
       "description": "Beleži, katere strani bi bile ustvarjene/posodobljene, ne da bi karkoli zapisal v BookStack."
+    },
+    "export_markdown": {
+      "name": "Export Markdown (opt-in)",
+      "description": "Exports every managed BookStack page as a plain Markdown file with YAML frontmatter, idempotent. Disabled by default - enable it in the integration's options first.",
+      "fields": {
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Log what would be written without touching the filesystem."
+        },
+        "output_path": {
+          "name": "Output path override",
+          "description": "Override the configured export path for this call only."
+        }
+      }
     }
   },
   "entity": {
@@ -129,6 +152,9 @@
     },
     "bookstack_auth_failed": {
       "message": "BookStack je zavrnil API žeton. Obnovite žeton v BookStacku in uporabite postopek Reauth."
+    },
+    "export_disabled": {
+      "message": "Markdown export is disabled. Enable it in the integration's options under 'Enable Markdown back-export' before calling this service."
     }
   }
 }

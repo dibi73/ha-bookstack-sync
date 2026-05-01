@@ -464,9 +464,12 @@ def test_package_modules_all_parse() -> None:
     Regression guard: every Python file in the package must parse cleanly.
 
     The Python-2-syntax ``except TypeError, ValueError`` bug in
-    sync.py:_needs_move keeps regressing during rebases (fixed in v0.5.1,
-    v0.8.0, v0.8.2, v0.9.0). This test fails fast when any file in the
-    package can't be byte-compiled.
+    sync.py:_needs_move kept regressing during rebases (fixed in v0.5.1,
+    v0.8.0, v0.8.2, v0.9.0). v0.13.0 refactored ``_needs_move`` to drop
+    the multi-except entirely — early-return when ``raw is None``, single
+    ``except`` otherwise — so the historical foot-gun is gone. This test
+    stays as a guard against future ``except A, B:`` slips that are valid
+    on Python 3.14 (HA-required) but break on 3.13 / older toolchains.
     """
     import ast  # noqa: PLC0415 - test-only
     from pathlib import Path  # noqa: PLC0415 - test-only

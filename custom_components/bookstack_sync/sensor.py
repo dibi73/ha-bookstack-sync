@@ -9,7 +9,12 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import ATTRIBUTION, DOMAIN
+from .const import (
+    ATTRIBUTION,
+    CONF_EXPORT_ENABLED,
+    DEFAULT_EXPORT_ENABLED,
+    DOMAIN,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -69,11 +74,11 @@ class BookStackSyncStatusSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Counts + timestamp for the last completed sync."""
+        """Counts + timestamp for the last completed sync (and last export)."""
         report = self.coordinator.last_report
         last_run = self.coordinator.last_run
         if report is None:
-            return {
+            attrs: dict[str, Any] = {
                 "last_run": None,
                 "created": 0,
                 "updated": 0,
@@ -83,19 +88,46 @@ class BookStackSyncStatusSensor(CoordinatorEntity, SensorEntity):
                 "errors": [],
                 "total_pages": 0,
             }
-        return {
-            "last_run": last_run.isoformat() if last_run else None,
-            "created": len(report.created),
-            "updated": len(report.updated),
-            "unchanged": len(report.unchanged),
-            "tombstoned": len(report.tombstoned),
-            "skipped_conflict": len(report.skipped_conflict),
-            "errors": report.errors,
-            "total_pages": (
-                len(report.created)
-                + len(report.updated)
-                + len(report.unchanged)
-                + len(report.tombstoned)
-                + len(report.skipped_conflict)
-            ),
-        }
+        else:
+            attrs = {
+                "last_run": last_run.isoformat() if last_run else None,
+                "created": len(report.created),
+                "updated": len(report.updated),
+                "unchanged": len(report.unchanged),
+                "tombstoned": len(report.tombstoned),
+                "skipped_conflict": len(report.skipped_conflict),
+                "errors": report.errors,
+                "total_pages": (
+                    len(report.created)
+                    + len(report.updated)
+                    + len(report.unchanged)
+                    + len(report.tombstoned)
+                    + len(report.skipped_conflict)
+                ),
+            }
+        # Markdown back-export attributes only appear when the user has
+        # opted in. Until then we don't pollute the sensor with zeros.
+        options = self.coordinator.config_entry.options or {}
+        if options.get(CONF_EXPORT_ENABLED, DEFAULT_EXPORT_ENABLED):
+            export = self.coordinator.last_export_result
+            if export is not None:
+                attrs.update(
+                    {
+                        "export_files_written": export.written,
+                        "export_files_unchanged": export.unchanged,
+                        "export_files_deleted": export.deleted_old,
+                        "export_errors": export.errors,
+                        "export_path": export.output_path,
+                    },
+                )
+            else:
+                attrs.update(
+                    {
+                        "export_files_written": 0,
+                        "export_files_unchanged": 0,
+                        "export_files_deleted": 0,
+                        "export_errors": 0,
+                        "export_path": None,
+                    },
+                )
+        return attrs

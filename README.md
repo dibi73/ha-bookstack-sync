@@ -130,8 +130,84 @@ skipped with a warning rather than clobbered.
   after adding a new device.
 - **`bookstack_sync.preview`** — dry run. Logs to the HA log what
   would be created / updated, but writes nothing to BookStack.
+- **`bookstack_sync.export_markdown`** — opt-in: write every managed
+  BookStack page back to a folder of plain Markdown files for use as
+  RAG / LLM input. **Disabled by default** — see *Markdown export for
+  RAG* below.
 
-Both available from *Developer Tools → Actions* or via automations.
+All three available from *Developer Tools → Actions* or via automations.
+
+## Markdown export for RAG (opt-in)
+
+Since v0.13.0 the integration can also write the merged content (auto
+block + your manual notes) back to a folder of plain Markdown files
+with YAML frontmatter — the universal input format for RAG / LLM
+pipelines (LangChain `ObsidianLoader`, LlamaIndex `ObsidianReader`,
+Open WebUI Knowledge Base, …).
+
+> **Default off.** The export costs disk space and CPU on every run,
+> and the BookStack pages on their own already serve most users. Turn
+> it on consciously when you actually want a separate Markdown copy
+> for an external indexer. The switch lives in the integration's
+> **Configure** dialog under *Markdown-Export aktivieren*.
+
+When enabled, a flat folder structure is produced (default
+`<config>/bookstack_export/`):
+
+```
+bookstack_export/
+├── _index.md                    ← list of every exported page
+├── devices/
+│   ├── light-living-room.md
+│   └── ...
+├── areas/
+│   └── living-room.md
+└── automations/
+    └── away-mode.md
+```
+
+Each file looks like:
+
+```markdown
+---
+title: Bewegungsmelder Gang
+bookstack_page_id: 142
+bookstack_book_id: 1
+bookstack_chapter: Devices
+bookstack_tags: [zigbee, sicherheit]
+ha_object_kind: device
+ha_object_id: a1b2c3d4
+last_synced: "2026-05-01T03:00:00+00:00"
+tombstoned: false
+content_hash: 7f3a...
+---
+
+[auto block — manufacturer, model, firmware, entity list, current
+states, MQTT topic, …]
+
+---
+
+[your manual notes — preserved verbatim from BookStack]
+```
+
+Trigger options:
+
+```yaml
+# Daily at 03:30 (after the sync at 03:00)
+automation:
+  - alias: BookStack export
+    trigger:
+      - platform: time
+        at: "03:30:00"
+    action:
+      - service: bookstack_sync.export_markdown
+
+# Or: enable "Run export automatically after each sync" in the
+# integration's options — no automation needed.
+```
+
+Full schema and stack-specific snippets in
+[docs/EXPORT.md](docs/EXPORT.md).
 
 ## Status sensor
 
