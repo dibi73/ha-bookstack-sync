@@ -103,6 +103,14 @@
           "syncing": "Sync running"
         }
       }
+    },
+    "button": {
+      "run_now": {
+        "name": "Sync now"
+      },
+      "preview": {
+        "name": "Sync preview (dry-run)"
+      }
     }
   },
   "issues": {

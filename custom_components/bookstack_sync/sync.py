@@ -87,6 +87,29 @@ def _orphaned_tags() -> list[dict[str, str]]:
     return [{"name": TAG_NAME, "value": TAG_VALUE_ORPHANED}]
 
 
+def _hash_from_response(
+    response: dict,
+    fallback_auto_body: str,
+) -> tuple[str, str]:
+    """
+    Return (hash, origin) for a create/update response.
+
+    BookStack normalises the markdown when saving (whitespace, line
+    endings). If we hash what we *sent*, the next read produces a
+    different hash and we mistakenly flag it as tampered (issue #58).
+    Solution: hash what BookStack actually stored — extract the AUTO
+    block from the response's ``markdown`` field. If that field is
+    missing (older BookStack), fall back to write-side hash and mark
+    origin so the migration path takes over on the next sync.
+    """
+    saved_markdown = response.get("markdown") or ""
+    if saved_markdown:
+        saved_auto = extract_auto_block(saved_markdown)
+        if saved_auto is not None:
+            return hash_auto_block(saved_auto), "bookstack"
+    return hash_auto_block(fallback_auto_body), "write"
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -543,12 +566,15 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
                 tags=_managed_tags(),
             )
         page_id = int(created["id"])
+        # Hash what BookStack actually stored, not what we sent (#58).
+        saved_hash, hash_origin = _hash_from_response(created, page.auto_body)
         store.set(
             page.key,
             PageMapping(
                 page_id=page_id,
-                auto_block_hash=new_hash,
+                auto_block_hash=saved_hash,
                 last_seen=datetime.now(tz=UTC).isoformat(),
+                hash_origin=hash_origin,
             ),
         )
         report.created.append(page.title)
@@ -569,18 +595,39 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
     )
 
     if merged.manual_block_tampered:
-        LOGGER.warning(
-            "BookStack page %s (id=%s): AUTO block was edited outside of "
-            "Home Assistant - skipping to avoid clobbering manual changes.",
-            page.title,
-            mapping.page_id,
-        )
-        report.skipped_conflict.append(page.title)
-        report.tampered_page_keys.append(page.key)
-        report.tampered_page_titles.append(page.title)
-        return mapping.page_id
+        if mapping.hash_origin != "bookstack":
+            # Migration path (#58): legacy ``write``-origin hashes can't
+            # reliably detect tampering against BookStack's normalised
+            # storage. Trust the user, fall through to a fresh write
+            # which will store a correct ``bookstack``-origin hash.
+            LOGGER.info(
+                "BookStack page %s (id=%s): write-origin hash from "
+                "pre-v0.11 — suppressing tampering check on this run, "
+                "migrating to bookstack-origin hash.",
+                page.title,
+                mapping.page_id,
+            )
+        else:
+            LOGGER.warning(
+                "BookStack page %s (id=%s): AUTO block was edited outside "
+                "of Home Assistant - skipping to avoid clobbering manual "
+                "changes.",
+                page.title,
+                mapping.page_id,
+            )
+            report.skipped_conflict.append(page.title)
+            report.tampered_page_keys.append(page.key)
+            report.tampered_page_titles.append(page.title)
+            return mapping.page_id
 
-    if existing_auto_hash == new_hash and not needs_move:
+    if (
+        existing_auto_hash == new_hash
+        and not needs_move
+        and mapping.hash_origin == "bookstack"
+    ):
+        # Skip-on-unchanged needs a trustworthy stored hash — only
+        # safe when origin is ``bookstack``. Legacy ``write`` mappings
+        # always re-write once to settle into the new regime.
         report.unchanged.append(page.title)
         mapping.last_seen = datetime.now(tz=UTC).isoformat()
         store.set(page.key, mapping)
@@ -590,20 +637,22 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
         report.updated.append(page.title)
         return mapping.page_id
 
-    await client.update_page(
+    saved = await client.update_page(
         mapping.page_id,
         page.title,
         merged.body,
         chapter_id=chapter_id if needs_move else None,
         tags=_managed_tags(),
     )
+    saved_hash, hash_origin = _hash_from_response(saved, page.auto_body)
     store.set(
         page.key,
         PageMapping(
             page_id=mapping.page_id,
-            auto_block_hash=merged.auto_hash,
+            auto_block_hash=saved_hash,
             last_seen=datetime.now(tz=UTC).isoformat(),
             tombstoned_at=None,  # device is back; clear any prior tombstone
+            hash_origin=hash_origin,
         ),
     )
     report.updated.append(page.title)
@@ -694,7 +743,6 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
     dry_run: bool,
 ) -> None:
     auto_body = render_tombstone_auto_block(strings, now)
-    new_hash = hash_auto_block(auto_body)
 
     existing = await client.get_page(mapping.page_id)
     existing_markdown = existing.get("markdown") or existing.get("raw_html") or ""
@@ -707,14 +755,23 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
     )
 
     if merged.manual_block_tampered:
-        LOGGER.warning(
-            "BookStack page id=%s (%s): AUTO block was edited manually - "
-            "skipping tombstone to preserve manual changes.",
-            mapping.page_id,
-            key,
-        )
-        report.skipped_conflict.append(f"{key} (tombstone)")
-        return
+        if mapping.hash_origin != "bookstack":
+            # Migration path (#58): legacy write-origin hash, suppress.
+            LOGGER.info(
+                "BookStack page id=%s (%s): write-origin hash, "
+                "tombstoning anyway (migration to bookstack-origin).",
+                mapping.page_id,
+                key,
+            )
+        else:
+            LOGGER.warning(
+                "BookStack page id=%s (%s): AUTO block was edited manually "
+                "- skipping tombstone to preserve manual changes.",
+                mapping.page_id,
+                key,
+            )
+            report.skipped_conflict.append(f"{key} (tombstone)")
+            return
 
     existing_name = existing.get("name") or key
 
@@ -722,19 +779,21 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
         report.tombstoned.append(existing_name)
         return
 
-    await client.update_page(
+    saved = await client.update_page(
         mapping.page_id,
         existing_name,
         merged.body,
         tags=_orphaned_tags(),
     )
+    saved_hash, hash_origin = _hash_from_response(saved, auto_body)
     store.set(
         key,
         PageMapping(
             page_id=mapping.page_id,
-            auto_block_hash=new_hash,
+            auto_block_hash=saved_hash,
             last_seen=mapping.last_seen,
             tombstoned_at=now.isoformat(),
+            hash_origin=hash_origin,
         ),
     )
     report.tombstoned.append(existing_name)

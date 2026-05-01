@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     from .data import BookStackSyncConfigEntry
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
 
 
 async def async_setup_entry(
