@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStack-tilkobling",
+        "description": "Koble Home Assistant til BookStack-instansen din.\n\nI BookStack går du til *Min konto → API-tokens*, oppretter et token og limer inn ID og hemmelighet her.\n\nDokumentasjon: {documentation_url}",
+        "data": {
+          "base_url": "BookStack-URL",
+          "token_id": "API-token-ID",
+          "token_secret": "API-token-hemmelighet",
+          "verify_ssl": "Verifiser TLS-sertifikat (deaktiver for selvsignerte)"
+        }
+      },
+      "book": {
+        "title": "Velg målbok",
+        "description": "Hvilken bok skal Home Assistant synkronisere til? Manuelt lagt til innhold på sidene blir bevart.",
+        "data": {
+          "book_id": "Målbok",
+          "sync_interval": "Synkroniseringsintervall"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Forny BookStack-token",
+        "description": "BookStack avviste API-tokenet for {base_url}. Opprett et nytt token i BookStack og lim inn ID og hemmelighet her — URL og målbok forblir uendret.",
+        "data": {
+          "token_id": "API-token-ID",
+          "token_secret": "API-token-hemmelighet"
+        }
+      },
+      "reconfigure": {
+        "title": "Juster BookStack-tilkobling",
+        "description": "Endre URL, token eller TLS-innstilling for denne tilkoblingen. Målboken og alle sidetilordninger beholdes. URL-en må peke til samme BookStack-instans som tidligere.",
+        "data": {
+          "base_url": "BookStack-URL",
+          "token_id": "API-token-ID",
+          "token_secret": "API-token-hemmelighet",
+          "verify_ssl": "Verifiser TLS-sertifikat (deaktiver for selvsignerte)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API-token avvist eller tillatelser mangler.",
+      "connection": "Kan ikke nå BookStack.",
+      "no_books": "Ingen bøker funnet i denne BookStack-instansen. Opprett en målbok først.",
+      "unknown": "Uventet feil — sjekk Home Assistant-loggen.",
+      "base_url_invalid_scheme": "URL-en må starte med http:// eller https://.",
+      "base_url_missing_host": "URL-en er ufullstendig — vertsnavnet mangler."
+    },
+    "abort": {
+      "already_configured": "Denne BookStack-instansen er allerede konfigurert.",
+      "reauth_successful": "Token fornyet — BookStack-tilkobling gjenopprettet.",
+      "reconfigure_successful": "Tilkobling oppdatert — BookStack Sync er rekonfigurert.",
+      "url_mismatch": "Den nye URL-en peker til en annen BookStack-instans. Fjern den opprinnelige oppføringen og legg til en ny."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BookStack Sync-innstillinger",
+        "data": {
+          "book_id": "Målbok",
+          "sync_interval": "Synkroniseringsintervall",
+          "excluded_areas": "Ekskluderte områder (vil ikke synkroniseres)",
+          "output_language": "Språk for BookStack-sider"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Hver time",
+        "daily": "Daglig",
+        "manual": "Bare manuelt (tjenestekall)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Som Home Assistant (auto)",
+        "de": "Tysk",
+        "en": "Engelsk"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Synkroniser nå",
+      "description": "Starter en synkronisering umiddelbart uten å vente på intervallet."
+    },
+    "preview": {
+      "name": "Forhåndsvisning av synkronisering",
+      "description": "Logger hvilke sider som ville bli opprettet/oppdatert uten å skrive noe til BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Synkroniseringsstatus",
+        "state": {
+          "ok": "OK",
+          "error": "Feil",
+          "never_run": "Aldri kjørt",
+          "syncing": "Synkronisering pågår"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Synkroniser nå"
+      },
+      "preview": {
+        "name": "Forhåndsvisning av synkronisering (tørrkjøring)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack er utilgjengelig",
+      "description": "BookStack Sync-integrasjonen kunne ikke nå BookStack-instansen i {count} påfølgende synkroniseringer. Vanlige årsaker: BookStack-containeren er stoppet, nettverksproblem eller en revers-proxy avviser tilkoblinger. Neste vellykkede synkronisering løser dette varselet automatisk."
+    },
+    "page_tampered": {
+      "title": "En sides AUTO-blokk er redigert manuelt",
+      "description": "Siden «{page_title}» i BookStack har en AUTO-blokk som ble redigert utenfor Home Assistant. Integrasjonen hoppet over denne siden under synkronisering for ikke å overskrive endringene dine. Flytt notatene dine til MANUAL-blokken eller angre endringen i AUTO-blokken slik at neste synkronisering kan oppdatere siden igjen."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "BookStack-instans utilgjengelig (se Home Assistant-loggen for detaljer)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack avviste API-tokenet. Forny tokenet i BookStack og bruk Reauth-flyten."
+    }
+  }
+}

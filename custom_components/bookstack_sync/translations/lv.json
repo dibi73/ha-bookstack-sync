@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStack savienojums",
+        "description": "Savienojiet Home Assistant ar savu BookStack instanci.\n\nBookStack dodieties uz *Mans konts → API marķieri*, izveidojiet marķieri un ielīmējiet ID un noslēpumu šeit.\n\nDokumentācija: {documentation_url}",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API marķiera ID",
+          "token_secret": "API marķiera noslēpums",
+          "verify_ssl": "Pārbaudīt TLS sertifikātu (atspējojiet pašparakstītiem)"
+        }
+      },
+      "book": {
+        "title": "Izvēlieties mērķa grāmatu",
+        "description": "Kurā grāmatā Home Assistant jāsinhronizē? Manuāli pievienots saturs lapās tiek saglabāts.",
+        "data": {
+          "book_id": "Mērķa grāmata",
+          "sync_interval": "Sinhronizācijas intervāls"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Atjaunot BookStack marķieri",
+        "description": "BookStack noraidīja API marķieri {base_url}. Izveidojiet jaunu marķieri BookStack un ielīmējiet ID un noslēpumu šeit — URL un mērķa grāmata paliek nemainīgi.",
+        "data": {
+          "token_id": "API marķiera ID",
+          "token_secret": "API marķiera noslēpums"
+        }
+      },
+      "reconfigure": {
+        "title": "Pielāgot BookStack savienojumu",
+        "description": "Mainiet šī savienojuma URL, marķieri vai TLS iestatījumu. Mērķa grāmata un visi lapu kartējumi tiek saglabāti. URL ir jānorāda uz to pašu BookStack instanci kā iepriekš.",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API marķiera ID",
+          "token_secret": "API marķiera noslēpums",
+          "verify_ssl": "Pārbaudīt TLS sertifikātu (atspējojiet pašparakstītiem)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API marķieris noraidīts vai trūkst atļauju.",
+      "connection": "Nevar sasniegt BookStack.",
+      "no_books": "Šajā BookStack instancē nav atrasta neviena grāmata. Vispirms izveidojiet mērķa grāmatu.",
+      "unknown": "Negaidīta kļūda — pārbaudiet Home Assistant žurnālu.",
+      "base_url_invalid_scheme": "URL ir jāsākas ar http:// vai https://.",
+      "base_url_missing_host": "URL ir nepilnīgs — trūkst resursdatora nosaukuma."
+    },
+    "abort": {
+      "already_configured": "Šī BookStack instance jau ir konfigurēta.",
+      "reauth_successful": "Marķieris atjaunots — BookStack savienojums atjaunots.",
+      "reconfigure_successful": "Savienojums atjaunināts — BookStack Sync ir pārkonfigurēts.",
+      "url_mismatch": "Jaunais URL norāda uz citu BookStack instanci. Noņemiet sākotnējo ierakstu un pievienojiet jaunu."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BookStack Sync iestatījumi",
+        "data": {
+          "book_id": "Mērķa grāmata",
+          "sync_interval": "Sinhronizācijas intervāls",
+          "excluded_areas": "Izslēgtie apgabali (netiks sinhronizēti)",
+          "output_language": "BookStack lapu valoda"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Katru stundu",
+        "daily": "Katru dienu",
+        "manual": "Tikai manuāli (pakalpojuma izsaukums)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Kā Home Assistant (auto)",
+        "de": "Vācu",
+        "en": "Angļu"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Sinhronizēt tagad",
+      "description": "Nekavējoties sāk sinhronizāciju, negaidot intervālu."
+    },
+    "preview": {
+      "name": "Sinhronizācijas priekšskatījums",
+      "description": "Reģistrē, kuras lapas tiktu izveidotas/atjauninātas, nerakstot neko BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Sinhronizācijas statuss",
+        "state": {
+          "ok": "OK",
+          "error": "Kļūda",
+          "never_run": "Vēl nav palaists",
+          "syncing": "Notiek sinhronizācija"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Sinhronizēt tagad"
+      },
+      "preview": {
+        "name": "Sinhronizācijas priekšskatījums (testa palaišana)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack nav sasniedzams",
+      "description": "BookStack Sync integrācija nevarēja sasniegt BookStack instanci {count} secīgu sinhronizāciju laikā. Bieži cēloņi: BookStack konteiners ir apturēts, tīkla problēma vai apgrieztais starpniekserveris noraida savienojumus. Nākamā veiksmīgā sinhronizācija automātiski atrisinās šo paziņojumu."
+    },
+    "page_tampered": {
+      "title": "Lapas AUTO bloks rediģēts manuāli",
+      "description": "Lapai „{page_title}\" BookStack ir AUTO bloks, kas tika rediģēts ārpus Home Assistant. Integrācija izlaida šo lapu sinhronizācijas laikā, lai nepārrakstītu jūsu izmaiņas. Pārvietojiet piezīmes uz MANUAL bloku vai atsauciet izmaiņas AUTO blokā, lai nākamā sinhronizācija atkal varētu atjaunināt lapu."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "BookStack instance nav sasniedzama (sīkāku informāciju skatiet Home Assistant žurnālā)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack noraidīja API marķieri. Atjaunojiet marķieri BookStack un izmantojiet Reauth plūsmu."
+    }
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Σύνδεση BookStack",
+        "description": "Συνδέστε το Home Assistant με την εγκατάστασή σας του BookStack.\n\nΣτο BookStack μεταβείτε στο *Ο λογαριασμός μου → API tokens*, δημιουργήστε ένα token και επικολλήστε το ID και το μυστικό εδώ.\n\nΤεκμηρίωση: {documentation_url}",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API token ID",
+          "token_secret": "API token μυστικό",
+          "verify_ssl": "Επαλήθευση πιστοποιητικού TLS (απενεργοποιήστε για αυτο-υπογεγραμμένα)"
+        }
+      },
+      "book": {
+        "title": "Επιλέξτε βιβλίο προορισμού",
+        "description": "Σε ποιο βιβλίο πρέπει το Home Assistant να συγχρονίσει; Το χειροκίνητα προστιθέμενο περιεχόμενο εντός σελίδων διατηρείται.",
+        "data": {
+          "book_id": "Βιβλίο προορισμού",
+          "sync_interval": "Διάστημα συγχρονισμού"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Ανανέωση BookStack token",
+        "description": "Το BookStack απέρριψε το API token για {base_url}. Δημιουργήστε νέο token στο BookStack και επικολλήστε το ID και το μυστικό εδώ — η διεύθυνση URL και το βιβλίο προορισμού παραμένουν τα ίδια.",
+        "data": {
+          "token_id": "API token ID",
+          "token_secret": "API token μυστικό"
+        }
+      },
+      "reconfigure": {
+        "title": "Προσαρμογή σύνδεσης BookStack",
+        "description": "Αλλάξτε URL, token ή ρύθμιση TLS για αυτή τη σύνδεση. Το βιβλίο προορισμού και όλες οι αντιστοιχίσεις σελίδων διατηρούνται. Η διεύθυνση URL πρέπει να δείχνει στην ίδια εγκατάσταση BookStack όπως πριν.",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API token ID",
+          "token_secret": "API token μυστικό",
+          "verify_ssl": "Επαλήθευση πιστοποιητικού TLS (απενεργοποιήστε για αυτο-υπογεγραμμένα)"
+        }
+      }
+    },
+    "error": {
+      "auth": "Το API token απορρίφθηκε ή λείπουν δικαιώματα.",
+      "connection": "Δεν είναι δυνατή η πρόσβαση στο BookStack.",
+      "no_books": "Δεν βρέθηκε βιβλίο σε αυτή την εγκατάσταση BookStack. Δημιουργήστε πρώτα ένα βιβλίο προορισμού.",
+      "unknown": "Απρόσμενο σφάλμα — ελέγξτε το αρχείο καταγραφής Home Assistant.",
+      "base_url_invalid_scheme": "Η URL πρέπει να ξεκινά με http:// ή https://.",
+      "base_url_missing_host": "Η URL είναι ελλιπής — λείπει το όνομα κεντρικού υπολογιστή."
+    },
+    "abort": {
+      "already_configured": "Αυτή η εγκατάσταση BookStack είναι ήδη ρυθμισμένη.",
+      "reauth_successful": "Token ανανεώθηκε — η σύνδεση BookStack αποκαταστάθηκε.",
+      "reconfigure_successful": "Η σύνδεση ενημερώθηκε — το BookStack Sync αναδιαμορφώθηκε.",
+      "url_mismatch": "Η νέα URL δείχνει σε διαφορετική εγκατάσταση BookStack. Αφαιρέστε την αρχική καταχώρηση και προσθέστε μια νέα."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ρυθμίσεις BookStack Sync",
+        "data": {
+          "book_id": "Βιβλίο προορισμού",
+          "sync_interval": "Διάστημα συγχρονισμού",
+          "excluded_areas": "Εξαιρούμενες περιοχές (δεν θα συγχρονιστούν)",
+          "output_language": "Γλώσσα των σελίδων BookStack"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Ωριαία",
+        "daily": "Καθημερινά",
+        "manual": "Μόνο χειροκίνητα (κλήση υπηρεσίας)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Όπως το Home Assistant (αυτόματα)",
+        "de": "Γερμανικά",
+        "en": "Αγγλικά"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Συγχρονισμός τώρα",
+      "description": "Ξεκινά συγχρονισμό αμέσως, χωρίς αναμονή για το διάστημα."
+    },
+    "preview": {
+      "name": "Προεπισκόπηση συγχρονισμού",
+      "description": "Καταγράφει ποιες σελίδες θα δημιουργούνταν/ενημερώνονταν χωρίς να γράφει τίποτα στο BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Κατάσταση συγχρονισμού",
+        "state": {
+          "ok": "OK",
+          "error": "Σφάλμα",
+          "never_run": "Δεν έχει εκτελεστεί ποτέ",
+          "syncing": "Συγχρονισμός σε εξέλιξη"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Συγχρονισμός τώρα"
+      },
+      "preview": {
+        "name": "Προεπισκόπηση συγχρονισμού (δοκιμαστική)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "Το BookStack δεν είναι προσβάσιμο",
+      "description": "Η ενσωμάτωση BookStack Sync δεν μπόρεσε να φτάσει στην εγκατάσταση BookStack για {count} συνεχόμενους συγχρονισμούς. Συνηθισμένες αιτίες: το BookStack container είναι σταματημένο, πρόβλημα δικτύου ή reverse proxy απορρίπτει συνδέσεις. Ο επόμενος επιτυχής συγχρονισμός επιλύει αυτή την ειδοποίηση αυτόματα."
+    },
+    "page_tampered": {
+      "title": "Το AUTO block μιας σελίδας έχει επεξεργαστεί χειροκίνητα",
+      "description": "Η σελίδα „{page_title}\" στο BookStack έχει AUTO block που επεξεργάστηκε εκτός Home Assistant. Η ενσωμάτωση παρέλειψε αυτή τη σελίδα κατά τον συγχρονισμό για να μην αντικαταστήσει τις αλλαγές σας. Μετακινήστε τις σημειώσεις σας στο MANUAL block ή αναιρέστε την αλλαγή στο AUTO block, ώστε ο επόμενος συγχρονισμός να ενημερώσει ξανά τη σελίδα."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "Η εγκατάσταση BookStack δεν είναι προσβάσιμη (δείτε το αρχείο καταγραφής Home Assistant για λεπτομέρειες)."
+    },
+    "bookstack_auth_failed": {
+      "message": "Το BookStack απέρριψε το API token. Ανανεώστε το token στο BookStack και χρησιμοποιήστε τη ροή Reauth."
+    }
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "การเชื่อมต่อ BookStack",
+        "description": "เชื่อมต่อ Home Assistant เข้ากับอินสแตนซ์ BookStack ของคุณ\n\nใน BookStack ไปที่ *บัญชีของฉัน → API tokens* สร้าง token แล้ววาง ID และ secret ที่นี่\n\nเอกสารประกอบ: {documentation_url}",
+        "data": {
+          "base_url": "URL ของ BookStack",
+          "token_id": "API token ID",
+          "token_secret": "API token secret",
+          "verify_ssl": "ตรวจสอบใบรับรอง TLS (ปิดสำหรับใบรับรองที่ลงนามด้วยตนเอง)"
+        }
+      },
+      "book": {
+        "title": "เลือกหนังสือปลายทาง",
+        "description": "Home Assistant ควรซิงค์ไปยังหนังสือใด เนื้อหาที่เพิ่มด้วยตนเองในหน้าจะถูกเก็บรักษาไว้",
+        "data": {
+          "book_id": "หนังสือปลายทาง",
+          "sync_interval": "ช่วงเวลาการซิงค์"
+        }
+      },
+      "reauth_confirm": {
+        "title": "ต่ออายุ token ของ BookStack",
+        "description": "BookStack ปฏิเสธ API token สำหรับ {base_url} สร้าง token ใหม่ใน BookStack แล้ววาง ID และ secret ที่นี่ — URL และหนังสือปลายทางจะยังคงเหมือนเดิม",
+        "data": {
+          "token_id": "API token ID",
+          "token_secret": "API token secret"
+        }
+      },
+      "reconfigure": {
+        "title": "ปรับการเชื่อมต่อ BookStack",
+        "description": "เปลี่ยน URL, token หรือการตั้งค่า TLS ของการเชื่อมต่อนี้ หนังสือปลายทางและการแมปหน้าทั้งหมดจะถูกเก็บไว้ URL ต้องชี้ไปยังอินสแตนซ์ BookStack เดิมเช่นเดียวกับก่อนหน้านี้",
+        "data": {
+          "base_url": "URL ของ BookStack",
+          "token_id": "API token ID",
+          "token_secret": "API token secret",
+          "verify_ssl": "ตรวจสอบใบรับรอง TLS (ปิดสำหรับใบรับรองที่ลงนามด้วยตนเอง)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API token ถูกปฏิเสธหรือสิทธิ์ไม่เพียงพอ",
+      "connection": "ไม่สามารถเข้าถึง BookStack",
+      "no_books": "ไม่พบหนังสือในอินสแตนซ์ BookStack นี้ โปรดสร้างหนังสือปลายทางก่อน",
+      "unknown": "ข้อผิดพลาดที่ไม่คาดคิด — โปรดตรวจสอบบันทึกของ Home Assistant",
+      "base_url_invalid_scheme": "URL ต้องขึ้นต้นด้วย http:// หรือ https://",
+      "base_url_missing_host": "URL ไม่สมบูรณ์ — ขาดชื่อโฮสต์"
+    },
+    "abort": {
+      "already_configured": "อินสแตนซ์ BookStack นี้ได้รับการกำหนดค่าแล้ว",
+      "reauth_successful": "Token ได้รับการต่ออายุ — การเชื่อมต่อ BookStack กลับมาแล้ว",
+      "reconfigure_successful": "การเชื่อมต่อได้รับการอัปเดต — BookStack Sync ถูกกำหนดค่าใหม่แล้ว",
+      "url_mismatch": "URL ใหม่ชี้ไปยังอินสแตนซ์ BookStack อื่น โปรดลบรายการเดิมออกแล้วเพิ่มรายการใหม่"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "การตั้งค่า BookStack Sync",
+        "data": {
+          "book_id": "หนังสือปลายทาง",
+          "sync_interval": "ช่วงเวลาการซิงค์",
+          "excluded_areas": "พื้นที่ที่ยกเว้น (จะไม่ถูกซิงค์)",
+          "output_language": "ภาษาของหน้า BookStack"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "ทุกชั่วโมง",
+        "daily": "รายวัน",
+        "manual": "ด้วยตนเองเท่านั้น (เรียกบริการ)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "เหมือน Home Assistant (อัตโนมัติ)",
+        "de": "เยอรมัน",
+        "en": "อังกฤษ"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "ซิงค์ทันที",
+      "description": "เริ่มการซิงค์ทันทีโดยไม่ต้องรอช่วงเวลา"
+    },
+    "preview": {
+      "name": "ตัวอย่างการซิงค์",
+      "description": "บันทึกว่าหน้าใดจะถูกสร้าง/อัปเดต โดยไม่เขียนอะไรลงใน BookStack"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "สถานะการซิงค์",
+        "state": {
+          "ok": "OK",
+          "error": "ข้อผิดพลาด",
+          "never_run": "ยังไม่เคยรัน",
+          "syncing": "กำลังซิงค์"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "ซิงค์ทันที"
+      },
+      "preview": {
+        "name": "ตัวอย่างการซิงค์ (รันทดลอง)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "ไม่สามารถเข้าถึง BookStack ได้",
+      "description": "การผสานรวม BookStack Sync ไม่สามารถเข้าถึงอินสแตนซ์ BookStack ได้เป็นเวลา {count} การซิงค์ติดต่อกัน สาเหตุที่พบบ่อย: คอนเทนเนอร์ BookStack หยุดทำงาน ปัญหาเครือข่าย หรือ reverse proxy ปฏิเสธการเชื่อมต่อ การซิงค์ที่สำเร็จครั้งต่อไปจะแก้ไขการแจ้งเตือนนี้โดยอัตโนมัติ"
+    },
+    "page_tampered": {
+      "title": "บล็อก AUTO ของหน้าถูกแก้ไขด้วยตนเอง",
+      "description": "หน้า „{page_title}\" ใน BookStack มีบล็อก AUTO ที่ถูกแก้ไขนอก Home Assistant การผสานรวมข้ามหน้านี้ระหว่างการซิงค์เพื่อไม่ให้เขียนทับการเปลี่ยนแปลงของคุณ ย้ายบันทึกของคุณไปยังบล็อก MANUAL หรือยกเลิกการเปลี่ยนแปลงในบล็อก AUTO เพื่อให้การซิงค์ครั้งถัดไปสามารถอัปเดตหน้าได้อีกครั้ง"
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "ไม่สามารถเข้าถึงอินสแตนซ์ BookStack (ดูรายละเอียดในบันทึกของ Home Assistant)"
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack ปฏิเสธ API token โปรดต่ออายุ token ใน BookStack และใช้กระบวนการ Reauth"
+    }
+  }
+}

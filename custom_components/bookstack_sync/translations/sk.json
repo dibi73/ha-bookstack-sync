@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pripojenie BookStack",
+        "description": "Pripojte Home Assistant k vašej inštancii BookStack.\n\nV BookStacku prejdite na *Môj účet → API tokeny*, vytvorte token a vložte tu ID a tajný kľúč.\n\nDokumentácia: {documentation_url}",
+        "data": {
+          "base_url": "URL adresa BookStack",
+          "token_id": "ID API tokenu",
+          "token_secret": "Tajný kľúč API tokenu",
+          "verify_ssl": "Overiť TLS certifikát (zakážte pre samopodpísané)"
+        }
+      },
+      "book": {
+        "title": "Vyberte cieľovú knihu",
+        "description": "Do ktorej knihy má Home Assistant synchronizovať? Manuálne pridaný obsah na stránkach zostane zachovaný.",
+        "data": {
+          "book_id": "Cieľová kniha",
+          "sync_interval": "Interval synchronizácie"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Obnoviť BookStack token",
+        "description": "BookStack zamietol API token pre {base_url}. Vytvorte nový token v BookStacku a vložte tu ID a tajný kľúč — URL a cieľová kniha zostávajú rovnaké.",
+        "data": {
+          "token_id": "ID API tokenu",
+          "token_secret": "Tajný kľúč API tokenu"
+        }
+      },
+      "reconfigure": {
+        "title": "Upraviť pripojenie BookStack",
+        "description": "Zmeňte URL, token alebo nastavenie TLS tohto pripojenia. Cieľová kniha a všetky priradenia stránok zostanú zachované. URL musí ukazovať na tú istú inštanciu BookStack ako predtým.",
+        "data": {
+          "base_url": "URL adresa BookStack",
+          "token_id": "ID API tokenu",
+          "token_secret": "Tajný kľúč API tokenu",
+          "verify_ssl": "Overiť TLS certifikát (zakážte pre samopodpísané)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API token zamietnutý alebo chýbajú oprávnenia.",
+      "connection": "BookStack sa nedá dosiahnuť.",
+      "no_books": "V tejto inštancii BookStack sa nenašla žiadna kniha. Najprv vytvorte cieľovú knihu.",
+      "unknown": "Neočakávaná chyba — skontrolujte protokol Home Assistant.",
+      "base_url_invalid_scheme": "URL musí začínať http:// alebo https://.",
+      "base_url_missing_host": "URL je neúplné — chýba názov hostiteľa."
+    },
+    "abort": {
+      "already_configured": "Táto inštancia BookStack je už nakonfigurovaná.",
+      "reauth_successful": "Token obnovený — pripojenie BookStack obnovené.",
+      "reconfigure_successful": "Pripojenie aktualizované — BookStack Sync bol prekonfigurovaný.",
+      "url_mismatch": "Nová URL ukazuje na inú inštanciu BookStack. Odstráňte pôvodnú položku a pridajte novú."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nastavenia BookStack Sync",
+        "data": {
+          "book_id": "Cieľová kniha",
+          "sync_interval": "Interval synchronizácie",
+          "excluded_areas": "Vylúčené oblasti (nebudú synchronizované)",
+          "output_language": "Jazyk stránok BookStack"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Každú hodinu",
+        "daily": "Denne",
+        "manual": "Iba manuálne (volanie služby)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Ako Home Assistant (auto)",
+        "de": "Nemecky",
+        "en": "Anglicky"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Synchronizovať teraz",
+      "description": "Spustí synchronizáciu okamžite bez čakania na interval."
+    },
+    "preview": {
+      "name": "Náhľad synchronizácie",
+      "description": "Zaznamená, ktoré stránky by sa vytvorili/aktualizovali, bez zapisovania čohokoľvek do BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Stav synchronizácie",
+        "state": {
+          "ok": "OK",
+          "error": "Chyba",
+          "never_run": "Ešte nebolo spustené",
+          "syncing": "Synchronizácia prebieha"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Synchronizovať teraz"
+      },
+      "preview": {
+        "name": "Náhľad synchronizácie (skúšobný beh)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack je nedostupný",
+      "description": "Integrácia BookStack Sync nedokázala dosiahnuť inštanciu BookStack počas {count} po sebe nasledujúcich synchronizácií. Bežné príčiny: kontajner BookStack je zastavený, problém so sieťou alebo reverzný proxy odmieta pripojenia. Ďalšia úspešná synchronizácia toto upozornenie automaticky vyrieši."
+    },
+    "page_tampered": {
+      "title": "Blok AUTO stránky bol upravený manuálne",
+      "description": "Stránka „{page_title}\" v BookStacku má blok AUTO, ktorý bol upravený mimo Home Assistant. Integrácia túto stránku počas synchronizácie preskočila, aby neprepísala vaše zmeny. Presuňte poznámky do bloku MANUAL alebo zrušte zmenu v bloku AUTO, aby ďalšia synchronizácia mohla stránku znova aktualizovať."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "Inštancia BookStack je nedostupná (podrobnosti nájdete v protokole Home Assistant)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack zamietol API token. Obnovte token v BookStacku a použite proces Reauth."
+    }
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStack връзка",
+        "description": "Свържете Home Assistant с вашата BookStack инстанция.\n\nВ BookStack отидете на *Моят акаунт → API токени*, създайте токен и поставете идентификатора и секрета тук.\n\nДокументация: {documentation_url}",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API токен идентификатор",
+          "token_secret": "API токен секрет",
+          "verify_ssl": "Проверка на TLS сертификат (изключете за самоподписани)"
+        }
+      },
+      "book": {
+        "title": "Изберете целева книга",
+        "description": "В коя книга трябва Home Assistant да синхронизира? Ръчно добавеното съдържание в страниците ще бъде запазено.",
+        "data": {
+          "book_id": "Целева книга",
+          "sync_interval": "Интервал на синхронизация"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Опресняване на BookStack токен",
+        "description": "BookStack отхвърли API токена за {base_url}. Създайте нов токен в BookStack и поставете идентификатора и секрета тук — URL адресът и целевата книга остават същите.",
+        "data": {
+          "token_id": "API токен идентификатор",
+          "token_secret": "API токен секрет"
+        }
+      },
+      "reconfigure": {
+        "title": "Промяна на BookStack връзката",
+        "description": "Променете URL, токен или TLS настройка на тази BookStack връзка. Целевата книга и всички съответствия на страници се запазват. URL адресът трябва да сочи към същата BookStack инстанция както преди.",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API токен идентификатор",
+          "token_secret": "API токен секрет",
+          "verify_ssl": "Проверка на TLS сертификат (изключете за самоподписани)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API токенът е отхвърлен или липсват разрешения.",
+      "connection": "Не може да се достигне до BookStack.",
+      "no_books": "В тази BookStack инстанция не е намерена книга. Създайте първо целева книга.",
+      "unknown": "Неочаквана грешка — проверете Home Assistant журнала.",
+      "base_url_invalid_scheme": "URL трябва да започва с http:// или https://.",
+      "base_url_missing_host": "URL е непълен — липсва име на хост."
+    },
+    "abort": {
+      "already_configured": "Тази BookStack инстанция вече е конфигурирана.",
+      "reauth_successful": "Токенът е опреснен — BookStack връзката е възстановена.",
+      "reconfigure_successful": "Връзката е актуализирана — BookStack Sync е преконфигуриран.",
+      "url_mismatch": "Новият URL сочи към различна BookStack инстанция. Моля, премахнете оригиналния запис и добавете нов."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Настройки на BookStack Sync",
+        "data": {
+          "book_id": "Целева книга",
+          "sync_interval": "Интервал на синхронизация",
+          "excluded_areas": "Изключени зони (няма да бъдат синхронизирани)",
+          "output_language": "Език на BookStack страниците"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "На час",
+        "daily": "Ежедневно",
+        "manual": "Само ръчно (повикване на услуга)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Като Home Assistant (авто)",
+        "de": "Немски",
+        "en": "Английски"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Синхронизирай сега",
+      "description": "Стартира синхронизация веднага, без да чака интервала."
+    },
+    "preview": {
+      "name": "Преглед на синхронизация",
+      "description": "Записва в журнала кои страници ще бъдат създадени/актуализирани, без да пише нищо в BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Състояние на синхронизация",
+        "state": {
+          "ok": "OK",
+          "error": "Грешка",
+          "never_run": "Никога не е стартиран",
+          "syncing": "Синхронизация в ход"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Синхронизирай сега"
+      },
+      "preview": {
+        "name": "Преглед на синхронизация (пробно)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack е недостъпен",
+      "description": "BookStack Sync интеграцията не може да достигне до BookStack инстанцията в продължение на {count} последователни синхронизации. Чести причини: BookStack контейнерът е спрян, мрежов проблем или обратен прокси отхвърля връзките. Следващата успешна синхронизация автоматично разрешава това известие."
+    },
+    "page_tampered": {
+      "title": "AUTO блокът на страница е редактиран ръчно",
+      "description": "Страницата „{page_title}\" в BookStack има AUTO блок, който е редактиран извън Home Assistant. Интеграцията пропусна тази страница, за да не презапише вашите промени. Преместете бележките си в MANUAL блока или отменете промяната в AUTO блока, за да може следващата синхронизация да актуализира страницата отново."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "BookStack инстанцията е недостъпна (вижте Home Assistant журнала за подробности)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack отхвърли API токена. Опреснете токена в BookStack и използвайте Reauth потока."
+    }
+  }
+}

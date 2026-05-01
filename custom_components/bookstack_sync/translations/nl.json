@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStack-verbinding",
+        "description": "Verbind Home Assistant met je BookStack-instantie.\n\nGa in BookStack naar *Mijn account → API-tokens*, maak een token aan en plak het ID en het geheim hier.\n\nDocumentatie: {documentation_url}",
+        "data": {
+          "base_url": "BookStack-URL",
+          "token_id": "API-token-ID",
+          "token_secret": "API-token-geheim",
+          "verify_ssl": "TLS-certificaat verifiëren (uitschakelen voor zelfondertekende)"
+        }
+      },
+      "book": {
+        "title": "Kies doelboek",
+        "description": "Naar welk boek moet Home Assistant synchroniseren? Handmatig toegevoegde inhoud op pagina's blijft behouden.",
+        "data": {
+          "book_id": "Doelboek",
+          "sync_interval": "Synchronisatie-interval"
+        }
+      },
+      "reauth_confirm": {
+        "title": "BookStack-token vernieuwen",
+        "description": "BookStack heeft het API-token voor {base_url} geweigerd. Maak een nieuw token aan in BookStack en plak ID en geheim hier — URL en doelboek blijven hetzelfde.",
+        "data": {
+          "token_id": "API-token-ID",
+          "token_secret": "API-token-geheim"
+        }
+      },
+      "reconfigure": {
+        "title": "BookStack-verbinding aanpassen",
+        "description": "Wijzig URL, token of TLS-instelling van deze verbinding. Het doelboek en alle pagina-toewijzingen blijven behouden. De URL moet naar dezelfde BookStack-instantie wijzen als voorheen.",
+        "data": {
+          "base_url": "BookStack-URL",
+          "token_id": "API-token-ID",
+          "token_secret": "API-token-geheim",
+          "verify_ssl": "TLS-certificaat verifiëren (uitschakelen voor zelfondertekende)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API-token geweigerd of machtigingen ontbreken.",
+      "connection": "Kan BookStack niet bereiken.",
+      "no_books": "Geen boek gevonden in deze BookStack-instantie. Maak eerst een doelboek aan.",
+      "unknown": "Onverwachte fout — controleer het Home Assistant-logboek.",
+      "base_url_invalid_scheme": "URL moet beginnen met http:// of https://.",
+      "base_url_missing_host": "URL is onvolledig — hostnaam ontbreekt."
+    },
+    "abort": {
+      "already_configured": "Deze BookStack-instantie is al geconfigureerd.",
+      "reauth_successful": "Token vernieuwd — BookStack-verbinding hersteld.",
+      "reconfigure_successful": "Verbinding bijgewerkt — BookStack Sync is opnieuw geconfigureerd.",
+      "url_mismatch": "De nieuwe URL wijst naar een andere BookStack-instantie. Verwijder de oorspronkelijke vermelding en voeg een nieuwe toe."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BookStack Sync-instellingen",
+        "data": {
+          "book_id": "Doelboek",
+          "sync_interval": "Synchronisatie-interval",
+          "excluded_areas": "Uitgesloten gebieden (worden niet gesynchroniseerd)",
+          "output_language": "Taal van BookStack-pagina's"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Elk uur",
+        "daily": "Dagelijks",
+        "manual": "Alleen handmatig (service-aanroep)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Zoals Home Assistant (auto)",
+        "de": "Duits",
+        "en": "Engels"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Nu synchroniseren",
+      "description": "Start direct een synchronisatie zonder te wachten op het interval."
+    },
+    "preview": {
+      "name": "Synchronisatievoorbeeld",
+      "description": "Logt welke pagina's zouden worden aangemaakt/bijgewerkt zonder iets naar BookStack te schrijven."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Synchronisatiestatus",
+        "state": {
+          "ok": "OK",
+          "error": "Fout",
+          "never_run": "Nog niet uitgevoerd",
+          "syncing": "Synchronisatie bezig"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Nu synchroniseren"
+      },
+      "preview": {
+        "name": "Synchronisatievoorbeeld (proefuitvoering)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack is onbereikbaar",
+      "description": "De BookStack Sync-integratie kon de BookStack-instantie {count} opeenvolgende synchronisaties niet bereiken. Veelvoorkomende oorzaken: de BookStack-container is gestopt, een netwerkprobleem of een reverse proxy weigert verbindingen. De volgende geslaagde synchronisatie lost deze melding automatisch op."
+    },
+    "page_tampered": {
+      "title": "Het AUTO-blok van een pagina is handmatig bewerkt",
+      "description": "De pagina „{page_title}\" in BookStack heeft een AUTO-blok dat buiten Home Assistant is bewerkt. De integratie heeft deze pagina overgeslagen tijdens de synchronisatie om je wijzigingen niet te overschrijven. Verplaats je notities naar het MANUAL-blok of maak de wijziging in het AUTO-blok ongedaan zodat de volgende synchronisatie de pagina opnieuw kan bijwerken."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "BookStack-instantie onbereikbaar (zie Home Assistant-logboek voor details)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack heeft het API-token geweigerd. Vernieuw het token in BookStack en gebruik de Reauth-flow."
+    }
+  }
+}

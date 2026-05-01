@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStack ryšys",
+        "description": "Sujunkite Home Assistant su savo BookStack egzemplioriumi.\n\nBookStack eikite į *Mano paskyra → API raktai*, sukurkite raktą ir įklijuokite ID ir paslaptį čia.\n\nDokumentacija: {documentation_url}",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API rakto ID",
+          "token_secret": "API rakto paslaptis",
+          "verify_ssl": "Patikrinti TLS sertifikatą (išjunkite, jei pasirašyta savarankiškai)"
+        }
+      },
+      "book": {
+        "title": "Pasirinkite tikslinę knygą",
+        "description": "Į kurią knygą Home Assistant turėtų sinchronizuoti? Rankiniu būdu pridėtas turinys puslapiuose bus išsaugotas.",
+        "data": {
+          "book_id": "Tikslinė knyga",
+          "sync_interval": "Sinchronizavimo intervalas"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Atnaujinti BookStack raktą",
+        "description": "BookStack atmetė API raktą {base_url}. Sukurkite naują raktą BookStack ir įklijuokite ID ir paslaptį čia — URL ir tikslinė knyga lieka tos pačios.",
+        "data": {
+          "token_id": "API rakto ID",
+          "token_secret": "API rakto paslaptis"
+        }
+      },
+      "reconfigure": {
+        "title": "Pakoreguoti BookStack ryšį",
+        "description": "Pakeiskite šio ryšio URL, raktą arba TLS nustatymą. Tikslinė knyga ir visi puslapių susiejimai bus išsaugoti. URL turi nukreipti į tą patį BookStack egzempliorių kaip anksčiau.",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API rakto ID",
+          "token_secret": "API rakto paslaptis",
+          "verify_ssl": "Patikrinti TLS sertifikatą (išjunkite, jei pasirašyta savarankiškai)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API raktas atmestas arba trūksta leidimų.",
+      "connection": "Nepavyko pasiekti BookStack.",
+      "no_books": "Šiame BookStack egzemplioriuje nerasta jokių knygų. Pirmiausia sukurkite tikslinę knygą.",
+      "unknown": "Netikėta klaida — patikrinkite Home Assistant žurnalą.",
+      "base_url_invalid_scheme": "URL turi prasidėti http:// arba https://.",
+      "base_url_missing_host": "URL nepilnas — trūksta pagrindinio kompiuterio pavadinimo."
+    },
+    "abort": {
+      "already_configured": "Šis BookStack egzempliorius jau sukonfigūruotas.",
+      "reauth_successful": "Raktas atnaujintas — BookStack ryšys atkurtas.",
+      "reconfigure_successful": "Ryšys atnaujintas — BookStack Sync perkonfigūruotas.",
+      "url_mismatch": "Naujas URL nukreipia į kitą BookStack egzempliorių. Pašalinkite pradinį įrašą ir pridėkite naują."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BookStack Sync nustatymai",
+        "data": {
+          "book_id": "Tikslinė knyga",
+          "sync_interval": "Sinchronizavimo intervalas",
+          "excluded_areas": "Neįtrauktos sritys (nebus sinchronizuojamos)",
+          "output_language": "BookStack puslapių kalba"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Kas valandą",
+        "daily": "Kasdien",
+        "manual": "Tik rankiniu būdu (paslaugos iškvietimas)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Kaip Home Assistant (auto)",
+        "de": "Vokiečių",
+        "en": "Anglų"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Sinchronizuoti dabar",
+      "description": "Iš karto pradeda sinchronizavimą nelaukiant intervalo."
+    },
+    "preview": {
+      "name": "Sinchronizavimo peržiūra",
+      "description": "Užrašo, kurie puslapiai būtų sukurti/atnaujinti, nieko nerašydama į BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Sinchronizavimo būsena",
+        "state": {
+          "ok": "OK",
+          "error": "Klaida",
+          "never_run": "Dar nepaleista",
+          "syncing": "Vyksta sinchronizavimas"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Sinchronizuoti dabar"
+      },
+      "preview": {
+        "name": "Sinchronizavimo peržiūra (bandomasis paleidimas)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack nepasiekiamas",
+      "description": "BookStack Sync integracija negalėjo pasiekti BookStack egzemplioriaus per {count} sinchronizavimus iš eilės. Dažniausios priežastys: BookStack konteineris sustabdytas, tinklo problema arba atvirkštinis tarpinis serveris atmeta ryšius. Kitas sėkmingas sinchronizavimas automatiškai išspręs šį pranešimą."
+    },
+    "page_tampered": {
+      "title": "Puslapio AUTO blokas buvo redaguotas rankiniu būdu",
+      "description": "Puslapis „{page_title}\" BookStack turi AUTO bloką, kuris buvo redaguotas už Home Assistant ribų. Integracija praleido šį puslapį sinchronizavimo metu, kad neperrašytų jūsų pakeitimų. Perkelkite užrašus į MANUAL bloką arba atšaukite pakeitimą AUTO bloke, kad kitas sinchronizavimas galėtų vėl atnaujinti puslapį."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "BookStack egzempliorius nepasiekiamas (žr. Home Assistant žurnalą dėl išsamesnės informacijos)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack atmetė API raktą. Atnaujinkite raktą BookStack ir naudokite Reauth procesą."
+    }
+  }
+}

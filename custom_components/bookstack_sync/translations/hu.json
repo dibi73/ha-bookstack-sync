@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStack kapcsolat",
+        "description": "Kösse össze a Home Assistantot a BookStack példányával.\n\nA BookStackben menjen a *Saját fiók → API tokenek* menüpontra, hozzon létre egy tokent, és illessze be ide az azonosítót és a titkos kulcsot.\n\nDokumentáció: {documentation_url}",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API token azonosító",
+          "token_secret": "API token titkos kulcs",
+          "verify_ssl": "TLS tanúsítvány ellenőrzése (önaláírtaknál kapcsolja ki)"
+        }
+      },
+      "book": {
+        "title": "Válasszon célkönyvet",
+        "description": "Melyik könyvbe szinkronizáljon a Home Assistant? A kézzel hozzáadott tartalom az oldalakon megmarad.",
+        "data": {
+          "book_id": "Célkönyv",
+          "sync_interval": "Szinkronizálási időköz"
+        }
+      },
+      "reauth_confirm": {
+        "title": "BookStack token frissítése",
+        "description": "A BookStack elutasította az API tokent a {base_url} címhez. Hozzon létre új tokent a BookStackben, és illessze be ide az azonosítót és a titkos kulcsot — az URL és a célkönyv változatlan marad.",
+        "data": {
+          "token_id": "API token azonosító",
+          "token_secret": "API token titkos kulcs"
+        }
+      },
+      "reconfigure": {
+        "title": "BookStack kapcsolat módosítása",
+        "description": "Módosítsa az URL-t, tokent vagy TLS beállítást a kapcsolathoz. A célkönyv és minden oldalhozzárendelés megmarad. Az URL-nek ugyanarra a BookStack példányra kell mutatnia, mint korábban.",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API token azonosító",
+          "token_secret": "API token titkos kulcs",
+          "verify_ssl": "TLS tanúsítvány ellenőrzése (önaláírtaknál kapcsolja ki)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API tokent elutasították, vagy hiányoznak a jogosultságok.",
+      "connection": "A BookStack nem érhető el.",
+      "no_books": "Nincs könyv ebben a BookStack példányban. Hozzon létre először célkönyvet.",
+      "unknown": "Váratlan hiba — ellenőrizze a Home Assistant naplóját.",
+      "base_url_invalid_scheme": "Az URL-nek http:// vagy https:// karakterekkel kell kezdődnie.",
+      "base_url_missing_host": "Az URL hiányos — a hosztnév hiányzik."
+    },
+    "abort": {
+      "already_configured": "Ez a BookStack példány már konfigurálva van.",
+      "reauth_successful": "Token frissítve — BookStack kapcsolat helyreállt.",
+      "reconfigure_successful": "Kapcsolat frissítve — a BookStack Sync újrakonfigurálva.",
+      "url_mismatch": "Az új URL másik BookStack példányra mutat. Távolítsa el az eredeti bejegyzést, és adjon hozzá újat."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BookStack Sync beállítások",
+        "data": {
+          "book_id": "Célkönyv",
+          "sync_interval": "Szinkronizálási időköz",
+          "excluded_areas": "Kizárt területek (nem lesznek szinkronizálva)",
+          "output_language": "BookStack oldalak nyelve"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Óránként",
+        "daily": "Naponta",
+        "manual": "Csak kézzel (szolgáltatáshívás)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Mint a Home Assistant (auto)",
+        "de": "Német",
+        "en": "Angol"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Szinkronizálás most",
+      "description": "Azonnal elindít egy szinkronizálást az időköz bevárása nélkül."
+    },
+    "preview": {
+      "name": "Szinkronizálási előnézet",
+      "description": "Naplózza, mely oldalak jönnének létre/frissülnének, anélkül hogy bármit a BookStackbe írna."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Szinkronizálási állapot",
+        "state": {
+          "ok": "OK",
+          "error": "Hiba",
+          "never_run": "Még nem futott",
+          "syncing": "Szinkronizálás folyamatban"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Szinkronizálás most"
+      },
+      "preview": {
+        "name": "Szinkronizálási előnézet (próbafutás)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "A BookStack nem érhető el",
+      "description": "A BookStack Sync integráció {count} egymást követő szinkronizáláson keresztül nem érte el a BookStack példányt. Gyakori okok: a BookStack tároló le van állítva, hálózati probléma vagy fordított proxy elutasítja a kapcsolatokat. A következő sikeres szinkronizálás automatikusan feloldja ezt az értesítést."
+    },
+    "page_tampered": {
+      "title": "Egy oldal AUTO blokkja kézzel lett szerkesztve",
+      "description": "A „{page_title}\" oldal a BookStackben olyan AUTO blokkot tartalmaz, amelyet a Home Assistanton kívül szerkesztettek. Az integráció kihagyta ezt az oldalt szinkronizálás közben, hogy ne írja felül a módosításokat. Helyezze át jegyzeteit a MANUAL blokkba, vagy vonja vissza a változtatást az AUTO blokkban, hogy a következő szinkronizálás újra frissíthesse az oldalt."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "A BookStack példány nem érhető el (részletekért lásd a Home Assistant naplót)."
+    },
+    "bookstack_auth_failed": {
+      "message": "A BookStack elutasította az API tokent. Frissítse a tokent a BookStackben, és használja a Reauth folyamatot."
+    }
+  }
+}

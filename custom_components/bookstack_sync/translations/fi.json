@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStack-yhteys",
+        "description": "Yhdistä Home Assistant BookStack-instanssiisi.\n\nMene BookStackissa kohtaan *Oma tili → API-tunnukset*, luo tunnus ja liitä tunnus ja salaisuus tähän.\n\nDokumentaatio: {documentation_url}",
+        "data": {
+          "base_url": "BookStack-URL",
+          "token_id": "API-tunnuksen tunniste",
+          "token_secret": "API-tunnuksen salaisuus",
+          "verify_ssl": "Vahvista TLS-varmenne (poista käytöstä itse allekirjoitetuilla)"
+        }
+      },
+      "book": {
+        "title": "Valitse kohdekirja",
+        "description": "Mihin kirjaan Home Assistantin tulisi synkronoida? Sivuille manuaalisesti lisätty sisältö säilyy.",
+        "data": {
+          "book_id": "Kohdekirja",
+          "sync_interval": "Synkronointiväli"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Päivitä BookStack-tunnus",
+        "description": "BookStack hylkäsi API-tunnuksen osoitteelle {base_url}. Luo uusi tunnus BookStackissa ja liitä tunnus ja salaisuus tähän — URL ja kohdekirja pysyvät ennallaan.",
+        "data": {
+          "token_id": "API-tunnuksen tunniste",
+          "token_secret": "API-tunnuksen salaisuus"
+        }
+      },
+      "reconfigure": {
+        "title": "Säädä BookStack-yhteyttä",
+        "description": "Vaihda tämän yhteyden URL, tunnus tai TLS-asetus. Kohdekirja ja kaikki sivumääritykset säilyvät. URL:n on osoitettava samaan BookStack-instanssiin kuin aiemmin.",
+        "data": {
+          "base_url": "BookStack-URL",
+          "token_id": "API-tunnuksen tunniste",
+          "token_secret": "API-tunnuksen salaisuus",
+          "verify_ssl": "Vahvista TLS-varmenne (poista käytöstä itse allekirjoitetuilla)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API-tunnus hylätty tai oikeudet puuttuvat.",
+      "connection": "BookStackiin ei saada yhteyttä.",
+      "no_books": "Tästä BookStack-instanssista ei löytynyt kirjaa. Luo ensin kohdekirja.",
+      "unknown": "Odottamaton virhe — tarkista Home Assistantin loki.",
+      "base_url_invalid_scheme": "URL:n on alettava merkinnällä http:// tai https://.",
+      "base_url_missing_host": "URL on epätäydellinen — isäntänimi puuttuu."
+    },
+    "abort": {
+      "already_configured": "Tämä BookStack-instanssi on jo määritetty.",
+      "reauth_successful": "Tunnus päivitetty — BookStack-yhteys palautettu.",
+      "reconfigure_successful": "Yhteys päivitetty — BookStack Sync on määritetty uudelleen.",
+      "url_mismatch": "Uusi URL osoittaa eri BookStack-instanssiin. Poista alkuperäinen merkintä ja lisää uusi."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BookStack Sync -asetukset",
+        "data": {
+          "book_id": "Kohdekirja",
+          "sync_interval": "Synkronointiväli",
+          "excluded_areas": "Pois jätetyt alueet (ei synkronoida)",
+          "output_language": "BookStack-sivujen kieli"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Tunneittain",
+        "daily": "Päivittäin",
+        "manual": "Vain manuaalisesti (palvelukutsu)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Kuten Home Assistant (auto)",
+        "de": "Saksa",
+        "en": "Englanti"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Synkronoi nyt",
+      "description": "Käynnistää synkronoinnin heti odottamatta väliä."
+    },
+    "preview": {
+      "name": "Synkronoinnin esikatselu",
+      "description": "Kirjaa, mitkä sivut luotaisiin/päivitettäisiin, mutta ei kirjoita mitään BookStackiin."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Synkronoinnin tila",
+        "state": {
+          "ok": "OK",
+          "error": "Virhe",
+          "never_run": "Ei vielä suoritettu",
+          "syncing": "Synkronointi käynnissä"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Synkronoi nyt"
+      },
+      "preview": {
+        "name": "Synkronoinnin esikatselu (kuiva-ajo)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack ei ole tavoitettavissa",
+      "description": "BookStack Sync -integraatio ei ole tavoittanut BookStack-instanssia {count} peräkkäisen synkronoinnin aikana. Yleisiä syitä: BookStack-säiliö on pysäytetty, verkko-ongelma tai käänteinen välityspalvelin hylkää yhteyksiä. Seuraava onnistunut synkronointi ratkaisee tämän ilmoituksen automaattisesti."
+    },
+    "page_tampered": {
+      "title": "Sivun AUTO-lohkoa on muokattu manuaalisesti",
+      "description": "Sivulla „{page_title}\" BookStackissa on AUTO-lohko, jota muokattiin Home Assistantin ulkopuolella. Integraatio ohitti tämän sivun synkronoinnissa, jotta muutoksiasi ei korvattaisi. Siirrä muistiinpanosi MANUAL-lohkoon tai peruuta AUTO-lohkon muutos, jotta seuraava synkronointi voi päivittää sivun uudelleen."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "BookStack-instanssi ei ole tavoitettavissa (lisätietoja Home Assistantin lokista)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack hylkäsi API-tunnuksen. Päivitä tunnus BookStackissa ja käytä Reauth-prosessia."
+    }
+  }
+}

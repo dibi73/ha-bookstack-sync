@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStack 连接",
+        "description": "将 Home Assistant 连接到您的 BookStack 实例。\n\n在 BookStack 中转到 *我的账户 → API 令牌*，创建令牌并将 ID 和密钥粘贴到此处。\n\n文档：{documentation_url}",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API 令牌 ID",
+          "token_secret": "API 令牌密钥",
+          "verify_ssl": "验证 TLS 证书（自签名证书请禁用）"
+        }
+      },
+      "book": {
+        "title": "选择目标书籍",
+        "description": "Home Assistant 应同步到哪本书？页面上手动添加的内容将被保留。",
+        "data": {
+          "book_id": "目标书籍",
+          "sync_interval": "同步间隔"
+        }
+      },
+      "reauth_confirm": {
+        "title": "更新 BookStack 令牌",
+        "description": "BookStack 拒绝了 {base_url} 的 API 令牌。请在 BookStack 中创建新令牌，并将 ID 和密钥粘贴到此处 — URL 和目标书籍保持不变。",
+        "data": {
+          "token_id": "API 令牌 ID",
+          "token_secret": "API 令牌密钥"
+        }
+      },
+      "reconfigure": {
+        "title": "调整 BookStack 连接",
+        "description": "更改此连接的 URL、令牌或 TLS 设置。目标书籍和所有页面映射都将保留。URL 必须指向与之前相同的 BookStack 实例。",
+        "data": {
+          "base_url": "BookStack URL",
+          "token_id": "API 令牌 ID",
+          "token_secret": "API 令牌密钥",
+          "verify_ssl": "验证 TLS 证书（自签名证书请禁用）"
+        }
+      }
+    },
+    "error": {
+      "auth": "API 令牌被拒绝或权限不足。",
+      "connection": "无法连接到 BookStack。",
+      "no_books": "在此 BookStack 实例中未找到书籍。请先创建目标书籍。",
+      "unknown": "意外错误 — 请检查 Home Assistant 日志。",
+      "base_url_invalid_scheme": "URL 必须以 http:// 或 https:// 开头。",
+      "base_url_missing_host": "URL 不完整 — 缺少主机名。"
+    },
+    "abort": {
+      "already_configured": "此 BookStack 实例已配置。",
+      "reauth_successful": "令牌已更新 — BookStack 连接已恢复。",
+      "reconfigure_successful": "连接已更新 — BookStack Sync 已重新配置。",
+      "url_mismatch": "新 URL 指向另一个 BookStack 实例。请删除原始条目并添加新条目。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BookStack Sync 设置",
+        "data": {
+          "book_id": "目标书籍",
+          "sync_interval": "同步间隔",
+          "excluded_areas": "排除的区域（不会被同步）",
+          "output_language": "BookStack 页面语言"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "每小时",
+        "daily": "每天",
+        "manual": "仅手动（服务调用）"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "与 Home Assistant 一致（自动）",
+        "de": "德语",
+        "en": "英语"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "立即同步",
+      "description": "立即开始同步，无需等待间隔。"
+    },
+    "preview": {
+      "name": "同步预览",
+      "description": "记录将创建/更新哪些页面，但不向 BookStack 写入任何内容。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "同步状态",
+        "state": {
+          "ok": "OK",
+          "error": "错误",
+          "never_run": "尚未运行",
+          "syncing": "同步进行中"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "立即同步"
+      },
+      "preview": {
+        "name": "同步预览（测试运行）"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack 无法访问",
+      "description": "BookStack Sync 集成在连续 {count} 次同步中均无法访问 BookStack 实例。常见原因：BookStack 容器已停止、网络问题或反向代理拒绝连接。下一次成功的同步将自动解决此通知。"
+    },
+    "page_tampered": {
+      "title": "页面的 AUTO 块已被手动编辑",
+      "description": "BookStack 中的页面「{page_title}」具有在 Home Assistant 之外编辑过的 AUTO 块。集成在同步期间跳过了此页面，以免覆盖您的更改。请将您的笔记移至 MANUAL 块，或撤销 AUTO 块中的更改，以便下次同步可以再次更新该页面。"
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "BookStack 实例无法访问（详细信息请参阅 Home Assistant 日志）。"
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack 拒绝了 API 令牌。请在 BookStack 中更新令牌并使用 Reauth 流程。"
+    }
+  }
+}

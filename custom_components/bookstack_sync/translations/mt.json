@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konnessjoni BookStack",
+        "description": "Qabbad Home Assistant mal-istanza BookStack tiegħek.\n\nF'BookStack mur fuq *Il-kont tiegħi → Tokens API*, oħloq token u waħħal l-ID u s-sigriet hawn.\n\nDokumentazzjoni: {documentation_url}",
+        "data": {
+          "base_url": "URL BookStack",
+          "token_id": "ID tat-token API",
+          "token_secret": "Sigriet tat-token API",
+          "verify_ssl": "Ivverifika ċ-ċertifikat TLS (iddiżattiva għal awtoffirmati)"
+        }
+      },
+      "book": {
+        "title": "Agħżel ktieb mira",
+        "description": "F'liema ktieb għandu jissinkronizza Home Assistant? Il-kontenut miżjud manwalment fuq il-paġni jinżamm.",
+        "data": {
+          "book_id": "Ktieb mira",
+          "sync_interval": "Intervall ta' sinkronizzazzjoni"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Iġġedded it-token BookStack",
+        "description": "BookStack irrifjuta t-token API għal {base_url}. Oħloq token ġdid f'BookStack u waħħal l-ID u s-sigriet hawn — l-URL u l-ktieb mira jibqgħu l-istess.",
+        "data": {
+          "token_id": "ID tat-token API",
+          "token_secret": "Sigriet tat-token API"
+        }
+      },
+      "reconfigure": {
+        "title": "Aġġusta l-konnessjoni BookStack",
+        "description": "Ibdel l-URL, it-token jew l-issettjar TLS ta' din il-konnessjoni. Il-ktieb mira u l-mappings tal-paġni kollha jinżammu. L-URL irid jindika lejn l-istess istanza BookStack ta' qabel.",
+        "data": {
+          "base_url": "URL BookStack",
+          "token_id": "ID tat-token API",
+          "token_secret": "Sigriet tat-token API",
+          "verify_ssl": "Ivverifika ċ-ċertifikat TLS (iddiżattiva għal awtoffirmati)"
+        }
+      }
+    },
+    "error": {
+      "auth": "Token API rrifjutat jew permessi neqsin.",
+      "connection": "Ma jistax jintlaħaq BookStack.",
+      "no_books": "Ma nstab l-ebda ktieb f'din l-istanza BookStack. Oħloq ktieb mira l-ewwel.",
+      "unknown": "Żball mhux mistenni — iċċekkja l-log ta' Home Assistant.",
+      "base_url_invalid_scheme": "L-URL għandu jibda b'http:// jew https://.",
+      "base_url_missing_host": "L-URL huwa inkomplet — l-isem tal-host nieqes."
+    },
+    "abort": {
+      "already_configured": "Din l-istanza BookStack hija diġà kkonfigurata.",
+      "reauth_successful": "It-token ġie mġedded — il-konnessjoni BookStack ġiet irrestawrata.",
+      "reconfigure_successful": "Il-konnessjoni ġiet aġġornata — BookStack Sync ġie rrikonfigurat.",
+      "url_mismatch": "L-URL il-ġdid jindika lejn istanza BookStack oħra. Neħħi d-daħla oriġinali u żid waħda ġdida."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Issettjar BookStack Sync",
+        "data": {
+          "book_id": "Ktieb mira",
+          "sync_interval": "Intervall ta' sinkronizzazzjoni",
+          "excluded_areas": "Żoni esklużi (mhux ser jiġu sinkronizzati)",
+          "output_language": "Lingwa tal-paġni BookStack"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Kull siegħa",
+        "daily": "Kuljum",
+        "manual": "Manwali biss (sejħa ta' servizz)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Bħal Home Assistant (awto)",
+        "de": "Ġermaniż",
+        "en": "Ingliż"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Sinkronizza issa",
+      "description": "Tibda sinkronizzazzjoni minnufih mingħajr ma tistenna l-intervall."
+    },
+    "preview": {
+      "name": "Anteprima ta' sinkronizzazzjoni",
+      "description": "Tirreġistra liema paġni jinħolqu/jiġu aġġornati mingħajr ma tikteb xejn f'BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Status tas-sinkronizzazzjoni",
+        "state": {
+          "ok": "OK",
+          "error": "Żball",
+          "never_run": "Għadu ma ġiex eżegwit",
+          "syncing": "Sinkronizzazzjoni għaddejja"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Sinkronizza issa"
+      },
+      "preview": {
+        "name": "Anteprima ta' sinkronizzazzjoni (eżekuzzjoni xotta)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack ma jistax jintlaħaq",
+      "description": "L-integrazzjoni BookStack Sync ma setgħetx tilħaq l-istanza BookStack għal {count} sinkronizzazzjonijiet konsekuttivi. Kawżi komuni: il-container BookStack imwaqqaf, problema fin-netwerk, jew reverse proxy jirrifjuta l-konnessjonijiet. Is-sinkronizzazzjoni li jmiss li tirnexxi tirrisolvi din in-notifika awtomatikament."
+    },
+    "page_tampered": {
+      "title": "Il-blokk AUTO ta' paġna ġie editjat manwalment",
+      "description": "Il-paġna „{page_title}\" f'BookStack għandha blokk AUTO li ġie editjat barra minn Home Assistant. L-integrazzjoni qabżet din il-paġna waqt is-sinkronizzazzjoni biex ma tikteb fuq il-bidliet tiegħek. Mexxi n-noti tiegħek fil-blokk MANUAL jew rrevoka l-bidla fil-blokk AUTO biex is-sinkronizzazzjoni li jmiss tkun tista' taġġorna l-paġna mill-ġdid."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "Istanza BookStack ma tistax tintlaħaq (ara l-log ta' Home Assistant għad-dettalji)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack irrifjuta t-token API. Iġġedded it-token f'BookStack u uża l-fluss Reauth."
+    }
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ceangal BookStack",
+        "description": "Ceangail Home Assistant le do shampla BookStack.\n\nIn BookStack téigh go *Mo chuntas → Comharthaí API*, cruthaigh comhartha agus greamaigh an ID agus an rún anseo.\n\nDoiciméadúchán: {documentation_url}",
+        "data": {
+          "base_url": "URL BookStack",
+          "token_id": "ID an chomhartha API",
+          "token_secret": "Rún an chomhartha API",
+          "verify_ssl": "Fíoraigh teastas TLS (díchumasaigh i gcás féin-shínithe)"
+        }
+      },
+      "book": {
+        "title": "Roghnaigh leabhar sprice",
+        "description": "Cén leabhar inar chóir do Home Assistant sioncronú? Coinneofar ábhar a cuireadh leis na leathanaigh de láimh.",
+        "data": {
+          "book_id": "Leabhar sprice",
+          "sync_interval": "Eatramh sioncronaithe"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Athnuaigh comhartha BookStack",
+        "description": "Dhiúltaigh BookStack don chomhartha API le haghaidh {base_url}. Cruthaigh comhartha nua i BookStack agus greamaigh an ID agus an rún anseo — fanann an URL agus an leabhar sprice mar an gcéanna.",
+        "data": {
+          "token_id": "ID an chomhartha API",
+          "token_secret": "Rún an chomhartha API"
+        }
+      },
+      "reconfigure": {
+        "title": "Coigeartaigh ceangal BookStack",
+        "description": "Athraigh URL, comhartha nó socrú TLS an cheangail seo. Coinnítear an leabhar sprice agus na mapálacha leathanaigh go léir. Ní mór don URL pointeáil chuig an sampla BookStack céanna agus a bhí roimhe seo.",
+        "data": {
+          "base_url": "URL BookStack",
+          "token_id": "ID an chomhartha API",
+          "token_secret": "Rún an chomhartha API",
+          "verify_ssl": "Fíoraigh teastas TLS (díchumasaigh i gcás féin-shínithe)"
+        }
+      }
+    },
+    "error": {
+      "auth": "Diúltaíodh don chomhartha API nó tá ceadanna in easnamh.",
+      "connection": "Ní féidir BookStack a shroicheadh.",
+      "no_books": "Níor aimsíodh aon leabhar sa sampla BookStack seo. Cruthaigh leabhar sprice ar dtús.",
+      "unknown": "Earráid gan choinne — seiceáil loga Home Assistant.",
+      "base_url_invalid_scheme": "Ní mór do URL tosú le http:// nó https://.",
+      "base_url_missing_host": "Tá an URL neamhiomlán — ainm óstaigh ar iarraidh."
+    },
+    "abort": {
+      "already_configured": "Tá an sampla BookStack seo cumraithe cheana féin.",
+      "reauth_successful": "Comhartha athnuaite — ceangal BookStack athbhunaithe.",
+      "reconfigure_successful": "Ceangal nuashonraithe — atchumraíodh BookStack Sync.",
+      "url_mismatch": "Pointeálann an URL nua chuig sampla BookStack difriúil. Bain an iontráil bhunaidh agus cuir ceann nua leis."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Socruithe BookStack Sync",
+        "data": {
+          "book_id": "Leabhar sprice",
+          "sync_interval": "Eatramh sioncronaithe",
+          "excluded_areas": "Limistéir eisiata (ní dhéanfar sioncronú orthu)",
+          "output_language": "Teanga na leathanach BookStack"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Gach uair",
+        "daily": "Go laethúil",
+        "manual": "De láimh amháin (glao seirbhíse)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Mar Home Assistant (uathoibríoch)",
+        "de": "Gearmáinis",
+        "en": "Béarla"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Sioncronú anois",
+      "description": "Tosaíonn sioncronú láithreach gan fanacht leis an eatramh."
+    },
+    "preview": {
+      "name": "Réamhamharc sioncronaithe",
+      "description": "Logáil cad iad na leathanaigh a chruthófaí/nuashonrófaí gan rud ar bith a scríobh chuig BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Stádas sioncronaithe",
+        "state": {
+          "ok": "OK",
+          "error": "Earráid",
+          "never_run": "Níor ritheadh fós",
+          "syncing": "Sioncronú ar siúl"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Sioncronú anois"
+      },
+      "preview": {
+        "name": "Réamhamharc sioncronaithe (rith tirim)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "Tá BookStack do-rochtana",
+      "description": "Níor éirigh leis an gcomhtháthú BookStack Sync an sampla BookStack a shroicheadh i {count} sioncronaithe as a chéile. Cúiseanna coitianta: tá an coimeádán BookStack stoptha, fadhb líonra, nó tá seachfhreastalaí droim ar ais ag diúltú do na ceangail. Réiteoidh an chéad sioncronú rathúil eile an fógra seo go huathoibríoch."
+    },
+    "page_tampered": {
+      "title": "Cuireadh bloc AUTO de leathanach in eagar de láimh",
+      "description": "Tá bloc AUTO ag an leathanach „{page_title}\" i BookStack a cuireadh in eagar lasmuigh de Home Assistant. Lig an comhtháthú thar an leathanach seo le linn sioncronaithe chun gan d'athruithe a fhorscríobh. Bog do nótaí go dtí an bloc MANUAL nó cealaigh an t-athrú sa bhloc AUTO ionas gur féidir leis an gcéad sioncronú eile an leathanach a nuashonrú arís."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "Tá an sampla BookStack do-rochtana (féach loga Home Assistant le haghaidh sonraí)."
+    },
+    "bookstack_auth_failed": {
+      "message": "Dhiúltaigh BookStack don chomhartha API. Athnuaigh an comhartha i BookStack agus úsáid sreabh Reauth."
+    }
+  }
+}
