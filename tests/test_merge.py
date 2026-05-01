@@ -42,6 +42,32 @@ class TestHashAutoBlock:
         assert hash_auto_block("") == hash_auto_block("\n")
         assert hash_auto_block("") == hash_auto_block("   ")
 
+    def test_crlf_vs_lf_invariant(self) -> None:
+        """v0.13.3: BookStack stores CRLF, HA writes LF — hashes must match.
+
+        Regression for the 260+ false-positive tampering reports the user
+        hit on every sync after v0.13.0. ``\\r\\n`` and bare ``\\r`` are
+        normalised to ``\\n`` before hashing, otherwise every page would
+        be re-flagged as tampered on each sync.
+        """
+        assert hash_auto_block("LineA\nLineB") == hash_auto_block("LineA\r\nLineB")
+        assert hash_auto_block("LineA\nLineB") == hash_auto_block("LineA\rLineB")
+        assert hash_auto_block("a\nb\nc") == hash_auto_block("a\r\nb\r\nc")
+
+    def test_unicode_nfc_vs_nfd_invariant(self) -> None:
+        """v0.13.3: NFC and NFD-encoded umlauts hash identically.
+
+        BookStack's editor normalises to NFC. HA's render output sometimes
+        carries NFD-encoded characters from underlying registry strings;
+        without NFC normalisation in the hash, those pages would
+        false-positive on every sync.
+        """
+        # "é" as a single NFC code point vs "e" + combining acute accent.
+        nfc = "Café"
+        nfd = "Café"
+        assert nfc != nfd  # raw bytes differ
+        assert hash_auto_block(nfc) == hash_auto_block(nfd)
+
 
 class TestRoundTrip:
     """build_page_body + extract_auto_block must round-trip the AUTO body."""
