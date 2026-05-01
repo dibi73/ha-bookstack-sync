@@ -20,9 +20,13 @@ The export is **disabled by default**. Reasons:
 To turn it on, open the integration's *Configure* dialog
 (**Settings → Devices & Services → BookStack Sync → Configure**) and
 enable **Markdown-Export aktivieren** (*Enable Markdown back-export*).
-You can then either call the service `bookstack_sync.export_markdown`
-manually / from automations, or enable **Export nach jedem Sync
-automatisch ausführen** to chain the export after every successful sync.
+Once on, every successful sync also writes the Markdown files; the
+`bookstack_sync.export_markdown` service stays available for ad-hoc
+triggers (e.g. an extra timed run).
+
+> v0.13.2 dropped the separate *„Export nach jedem Sync"* toggle —
+> it was redundant with the master switch (enabling the export
+> already implies wanting it to happen).
 
 ## Output layout
 

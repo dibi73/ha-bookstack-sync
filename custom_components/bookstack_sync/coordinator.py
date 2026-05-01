@@ -15,12 +15,10 @@ from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     CONF_BOOK_ID,
     CONF_EXCLUDED_AREAS,
-    CONF_EXPORT_AFTER_SYNC,
     CONF_EXPORT_ENABLED,
     CONF_EXPORT_PATH,
     CONF_OUTPUT_LANGUAGE,
     CONF_SYNC_INTERVAL,
-    DEFAULT_EXPORT_AFTER_SYNC,
     DEFAULT_EXPORT_ENABLED,
     DEFAULT_INTERVAL,
     DEFAULT_OUTPUT_LANGUAGE,
@@ -206,16 +204,15 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         """
         Run the markdown back-export if the user has explicitly opted in.
 
-        Both flags must be true: ``export_enabled`` is the master kill
-        switch (default off), ``export_after_sync`` chooses *when* to
-        run (post-sync vs only on explicit service call). Errors are
-        logged but never raised — the sync itself already succeeded
-        and we don't want a missing folder to flip the sensor red.
+        ``export_enabled`` is the only switch (default off): once on, every
+        successful sync also exports. v0.13.2 dropped the separate
+        ``export_after_sync`` toggle — it was redundant, since enabling the
+        export feature already implies wanting it to run. Errors are logged
+        but never raised — the sync itself already succeeded and we don't
+        want a missing folder to flip the sensor red.
         """
         options = self.config_entry.options or {}
         if not options.get(CONF_EXPORT_ENABLED, DEFAULT_EXPORT_ENABLED):
-            return
-        if not options.get(CONF_EXPORT_AFTER_SYNC, DEFAULT_EXPORT_AFTER_SYNC):
             return
         try:
             result = await export_run(

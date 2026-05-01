@@ -328,3 +328,52 @@ async def test_sync_with_skipped_conflict_emits_notification(
         pytest.fail(
             "Expected tamper detection to produce skipped_conflict; got none",
         )
+
+
+async def test_drifted_stored_hash_does_not_trigger_tampering(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    Regression for the v0.13.1 false-positive on Acurite-Rain-25:
+
+    BookStack normalises markdown sometime between the immediate
+    create/update response (which we hashed) and the subsequent read
+    on the next sync. The hash drifts, the previous tampering check
+    fired even though the user did NOT edit the page in BookStack.
+    Fix: when the AUTO content still matches HA's current render,
+    treat it as drift, re-hash silently, no notification, no skip.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    # First sync: creates everything, stores hashes from BookStack
+    # response.
+    await run_sync(hass, client, store, 1, strings)
+
+    # Simulate hash drift: corrupt every stored mapping's
+    # ``auto_block_hash`` while leaving ``hash_origin = "bookstack"``.
+    # The BookStack content is untouched (so ``existing_auto_hash``
+    # still equals the new render).
+    from custom_components.bookstack_sync.store import PageMapping  # noqa: PLC0415
+
+    for key, mapping in store.all().items():
+        store.set(
+            key,
+            PageMapping(
+                page_id=mapping.page_id,
+                auto_block_hash="cafebabe" * 8,  # not the real hash
+                last_seen=mapping.last_seen,
+                tombstoned_at=mapping.tombstoned_at,
+                hash_origin="bookstack",
+            ),
+        )
+
+    # Second sync should NOT raise tampering — content matches.
+    report2 = await run_sync(hass, client, store, 1, strings)
+    assert report2.skipped_conflict == []
+    assert report2.tampered_page_keys == []
+    assert report2.errors == []

@@ -192,20 +192,22 @@ states, MQTT topic, …]
 [your manual notes — preserved verbatim from BookStack]
 ```
 
-Trigger options:
+Trigger:
+
+Once `export_enabled` is on, every successful sync also writes the
+Markdown files — no automation needed. The
+`bookstack_sync.export_markdown` service stays available for ad-hoc
+triggers (e.g. „force a fresh export now").
 
 ```yaml
-# Daily at 03:30 (after the sync at 03:00)
+# Optional: trigger an extra export at a specific time.
 automation:
-  - alias: BookStack export
+  - alias: BookStack export at 03:30
     trigger:
       - platform: time
         at: "03:30:00"
     action:
       - service: bookstack_sync.export_markdown
-
-# Or: enable "Run export automatically after each sync" in the
-# integration's options — no automation needed.
 ```
 
 Full schema and stack-specific snippets in
