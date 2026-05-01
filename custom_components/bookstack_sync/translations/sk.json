@@ -44,7 +44,8 @@
       "no_books": "V tejto inštancii BookStack sa nenašla žiadna kniha. Najprv vytvorte cieľovú knihu.",
       "unknown": "Neočakávaná chyba — skontrolujte protokol Home Assistant.",
       "base_url_invalid_scheme": "URL musí začínať http:// alebo https://.",
-      "base_url_missing_host": "URL je neúplné — chýba názov hostiteľa."
+      "base_url_missing_host": "URL je neúplné — chýba názov hostiteľa.",
+      "path_invalid": "Path must be absolute and the parent directory must already exist."
     },
     "abort": {
       "already_configured": "Táto inštancia BookStack je už nakonfigurovaná.",
@@ -61,7 +62,15 @@
           "book_id": "Cieľová kniha",
           "sync_interval": "Interval synchronizácie",
           "excluded_areas": "Vylúčené oblasti (nebudú synchronizované)",
-          "output_language": "Jazyk stránok BookStack"
+          "output_language": "Jazyk stránok BookStack",
+          "export_enabled": "Enable Markdown back-export (off by default)",
+          "export_path": "Export folder (absolute path)",
+          "export_after_sync": "Run export automatically after each sync"
+        },
+        "data_description": {
+          "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
+          "export_after_sync": "Only effective when 'Enable Markdown back-export' is on."
         }
       }
     }
@@ -90,6 +99,20 @@
     "preview": {
       "name": "Náhľad synchronizácie",
       "description": "Zaznamená, ktoré stránky by sa vytvorili/aktualizovali, bez zapisovania čohokoľvek do BookStack."
+    },
+    "export_markdown": {
+      "name": "Export Markdown (opt-in)",
+      "description": "Exports every managed BookStack page as a plain Markdown file with YAML frontmatter, idempotent. Disabled by default - enable it in the integration's options first.",
+      "fields": {
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Log what would be written without touching the filesystem."
+        },
+        "output_path": {
+          "name": "Output path override",
+          "description": "Override the configured export path for this call only."
+        }
+      }
     }
   },
   "entity": {
@@ -129,6 +152,9 @@
     },
     "bookstack_auth_failed": {
       "message": "BookStack zamietol API token. Obnovte token v BookStacku a použite proces Reauth."
+    },
+    "export_disabled": {
+      "message": "Markdown export is disabled. Enable it in the integration's options under 'Enable Markdown back-export' before calling this service."
     }
   }
 }

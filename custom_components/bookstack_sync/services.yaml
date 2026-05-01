@@ -9,3 +9,28 @@ preview:
   description: >-
     Performs a dry-run: logs which pages would be created or updated, but
     writes nothing to BookStack. Useful right after setup or template changes.
+
+export_markdown:
+  name: Export Markdown (opt-in)
+  description: >-
+    Exports every managed BookStack page as a plain Markdown file with YAML
+    frontmatter under the configured output path, idempotent. Disabled by
+    default — must be enabled in the integration's options first
+    ("Markdown-Export aktivieren"). Useful as a universal RAG / LLM input
+    source (LangChain, LlamaIndex, Open WebUI Knowledge Base etc.).
+  fields:
+    dry_run:
+      name: Dry run
+      description: >-
+        Log what would be written without touching the filesystem.
+      default: false
+      selector:
+        boolean:
+    output_path:
+      name: Output path override
+      description: >-
+        Override the configured export path for this call only. Optional —
+        defaults to the path set in the integration's options.
+      example: /config/bookstack_export
+      selector:
+        text:

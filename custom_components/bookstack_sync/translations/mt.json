@@ -44,7 +44,8 @@
       "no_books": "Ma nstab l-ebda ktieb f'din l-istanza BookStack. Oħloq ktieb mira l-ewwel.",
       "unknown": "Żball mhux mistenni — iċċekkja l-log ta' Home Assistant.",
       "base_url_invalid_scheme": "L-URL għandu jibda b'http:// jew https://.",
-      "base_url_missing_host": "L-URL huwa inkomplet — l-isem tal-host nieqes."
+      "base_url_missing_host": "L-URL huwa inkomplet — l-isem tal-host nieqes.",
+      "path_invalid": "Path must be absolute and the parent directory must already exist."
     },
     "abort": {
       "already_configured": "Din l-istanza BookStack hija diġà kkonfigurata.",
@@ -61,7 +62,15 @@
           "book_id": "Ktieb mira",
           "sync_interval": "Intervall ta' sinkronizzazzjoni",
           "excluded_areas": "Żoni esklużi (mhux ser jiġu sinkronizzati)",
-          "output_language": "Lingwa tal-paġni BookStack"
+          "output_language": "Lingwa tal-paġni BookStack",
+          "export_enabled": "Enable Markdown back-export (off by default)",
+          "export_path": "Export folder (absolute path)",
+          "export_after_sync": "Run export automatically after each sync"
+        },
+        "data_description": {
+          "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
+          "export_after_sync": "Only effective when 'Enable Markdown back-export' is on."
         }
       }
     }
@@ -90,6 +99,20 @@
     "preview": {
       "name": "Anteprima ta' sinkronizzazzjoni",
       "description": "Tirreġistra liema paġni jinħolqu/jiġu aġġornati mingħajr ma tikteb xejn f'BookStack."
+    },
+    "export_markdown": {
+      "name": "Export Markdown (opt-in)",
+      "description": "Exports every managed BookStack page as a plain Markdown file with YAML frontmatter, idempotent. Disabled by default - enable it in the integration's options first.",
+      "fields": {
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Log what would be written without touching the filesystem."
+        },
+        "output_path": {
+          "name": "Output path override",
+          "description": "Override the configured export path for this call only."
+        }
+      }
     }
   },
   "entity": {
@@ -129,6 +152,9 @@
     },
     "bookstack_auth_failed": {
       "message": "BookStack irrifjuta t-token API. Iġġedded it-token f'BookStack u uża l-fluss Reauth."
+    },
+    "export_disabled": {
+      "message": "Markdown export is disabled. Enable it in the integration's options under 'Enable Markdown back-export' before calling this service."
     }
   }
 }

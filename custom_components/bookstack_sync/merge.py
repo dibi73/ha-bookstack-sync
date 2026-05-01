@@ -97,6 +97,19 @@ def extract_manual_block(page_markdown: str | None) -> str | None:
     return match.group(1).strip("\n") if match else None
 
 
+def split_blocks(page_markdown: str | None) -> tuple[str, str]:
+    """
+    Split a page into ``(auto_body, manual_body)`` for the export (issue #61).
+
+    Marker comments are stripped. Missing block → empty string for that side.
+    Combines the two existing extractors so the export writer doesn't need
+    to call both separately.
+    """
+    auto = extract_auto_block(page_markdown) or ""
+    manual = extract_manual_block(page_markdown) or ""
+    return auto, manual
+
+
 def build_page_body(auto_body: str, manual_body: str) -> str:
     """Compose the full markdown body with both marker blocks."""
     return (

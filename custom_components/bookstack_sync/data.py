@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
     from .api import BookStackApiClient
     from .coordinator import BookStackSyncCoordinator
+    from .export_store import BookStackSyncExportStore
     from .store import BookStackSyncStore
 
 
@@ -25,3 +26,4 @@ class BookStackSyncData:
     coordinator: BookStackSyncCoordinator
     integration: Integration
     store: BookStackSyncStore
+    export_store: BookStackSyncExportStore

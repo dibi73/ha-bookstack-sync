@@ -44,7 +44,8 @@
       "no_books": "Nenhum livro encontrado nesta instância BookStack. Crie primeiro um livro de destino.",
       "unknown": "Erro inesperado — verifique o registo do Home Assistant.",
       "base_url_invalid_scheme": "O URL deve começar por http:// ou https://.",
-      "base_url_missing_host": "O URL está incompleto — falta o nome do anfitrião."
+      "base_url_missing_host": "O URL está incompleto — falta o nome do anfitrião.",
+      "path_invalid": "Path must be absolute and the parent directory must already exist."
     },
     "abort": {
       "already_configured": "Esta instância BookStack já está configurada.",
@@ -61,7 +62,15 @@
           "book_id": "Livro de destino",
           "sync_interval": "Intervalo de sincronização",
           "excluded_areas": "Áreas excluídas (não serão sincronizadas)",
-          "output_language": "Idioma das páginas BookStack"
+          "output_language": "Idioma das páginas BookStack",
+          "export_enabled": "Enable Markdown back-export (off by default)",
+          "export_path": "Export folder (absolute path)",
+          "export_after_sync": "Run export automatically after each sync"
+        },
+        "data_description": {
+          "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
+          "export_after_sync": "Only effective when 'Enable Markdown back-export' is on."
         }
       }
     }
@@ -90,6 +99,20 @@
     "preview": {
       "name": "Pré-visualização da sincronização",
       "description": "Regista que páginas seriam criadas/atualizadas sem escrever nada no BookStack."
+    },
+    "export_markdown": {
+      "name": "Export Markdown (opt-in)",
+      "description": "Exports every managed BookStack page as a plain Markdown file with YAML frontmatter, idempotent. Disabled by default - enable it in the integration's options first.",
+      "fields": {
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Log what would be written without touching the filesystem."
+        },
+        "output_path": {
+          "name": "Output path override",
+          "description": "Override the configured export path for this call only."
+        }
+      }
     }
   },
   "entity": {
@@ -129,6 +152,9 @@
     },
     "bookstack_auth_failed": {
       "message": "O BookStack rejeitou o token API. Renove o token no BookStack e use o fluxo Reauth."
+    },
+    "export_disabled": {
+      "message": "Markdown export is disabled. Enable it in the integration's options under 'Enable Markdown back-export' before calling this service."
     }
   }
 }

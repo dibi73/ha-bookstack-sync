@@ -30,6 +30,26 @@ Add-on-Inhalte folgen in einer späteren Version (siehe `anforderungsdokument.md
 - **Services**:
   - `bookstack_sync.run_now` – sofortiger Sync
   - `bookstack_sync.preview` – Dry-Run, schreibt nichts und loggt nur
+  - `bookstack_sync.export_markdown` – Opt-in: schreibt jede gemanagte
+    BookStack-Page zusätzlich als Markdown-Datei mit YAML-Frontmatter in
+    einen Ordner (z. B. als RAG/LLM-Input). **Standardmäßig deaktiviert**
+    — siehe Abschnitt *Markdown-Export für RAG* weiter unten.
+
+## Markdown-Export für RAG (Opt-in, seit v0.13.0)
+
+Die Integration kann den vereinten Inhalt (AUTO-Block + deine MANUAL-
+Notizen) zusätzlich als reine Markdown-Dateien mit YAML-Frontmatter in
+einen Ordner zurückschreiben — universal für RAG/LLM-Pipelines wie
+LangChain `ObsidianLoader`, LlamaIndex `ObsidianReader`, Open WebUI
+Knowledge Base etc.
+
+> **Standardmäßig aus.** Der Export verbraucht Speicherplatz und CPU bei
+> jedem Lauf. BookStack allein deckt die meisten Use-Cases ab — die
+> separate Markdown-Kopie ist nur sinnvoll, wenn du tatsächlich einen
+> nachgelagerten RAG-Indexer fütterst. Bewusst aktivieren unter
+> *Konfigurieren → Markdown-Export aktivieren*.
+
+Vollständige Spezifikation: [docs/EXPORT.md](docs/EXPORT.md).
 
 ## Installation (HACS)
 
