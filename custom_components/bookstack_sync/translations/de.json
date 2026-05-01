@@ -103,6 +103,14 @@
           "syncing": "Sync läuft"
         }
       }
+    },
+    "button": {
+      "run_now": {
+        "name": "Jetzt synchronisieren"
+      },
+      "preview": {
+        "name": "Sync-Vorschau (Dry-Run)"
+      }
     }
   },
   "issues": {

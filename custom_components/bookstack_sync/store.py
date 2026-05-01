@@ -15,12 +15,27 @@ if TYPE_CHECKING:
 
 @dataclass
 class PageMapping:
-    """Tracks one synced page so we can update instead of duplicate."""
+    """
+    Tracks one synced page so we can update instead of duplicate.
+
+    ``hash_origin`` (issue #58) is ``"write"`` for hashes computed from
+    what we sent to BookStack and ``"bookstack"`` for hashes computed
+    from what BookStack returned in the create/update response. Round-
+    trip hashes survive BookStack's markdown normalisation; write-side
+    hashes can drift when BookStack normalises whitespace / line endings
+    / Unicode and produce false-positive tampering reports.
+
+    Migration: existing entries default to ``"write"``. The next sync
+    suppresses tampering detection on these and stores a
+    ``"bookstack"``-origin hash, settling the mapping into the new
+    regime within one sync cycle.
+    """
 
     page_id: int
     auto_block_hash: str = ""
     last_seen: str | None = None  # ISO timestamp of last successful sync
     tombstoned_at: str | None = None  # ISO timestamp; set when soft-deleted
+    hash_origin: str = "write"  # "write" (legacy) or "bookstack" (round-trip)
 
 
 @dataclass
@@ -57,8 +72,15 @@ class BookStackSyncStore:
         raw = await self._store.async_load() or {}
         pages_raw = raw.get("pages", {}) or {}
         chapters_raw = raw.get("chapters", {}) or {}
+        # Migration: pre-v0.11 storage doesn't have ``hash_origin``.
+        # Drop unknown fields gracefully (forward-compat too).
+        known_fields = set(PageMapping.__dataclass_fields__)
+        pages: dict[str, PageMapping] = {}
+        for key, value in pages_raw.items():
+            filtered = {k: v for k, v in value.items() if k in known_fields}
+            pages[key] = PageMapping(**filtered)
         self._state = StoredState(
-            pages={key: PageMapping(**value) for key, value in pages_raw.items()},
+            pages=pages,
             chapters={key: int(value) for key, value in chapters_raw.items()},
         )
         self._loaded = True
