@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Povezava BookStack",
+        "description": "Povežite Home Assistant s svojim primerkom BookStack.\n\nV BookStacku pojdite na *Moj račun → API žetoni*, ustvarite žeton in tukaj prilepite ID in skrivnost.\n\nDokumentacija: {documentation_url}",
+        "data": {
+          "base_url": "URL BookStack",
+          "token_id": "ID API žetona",
+          "token_secret": "Skrivnost API žetona",
+          "verify_ssl": "Preveri TLS potrdilo (onemogočite za samopodpisana)"
+        }
+      },
+      "book": {
+        "title": "Izberite ciljno knjigo",
+        "description": "V katero knjigo naj Home Assistant sinhronizira? Ročno dodana vsebina na straneh se ohrani.",
+        "data": {
+          "book_id": "Ciljna knjiga",
+          "sync_interval": "Interval sinhronizacije"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Obnovi žeton BookStack",
+        "description": "BookStack je zavrnil API žeton za {base_url}. Ustvarite nov žeton v BookStacku in tukaj prilepite ID in skrivnost — URL in ciljna knjiga ostaneta nespremenjena.",
+        "data": {
+          "token_id": "ID API žetona",
+          "token_secret": "Skrivnost API žetona"
+        }
+      },
+      "reconfigure": {
+        "title": "Prilagodi povezavo BookStack",
+        "description": "Spremenite URL, žeton ali nastavitev TLS te povezave. Ciljna knjiga in vse povezave strani se ohranijo. URL mora kazati na isti primerek BookStack kot prej.",
+        "data": {
+          "base_url": "URL BookStack",
+          "token_id": "ID API žetona",
+          "token_secret": "Skrivnost API žetona",
+          "verify_ssl": "Preveri TLS potrdilo (onemogočite za samopodpisana)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API žeton zavrnjen ali manjkajo dovoljenja.",
+      "connection": "BookStacka ni mogoče doseči.",
+      "no_books": "V tem primerku BookStack ni najdene nobene knjige. Najprej ustvarite ciljno knjigo.",
+      "unknown": "Nepričakovana napaka — preverite dnevnik Home Assistant.",
+      "base_url_invalid_scheme": "URL se mora začeti s http:// ali https://.",
+      "base_url_missing_host": "URL je nepopoln — manjka ime gostitelja."
+    },
+    "abort": {
+      "already_configured": "Ta primerek BookStack je že konfiguriran.",
+      "reauth_successful": "Žeton obnovljen — povezava BookStack obnovljena.",
+      "reconfigure_successful": "Povezava posodobljena — BookStack Sync je bil ponovno konfiguriran.",
+      "url_mismatch": "Novi URL kaže na drug primerek BookStack. Odstranite izvirni vnos in dodajte novega."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nastavitve BookStack Sync",
+        "data": {
+          "book_id": "Ciljna knjiga",
+          "sync_interval": "Interval sinhronizacije",
+          "excluded_areas": "Izključena območja (ne bodo sinhronizirana)",
+          "output_language": "Jezik strani BookStack"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Vsako uro",
+        "daily": "Dnevno",
+        "manual": "Samo ročno (klic storitve)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Kot Home Assistant (samodejno)",
+        "de": "Nemško",
+        "en": "Angleško"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Sinhroniziraj zdaj",
+      "description": "Takoj zažene sinhronizacijo brez čakanja na interval."
+    },
+    "preview": {
+      "name": "Predogled sinhronizacije",
+      "description": "Beleži, katere strani bi bile ustvarjene/posodobljene, ne da bi karkoli zapisal v BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Stanje sinhronizacije",
+        "state": {
+          "ok": "OK",
+          "error": "Napaka",
+          "never_run": "Še ni zagnano",
+          "syncing": "Sinhronizacija poteka"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Sinhroniziraj zdaj"
+      },
+      "preview": {
+        "name": "Predogled sinhronizacije (preizkusni zagon)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack ni dosegljiv",
+      "description": "Integracija BookStack Sync ni mogla doseči primerka BookStack v {count} zaporednih sinhronizacijah. Pogosti vzroki: vsebnik BookStack je ustavljen, težava z omrežjem ali povratni posredniški strežnik zavrača povezave. Naslednja uspešna sinhronizacija bo to obvestilo samodejno odpravila."
+    },
+    "page_tampered": {
+      "title": "Blok AUTO strani je bil ročno urejen",
+      "description": "Stran „{page_title}\" v BookStacku ima blok AUTO, ki je bil urejen zunaj Home Assistanta. Integracija je to stran med sinhronizacijo preskočila, da ne bi prepisala vaših sprememb. Premaknite svoje opombe v blok MANUAL ali razveljavite spremembo v bloku AUTO, da bo naslednja sinhronizacija lahko stran znova posodobila."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "Primerek BookStack ni dosegljiv (za podrobnosti glejte dnevnik Home Assistant)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack je zavrnil API žeton. Obnovite žeton v BookStacku in uporabite postopek Reauth."
+    }
+  }
+}

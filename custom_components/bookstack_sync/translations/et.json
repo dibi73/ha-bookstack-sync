@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BookStacki ühendus",
+        "description": "Ühenda Home Assistant oma BookStacki eksemplariga.\n\nBookStackis mine *Minu konto → API-tokenid*, loo token ja kleebi ID ja saladus siia.\n\nDokumentatsioon: {documentation_url}",
+        "data": {
+          "base_url": "BookStacki URL",
+          "token_id": "API-tokeni ID",
+          "token_secret": "API-tokeni saladus",
+          "verify_ssl": "Kontrolli TLS-sertifikaati (lülita välja iseallkirjastatute korral)"
+        }
+      },
+      "book": {
+        "title": "Vali sihtraamat",
+        "description": "Millisesse raamatusse peaks Home Assistant sünkroonima? Käsitsi lehtedele lisatud sisu säilitatakse.",
+        "data": {
+          "book_id": "Sihtraamat",
+          "sync_interval": "Sünkroonimisintervall"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Värskenda BookStacki tokenit",
+        "description": "BookStack lükkas API-tokeni {base_url} jaoks tagasi. Loo uus token BookStackis ja kleebi ID ja saladus siia — URL ja sihtraamat jäävad samaks.",
+        "data": {
+          "token_id": "API-tokeni ID",
+          "token_secret": "API-tokeni saladus"
+        }
+      },
+      "reconfigure": {
+        "title": "Muuda BookStacki ühendust",
+        "description": "Muuda selle ühenduse URL-i, tokenit või TLS-seadistust. Sihtraamat ja kõik leheviited säilitatakse. URL peab osutama samale BookStacki eksemplarile nagu varem.",
+        "data": {
+          "base_url": "BookStacki URL",
+          "token_id": "API-tokeni ID",
+          "token_secret": "API-tokeni saladus",
+          "verify_ssl": "Kontrolli TLS-sertifikaati (lülita välja iseallkirjastatute korral)"
+        }
+      }
+    },
+    "error": {
+      "auth": "API-token tagasi lükatud või õigused puuduvad.",
+      "connection": "BookStacki ei saa ühendada.",
+      "no_books": "Selles BookStacki eksemplaris raamatut ei leitud. Loo esmalt sihtraamat.",
+      "unknown": "Ootamatu viga — kontrolli Home Assistanti logi.",
+      "base_url_invalid_scheme": "URL peab algama http:// või https:// -ga.",
+      "base_url_missing_host": "URL on puudulik — hosti nimi puudub."
+    },
+    "abort": {
+      "already_configured": "See BookStacki eksemplar on juba seadistatud.",
+      "reauth_successful": "Token värskendatud — BookStacki ühendus taastatud.",
+      "reconfigure_successful": "Ühendus uuendatud — BookStack Sync on uuesti seadistatud.",
+      "url_mismatch": "Uus URL osutab teisele BookStacki eksemplarile. Eemalda algne kirje ja lisa uus."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BookStack Synci seaded",
+        "data": {
+          "book_id": "Sihtraamat",
+          "sync_interval": "Sünkroonimisintervall",
+          "excluded_areas": "Välistatud alad (ei sünkroonita)",
+          "output_language": "BookStacki lehtede keel"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Tunnis",
+        "daily": "Iga päev",
+        "manual": "Ainult käsitsi (teenusekutse)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Nagu Home Assistant (automaatne)",
+        "de": "Saksa",
+        "en": "Inglise"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Sünkrooni kohe",
+      "description": "Käivitab sünkroonimise kohe, ilma intervalli ootamata."
+    },
+    "preview": {
+      "name": "Sünkroonimise eelvaade",
+      "description": "Logib, milliseid lehti loodaks/uuendataks, ilma BookStacki midagi kirjutamata."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Sünkroonimisolek",
+        "state": {
+          "ok": "OK",
+          "error": "Viga",
+          "never_run": "Pole veel käivitatud",
+          "syncing": "Sünkroonimine käib"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Sünkrooni kohe"
+      },
+      "preview": {
+        "name": "Sünkroonimise eelvaade (proovikäik)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack pole kättesaadav",
+      "description": "BookStack Synci integratsioon ei suutnud BookStacki eksemplarile {count} järjestikuse sünkroonimise jooksul ligi pääseda. Tavalised põhjused: BookStacki konteiner on peatatud, võrguprobleem või pöördpuhverserver lükkab ühendused tagasi. Järgmine edukas sünkroonimine lahendab selle teate automaatselt."
+    },
+    "page_tampered": {
+      "title": "Lehe AUTO-plokki muudeti käsitsi",
+      "description": "Lehel „{page_title}\" BookStackis on AUTO-plokk, mida muudeti väljaspool Home Assistanti. Integratsioon jättis selle lehe sünkroonimise vahele, et mitte kirjutada sinu muudatusi üle. Liiguta oma märkmed MANUAL-plokki või tühista AUTO-ploki muudatus, et järgmine sünkroonimine saaks lehte uuesti uuendada."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "BookStacki eksemplar pole kättesaadav (üksikasju vaata Home Assistanti logist)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack lükkas API-tokeni tagasi. Värskenda token BookStackis ja kasuta Reauth-protsessi."
+    }
+  }
+}

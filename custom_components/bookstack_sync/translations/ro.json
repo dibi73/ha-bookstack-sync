@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Conexiune BookStack",
+        "description": "Conectați Home Assistant la instanța dvs. BookStack.\n\nÎn BookStack accesați *Contul meu → Tokenuri API*, creați un token și lipiți aici ID-ul și secretul.\n\nDocumentație: {documentation_url}",
+        "data": {
+          "base_url": "URL BookStack",
+          "token_id": "ID token API",
+          "token_secret": "Secret token API",
+          "verify_ssl": "Verifică certificatul TLS (dezactivați pentru autosemnate)"
+        }
+      },
+      "book": {
+        "title": "Alegeți cartea țintă",
+        "description": "În ce carte ar trebui să sincronizeze Home Assistant? Conținutul adăugat manual pe pagini este păstrat.",
+        "data": {
+          "book_id": "Cartea țintă",
+          "sync_interval": "Interval de sincronizare"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reînnoiți tokenul BookStack",
+        "description": "BookStack a respins tokenul API pentru {base_url}. Creați un token nou în BookStack și lipiți aici ID-ul și secretul — URL-ul și cartea țintă rămân neschimbate.",
+        "data": {
+          "token_id": "ID token API",
+          "token_secret": "Secret token API"
+        }
+      },
+      "reconfigure": {
+        "title": "Ajustați conexiunea BookStack",
+        "description": "Modificați URL-ul, tokenul sau setarea TLS a acestei conexiuni. Cartea țintă și toate asocierile de pagini sunt păstrate. URL-ul trebuie să indice aceeași instanță BookStack ca înainte.",
+        "data": {
+          "base_url": "URL BookStack",
+          "token_id": "ID token API",
+          "token_secret": "Secret token API",
+          "verify_ssl": "Verifică certificatul TLS (dezactivați pentru autosemnate)"
+        }
+      }
+    },
+    "error": {
+      "auth": "Token API respins sau lipsesc permisiuni.",
+      "connection": "Nu se poate accesa BookStack.",
+      "no_books": "Nu s-a găsit nicio carte în această instanță BookStack. Creați mai întâi o carte țintă.",
+      "unknown": "Eroare neașteptată — verificați jurnalul Home Assistant.",
+      "base_url_invalid_scheme": "URL-ul trebuie să înceapă cu http:// sau https://.",
+      "base_url_missing_host": "URL-ul este incomplet — lipsește numele gazdei."
+    },
+    "abort": {
+      "already_configured": "Această instanță BookStack este deja configurată.",
+      "reauth_successful": "Token reînnoit — conexiunea BookStack restabilită.",
+      "reconfigure_successful": "Conexiune actualizată — BookStack Sync a fost reconfigurat.",
+      "url_mismatch": "Noul URL indică o altă instanță BookStack. Eliminați intrarea originală și adăugați una nouă."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Setări BookStack Sync",
+        "data": {
+          "book_id": "Cartea țintă",
+          "sync_interval": "Interval de sincronizare",
+          "excluded_areas": "Zone excluse (nu vor fi sincronizate)",
+          "output_language": "Limba paginilor BookStack"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "În fiecare oră",
+        "daily": "Zilnic",
+        "manual": "Doar manual (apel serviciu)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Ca Home Assistant (auto)",
+        "de": "Germană",
+        "en": "Engleză"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Sincronizează acum",
+      "description": "Pornește o sincronizare imediat, fără a aștepta intervalul."
+    },
+    "preview": {
+      "name": "Previzualizare sincronizare",
+      "description": "Înregistrează ce pagini ar fi create/actualizate fără a scrie nimic în BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "Stare sincronizare",
+        "state": {
+          "ok": "OK",
+          "error": "Eroare",
+          "never_run": "Încă nu a rulat",
+          "syncing": "Sincronizare în desfășurare"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Sincronizează acum"
+      },
+      "preview": {
+        "name": "Previzualizare sincronizare (rulare de probă)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack este inaccesibil",
+      "description": "Integrarea BookStack Sync nu a putut accesa instanța BookStack timp de {count} sincronizări consecutive. Cauze frecvente: containerul BookStack este oprit, problemă de rețea sau un proxy invers refuză conexiunile. Următoarea sincronizare reușită va rezolva automat această notificare."
+    },
+    "page_tampered": {
+      "title": "Blocul AUTO al unei pagini a fost editat manual",
+      "description": "Pagina „{page_title}\" din BookStack are un bloc AUTO care a fost editat în afara Home Assistant. Integrarea a omis această pagină în timpul sincronizării pentru a nu suprascrie modificările dvs. Mutați notele în blocul MANUAL sau anulați modificarea din blocul AUTO pentru ca următoarea sincronizare să poată actualiza din nou pagina."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "Instanța BookStack inaccesibilă (consultați jurnalul Home Assistant pentru detalii)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack a respins tokenul API. Reînnoiți tokenul în BookStack și utilizați fluxul Reauth."
+    }
+  }
+}

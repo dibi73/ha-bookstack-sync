@@ -1,0 +1,134 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion BookStack",
+        "description": "Connectez Home Assistant à votre instance BookStack.\n\nDans BookStack, allez dans *Mon compte → Tokens API*, créez un token et collez l'ID et le secret ici.\n\nDocumentation : {documentation_url}",
+        "data": {
+          "base_url": "URL BookStack",
+          "token_id": "ID du token API",
+          "token_secret": "Secret du token API",
+          "verify_ssl": "Vérifier le certificat TLS (désactivez pour les certificats auto-signés)"
+        }
+      },
+      "book": {
+        "title": "Choisir le livre cible",
+        "description": "Vers quel livre Home Assistant doit-il synchroniser ? Le contenu ajouté manuellement aux pages est conservé.",
+        "data": {
+          "book_id": "Livre cible",
+          "sync_interval": "Intervalle de synchronisation"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Renouveler le token BookStack",
+        "description": "BookStack a refusé le token API pour {base_url}. Créez un nouveau token dans BookStack et collez l'ID et le secret ici — l'URL et le livre cible restent inchangés.",
+        "data": {
+          "token_id": "ID du token API",
+          "token_secret": "Secret du token API"
+        }
+      },
+      "reconfigure": {
+        "title": "Modifier la connexion BookStack",
+        "description": "Modifiez l'URL, le token ou le réglage TLS de cette connexion. Le livre cible et toutes les associations de pages sont conservés. L'URL doit pointer vers la même instance BookStack qu'auparavant.",
+        "data": {
+          "base_url": "URL BookStack",
+          "token_id": "ID du token API",
+          "token_secret": "Secret du token API",
+          "verify_ssl": "Vérifier le certificat TLS (désactivez pour les certificats auto-signés)"
+        }
+      }
+    },
+    "error": {
+      "auth": "Token API refusé ou autorisations manquantes.",
+      "connection": "Impossible de joindre BookStack.",
+      "no_books": "Aucun livre trouvé dans cette instance BookStack. Créez d'abord un livre cible.",
+      "unknown": "Erreur inattendue — consultez le journal Home Assistant.",
+      "base_url_invalid_scheme": "L'URL doit commencer par http:// ou https://.",
+      "base_url_missing_host": "L'URL est incomplète — nom d'hôte manquant."
+    },
+    "abort": {
+      "already_configured": "Cette instance BookStack est déjà configurée.",
+      "reauth_successful": "Token renouvelé — connexion BookStack rétablie.",
+      "reconfigure_successful": "Connexion mise à jour — BookStack Sync a été reconfiguré.",
+      "url_mismatch": "La nouvelle URL pointe vers une autre instance BookStack. Veuillez supprimer l'entrée d'origine et en ajouter une nouvelle."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Paramètres BookStack Sync",
+        "data": {
+          "book_id": "Livre cible",
+          "sync_interval": "Intervalle de synchronisation",
+          "excluded_areas": "Zones exclues (ne seront pas synchronisées)",
+          "output_language": "Langue des pages BookStack"
+        }
+      }
+    }
+  },
+  "selector": {
+    "sync_interval": {
+      "options": {
+        "hourly": "Toutes les heures",
+        "daily": "Quotidiennement",
+        "manual": "Manuel uniquement (appel de service)"
+      }
+    },
+    "output_language": {
+      "options": {
+        "auto": "Comme Home Assistant (auto)",
+        "de": "Allemand",
+        "en": "Anglais"
+      }
+    }
+  },
+  "services": {
+    "run_now": {
+      "name": "Synchroniser maintenant",
+      "description": "Démarre une synchronisation immédiatement, sans attendre l'intervalle."
+    },
+    "preview": {
+      "name": "Aperçu de synchronisation",
+      "description": "Enregistre quelles pages seraient créées/mises à jour sans rien écrire dans BookStack."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "sync_status": {
+        "name": "État de synchronisation",
+        "state": {
+          "ok": "OK",
+          "error": "Erreur",
+          "never_run": "Jamais exécuté",
+          "syncing": "Synchronisation en cours"
+        }
+      }
+    },
+    "button": {
+      "run_now": {
+        "name": "Synchroniser maintenant"
+      },
+      "preview": {
+        "name": "Aperçu de synchronisation (à blanc)"
+      }
+    }
+  },
+  "issues": {
+    "bookstack_unreachable": {
+      "title": "BookStack est inaccessible",
+      "description": "L'intégration BookStack Sync n'a pas pu joindre l'instance BookStack pendant {count} synchronisations consécutives. Causes courantes : le conteneur BookStack est arrêté, un problème réseau, ou un proxy inverse refuse les connexions. La prochaine synchronisation réussie résout cette notification automatiquement."
+    },
+    "page_tampered": {
+      "title": "Le bloc AUTO d'une page a été modifié manuellement",
+      "description": "La page « {page_title} » dans BookStack contient un bloc AUTO modifié en dehors de Home Assistant. L'intégration a ignoré cette page lors de la synchronisation pour ne pas écraser vos modifications. Déplacez vos notes dans le bloc MANUAL ou annulez la modification du bloc AUTO afin que la prochaine synchronisation puisse à nouveau mettre à jour la page."
+    }
+  },
+  "exceptions": {
+    "bookstack_unreachable": {
+      "message": "Instance BookStack inaccessible (consultez le journal Home Assistant pour plus de détails)."
+    },
+    "bookstack_auth_failed": {
+      "message": "BookStack a refusé le token API. Renouvelez le token dans BookStack et utilisez le flux Reauth."
+    }
+  }
+}
