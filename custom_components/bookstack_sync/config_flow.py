@@ -52,6 +52,7 @@ from .const import (
 _ERR_INVALID_SCHEME = "base_url_invalid_scheme"
 _ERR_MISSING_HOST = "base_url_missing_host"
 _ERR_PATH_INVALID = "path_invalid"
+_ERR_EXPORT_ALREADY_ENABLED = "export_already_enabled_elsewhere"
 
 
 def _validate_base_url(raw: str) -> str:
@@ -434,11 +435,49 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                     candidate = Path(export_path)
                     if not candidate.is_absolute() or not candidate.parent.exists():
                         errors[CONF_EXPORT_PATH] = _ERR_PATH_INVALID
+                # Single-writer rule: only one config entry may have the
+                # markdown export enabled at a time. Two entries running
+                # the export — even at different paths — would still
+                # write the same idempotency ledger key collisions and
+                # confuse external indexers; refuse upfront with a clear
+                # error pointing at the other entry.
+                for other in self.hass.config_entries.async_entries(DOMAIN):
+                    if other.entry_id == self.config_entry.entry_id:
+                        continue
+                    if other.options.get(
+                        CONF_EXPORT_ENABLED,
+                        DEFAULT_EXPORT_ENABLED,
+                    ):
+                        errors[CONF_EXPORT_ENABLED] = _ERR_EXPORT_ALREADY_ENABLED
+                        break
             if not errors:
+                new_book_id = int(user_input[CONF_BOOK_ID])
+                # When the user picks a different book the integration title
+                # (= visible name on the integration card and the device name)
+                # would otherwise still show the old book — the OptionsFlow's
+                # ``async_create_entry`` doesn't touch the title. Detect the
+                # change here and propagate via ``async_update_entry`` so the
+                # UI follows the user's choice.
+                old_book_id_raw = self.config_entry.options.get(
+                    CONF_BOOK_ID
+                ) or self.config_entry.data.get(CONF_BOOK_ID)
+                if old_book_id_raw is not None and int(old_book_id_raw) != new_book_id:
+                    new_title = next(
+                        (
+                            f"BookStack: {book.get('name', new_book_id)}"
+                            for book in self._books
+                            if int(book["id"]) == new_book_id
+                        ),
+                        self.config_entry.title,
+                    )
+                    self.hass.config_entries.async_update_entry(
+                        self.config_entry,
+                        title=new_title,
+                    )
                 return self.async_create_entry(
                     title="",
                     data={
-                        CONF_BOOK_ID: int(user_input[CONF_BOOK_ID]),
+                        CONF_BOOK_ID: new_book_id,
                         CONF_SYNC_INTERVAL: user_input[CONF_SYNC_INTERVAL],
                         CONF_EXCLUDED_AREAS: user_input.get(CONF_EXCLUDED_AREAS, []),
                         CONF_OUTPUT_LANGUAGE: user_input.get(

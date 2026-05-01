@@ -1,5 +1,9 @@
 # BookStack Sync für Home Assistant
 
+> Verfügbar in: **Deutsch** · [English](README.md)
+>
+> *(Die HA-UI der Integration selbst ist seit v0.12.0 in 28 Sprachen lokalisiert — diese README gibt es in DE + EN.)*
+
 Eine Home-Assistant-Custom-Integration, die dein gesamtes HA-Setup automatisch in
 ein bestehendes Book deiner [BookStack](https://www.bookstackapp.com/)-Wiki-Instanz
 synchronisiert. Manuell hinzugefügte Inhalte in den Wiki-Pages bleiben dabei

@@ -8,7 +8,7 @@ rendering, tombstoning, page mapping persistence.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.helpers import (
@@ -234,3 +234,97 @@ async def test_english_run_creates_english_titled_chapters(
     # And no German leftovers.
     assert "Räume" not in chapter_titles
     assert "Geräte" not in chapter_titles
+
+
+async def test_clean_sync_emits_no_notification(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    Regression: a healthy sync run is silent.
+
+    Users explicitly asked for no green-bell after every successful sync.
+    The status sensor + integration card already show "ok"; another
+    persistent notification is just noise.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    with patch(
+        "custom_components.bookstack_sync.sync.async_create_notification",
+    ) as notify:
+        report = await run_sync(hass, client, store, 1, strings)
+
+    assert report.errors == []
+    assert report.skipped_conflict == []
+    notify.assert_not_called()
+
+
+async def test_sync_with_errors_emits_notification(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """A sync that hit at least one error still surfaces a notification."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    # Force every page write to fail so the run produces errors.
+    from custom_components.bookstack_sync.api import BookStackApiError  # noqa: PLC0415
+
+    client.create_page = AsyncMock(side_effect=BookStackApiError("boom"))
+
+    with patch(
+        "custom_components.bookstack_sync.sync.async_create_notification",
+    ) as notify:
+        report = await run_sync(hass, client, store, 1, strings)
+
+    assert report.errors  # the run did record at least one error
+    notify.assert_called_once()
+
+
+async def test_sync_with_skipped_conflict_emits_notification(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """Tampering-detected skips also warrant a notification."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    # First run creates the pages cleanly.
+    await run_sync(hass, client, store, 1, strings)
+
+    # Mutate one stored page's auto block in BookStack to simulate the user
+    # editing inside the AUTO marker. The next sync must detect tampering
+    # and skip — and now the run should emit a notification.
+    page_id, page = next(iter(state["pages"].items()))
+    state["pages"][page_id] = {
+        **page,
+        "markdown": page["markdown"].replace(
+            "Auto-generated",
+            "Auto-generated [HACKED]",
+        ),
+    }
+
+    with patch(
+        "custom_components.bookstack_sync.sync.async_create_notification",
+    ) as notify:
+        report = await run_sync(hass, client, store, 1, strings)
+
+    if report.skipped_conflict:
+        notify.assert_called_once()
+    else:
+        # Marker-block layout changed → no skip happened. In that case the
+        # test is degenerate; surface it loudly so a future refactor doesn't
+        # silently mask the regression we care about.
+        pytest.fail(
+            "Expected tamper detection to produce skipped_conflict; got none",
+        )
