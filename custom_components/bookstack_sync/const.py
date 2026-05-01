@@ -76,13 +76,13 @@ SERVICE_EXPORT_MARKDOWN = "export_markdown"
 
 # Markdown back-export to a folder of plain files (issue #61).
 # Off by default — wasted disk + CPU otherwise. The user opts in via the
-# options flow, then the run_now-style service or the optional auto-trigger
-# after each sync produces ``<output>/<chapter>/<slug>.md`` per managed page.
+# options flow; once on, every successful sync also exports. The manual
+# ``bookstack_sync.export_markdown`` service stays available for ad-hoc
+# triggers. (v0.13.2 dropped the ``export_after_sync`` toggle that gated
+# the auto-trigger separately — it was redundant with ``export_enabled``.)
 CONF_EXPORT_ENABLED = "export_enabled"
 CONF_EXPORT_PATH = "export_path"
-CONF_EXPORT_AFTER_SYNC = "export_after_sync"
 DEFAULT_EXPORT_ENABLED = False
-DEFAULT_EXPORT_AFTER_SYNC = False
 DEFAULT_EXPORT_SUBDIR = "bookstack_export"
 EXPORT_STORAGE_KEY_FMT = "bookstack_sync.{entry_id}.export"
 EXPORT_FORMAT_VERSION = "1"

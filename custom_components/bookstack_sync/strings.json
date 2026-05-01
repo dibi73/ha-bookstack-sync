@@ -65,13 +65,11 @@
           "excluded_areas": "Ausgeschlossene Räume (werden nicht synchronisiert)",
           "output_language": "Sprache der BookStack-Pages",
           "export_enabled": "Markdown-Rückexport aktivieren (standardmäßig aus)",
-          "export_path": "Export-Ordner (absoluter Pfad)",
-          "export_after_sync": "Export nach jedem Sync automatisch ausführen"
+          "export_path": "Export-Ordner (absoluter Pfad)"
         },
         "data_description": {
           "export_enabled": "Standardmäßig aus. Wenn aktiv, werden BookStack-Pages zusätzlich als reine Markdown-Dateien zurückgeschrieben — als Eingabe für RAG/LLM-Pipelines. Verbraucht Speicherplatz und CPU bei jedem Lauf, daher bewusst zu aktivieren.",
-          "export_path": "Wohin die Markdown-Dateien geschrieben werden. Muss absolut sein, das Eltern­verzeichnis muss bereits existieren.",
-          "export_after_sync": "Nur wirksam, wenn „Markdown-Rückexport aktivieren\" eingeschaltet ist."
+          "export_path": "Wohin die Markdown-Dateien geschrieben werden. Muss absolut sein, das Eltern­verzeichnis muss bereits existieren."
         }
       }
     }

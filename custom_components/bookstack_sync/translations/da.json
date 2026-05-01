@@ -65,13 +65,11 @@
           "excluded_areas": "Ekskluderede områder (synkroniseres ikke)",
           "output_language": "Sprog for BookStack-sider",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "export_after_sync": "Run export automatically after each sync"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "export_after_sync": "Only effective when 'Enable Markdown back-export' is on."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }

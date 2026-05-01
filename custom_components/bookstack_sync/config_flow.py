@@ -27,7 +27,6 @@ from .const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
     CONF_EXCLUDED_AREAS,
-    CONF_EXPORT_AFTER_SYNC,
     CONF_EXPORT_ENABLED,
     CONF_EXPORT_PATH,
     CONF_OUTPUT_LANGUAGE,
@@ -35,7 +34,6 @@ from .const import (
     CONF_TOKEN_ID,
     CONF_TOKEN_SECRET,
     CONF_VERIFY_SSL,
-    DEFAULT_EXPORT_AFTER_SYNC,
     DEFAULT_EXPORT_ENABLED,
     DEFAULT_EXPORT_SUBDIR,
     DEFAULT_INTERVAL,
@@ -486,12 +484,6 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         ),
                         CONF_EXPORT_ENABLED: export_enabled,
                         CONF_EXPORT_PATH: export_path,
-                        CONF_EXPORT_AFTER_SYNC: bool(
-                            user_input.get(
-                                CONF_EXPORT_AFTER_SYNC,
-                                DEFAULT_EXPORT_AFTER_SYNC,
-                            ),
-                        ),
                     },
                 )
 
@@ -529,11 +521,6 @@ class BookStackSyncOptionsFlow(OptionsFlow):
             CONF_EXPORT_PATH,
             self.hass.config.path(DEFAULT_EXPORT_SUBDIR),
         )
-        current_export_after_sync = self.config_entry.options.get(
-            CONF_EXPORT_AFTER_SYNC,
-            DEFAULT_EXPORT_AFTER_SYNC,
-        )
-
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -577,10 +564,6 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         CONF_EXPORT_PATH,
                         default=current_export_path,
                     ): selector.TextSelector(),
-                    vol.Required(
-                        CONF_EXPORT_AFTER_SYNC,
-                        default=current_export_after_sync,
-                    ): selector.BooleanSelector(),
                 },
             ),
             errors=errors,

@@ -607,7 +607,32 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
     )
 
     if merged.manual_block_tampered:
-        if mapping.hash_origin != "bookstack":
+        if not merged.auto_block_changed:
+            # Hash drift, not tampering (issue follow-up to #58):
+            # BookStack's current AUTO content matches what HA would
+            # render right now, but the hash we stored after our last
+            # write has drifted from it. That means BookStack
+            # normalised the markdown sometime between the immediate
+            # create/update response (which we hashed) and the
+            # subsequent read — so the user did NOT edit the page,
+            # the storage just lost track. Re-hash silently against
+            # what BookStack actually has now and continue.
+            LOGGER.info(
+                "BookStack page %s (id=%s): stored hash drifted from "
+                "BookStack content, but content still matches HA's "
+                "current render — re-hashing silently (no tampering).",
+                page.title,
+                mapping.page_id,
+            )
+            mapping = PageMapping(
+                page_id=mapping.page_id,
+                auto_block_hash=existing_auto_hash or "",
+                last_seen=mapping.last_seen,
+                tombstoned_at=mapping.tombstoned_at,
+                hash_origin="bookstack",
+            )
+            store.set(page.key, mapping)
+        elif mapping.hash_origin != "bookstack":
             # Migration path (#58): legacy ``write``-origin hashes can't
             # reliably detect tampering against BookStack's normalised
             # storage. Trust the user, fall through to a fresh write
