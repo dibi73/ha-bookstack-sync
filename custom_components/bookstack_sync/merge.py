@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from dataclasses import dataclass
 
 from .const import (
@@ -55,19 +56,35 @@ class MergeResult:
     manual_block_tampered: bool
 
 
-def hash_auto_block(auto_body: str) -> str:
+def _normalise_for_hash(auto_body: str) -> str:
     r"""
-    Compute the whitespace-normalised hash of the AUTO body (without markers).
+    Aggressively normalise the AUTO body before hashing.
 
-    Stripping is critical because ``build_page_body`` writes the auto body
-    via ``auto_body.strip()`` and ``extract_auto_block`` reads it via
-    ``.strip('\n')`` - if we hashed the raw render output (which our
-    renderers end with a trailing newline) the write-time hash would never
-    match the read-time hash, every page after its initial creation would
-    be flagged as ``manual_block_tampered`` and the next sync would skip
-    it entirely.
+    Sequence (each step is invariant against a known BookStack-side
+    normalisation pass that historically broke our tampering detection):
+
+    1. Newline normalisation: ``\r\n`` and bare ``\r`` → ``\n``.
+       BookStack stores LF internally on Linux, but on some setups the
+       reverse-proxy layer or the markdown editor injects CRLF, and our
+       prior strip-only hash treated LF and CRLF as different content,
+       producing 260+ false-positive tampering reports per sync.
+
+    2. Unicode NFC: ``é`` (U+00E9) and ``é`` (U+0065 + U+0301) collapse
+       to one form. BookStack's editor normalises to NFC; HA renderers
+       sometimes produce NFD via the underlying string sources.
+
+    3. Trailing/leading whitespace: ``strip()``. ``build_page_body``
+       writes through ``auto_body.strip()`` and ``extract_auto_block``
+       reads via ``.strip('\n')``, so the hash must match either side.
     """
-    return hashlib.sha256(auto_body.strip().encode("utf-8")).hexdigest()
+    text = auto_body.replace("\r\n", "\n").replace("\r", "\n")
+    text = unicodedata.normalize("NFC", text)
+    return text.strip()
+
+
+def hash_auto_block(auto_body: str) -> str:
+    """Compute the whitespace+unicode-normalised hash of the AUTO body."""
+    return hashlib.sha256(_normalise_for_hash(auto_body).encode("utf-8")).hexdigest()
 
 
 def _legacy_unstripped_hash(auto_body: str) -> str:
