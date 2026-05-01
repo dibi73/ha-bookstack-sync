@@ -45,7 +45,8 @@
       "unknown": "Erro inesperado — verifique o registo do Home Assistant.",
       "base_url_invalid_scheme": "O URL deve começar por http:// ou https://.",
       "base_url_missing_host": "O URL está incompleto — falta o nome do anfitrião.",
-      "path_invalid": "Path must be absolute and the parent directory must already exist."
+      "path_invalid": "Path must be absolute and the parent directory must already exist.",
+      "export_already_enabled_elsewhere": "Markdown export is already enabled on another BookStack Sync instance. Only one instance per Home Assistant setup may export - otherwise the Markdown files collide. Disable the export on the other instance first."
     },
     "abort": {
       "already_configured": "Esta instância BookStack já está configurada.",

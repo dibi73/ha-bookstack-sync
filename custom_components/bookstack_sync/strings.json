@@ -44,7 +44,9 @@
       "no_books": "In dieser BookStack-Instanz wurde kein Book gefunden. Lege zuerst manuell ein Ziel-Book an.",
       "unknown": "Unbekannter Fehler – siehe Home-Assistant-Log.",
       "base_url_invalid_scheme": "URL muss mit http:// oder https:// beginnen.",
-      "base_url_missing_host": "URL ist unvollständig – Hostname fehlt."
+      "base_url_missing_host": "URL ist unvollständig – Hostname fehlt.",
+      "path_invalid": "Pfad muss absolut sein und das Elternverzeichnis muss bereits existieren.",
+      "export_already_enabled_elsewhere": "Markdown-Export ist bereits in einer anderen BookStack-Sync-Instanz aktiviert. Pro Home-Assistant-Setup darf nur eine Instanz exportieren — sonst kollidieren die Markdown-Dateien. Schalte den Export bei der anderen Instanz erst aus."
     },
     "abort": {
       "already_configured": "Diese BookStack-Instanz ist bereits konfiguriert.",
@@ -61,7 +63,15 @@
           "book_id": "Ziel-Book",
           "sync_interval": "Sync-Intervall",
           "excluded_areas": "Ausgeschlossene Räume (werden nicht synchronisiert)",
-          "output_language": "Sprache der BookStack-Pages"
+          "output_language": "Sprache der BookStack-Pages",
+          "export_enabled": "Markdown-Rückexport aktivieren (standardmäßig aus)",
+          "export_path": "Export-Ordner (absoluter Pfad)",
+          "export_after_sync": "Export nach jedem Sync automatisch ausführen"
+        },
+        "data_description": {
+          "export_enabled": "Standardmäßig aus. Wenn aktiv, werden BookStack-Pages zusätzlich als reine Markdown-Dateien zurückgeschrieben — als Eingabe für RAG/LLM-Pipelines. Verbraucht Speicherplatz und CPU bei jedem Lauf, daher bewusst zu aktivieren.",
+          "export_path": "Wohin die Markdown-Dateien geschrieben werden. Muss absolut sein, das Eltern­verzeichnis muss bereits existieren.",
+          "export_after_sync": "Nur wirksam, wenn „Markdown-Rückexport aktivieren\" eingeschaltet ist."
         }
       }
     }
@@ -90,6 +100,20 @@
     "preview": {
       "name": "Sync-Vorschau",
       "description": "Loggt, welche Pages erstellt/aktualisiert würden, schreibt aber nichts in BookStack."
+    },
+    "export_markdown": {
+      "name": "Markdown-Export (Opt-in)",
+      "description": "Schreibt jede gemanagte BookStack-Page als Markdown-Datei mit YAML-Frontmatter idempotent in den konfigurierten Ordner. Standardmäßig deaktiviert — vorher in den Integrationsoptionen einschalten.",
+      "fields": {
+        "dry_run": {
+          "name": "Trockenlauf",
+          "description": "Loggt was geschrieben würde, ohne tatsächlich Dateien anzulegen."
+        },
+        "output_path": {
+          "name": "Ausgabepfad-Override",
+          "description": "Übersteuert den konfigurierten Pfad nur für diesen einen Aufruf."
+        }
+      }
     }
   },
   "entity": {
@@ -129,6 +153,9 @@
     },
     "bookstack_auth_failed": {
       "message": "BookStack hat das API-Token abgelehnt. Erneuere den Token in BookStack und nutze den Reauth-Flow."
+    },
+    "export_disabled": {
+      "message": "Markdown-Export ist deaktiviert. Schalte ihn in den Integrationsoptionen unter „Markdown-Rückexport aktivieren\" ein, bevor du diesen Service aufrufst."
     }
   }
 }

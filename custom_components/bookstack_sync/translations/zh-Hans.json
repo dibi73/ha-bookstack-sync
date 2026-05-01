@@ -45,7 +45,8 @@
       "unknown": "意外错误 — 请检查 Home Assistant 日志。",
       "base_url_invalid_scheme": "URL 必须以 http:// 或 https:// 开头。",
       "base_url_missing_host": "URL 不完整 — 缺少主机名。",
-      "path_invalid": "Path must be absolute and the parent directory must already exist."
+      "path_invalid": "Path must be absolute and the parent directory must already exist.",
+      "export_already_enabled_elsewhere": "Markdown export is already enabled on another BookStack Sync instance. Only one instance per Home Assistant setup may export - otherwise the Markdown files collide. Disable the export on the other instance first."
     },
     "abort": {
       "already_configured": "此 BookStack 实例已配置。",

@@ -45,7 +45,8 @@
       "unknown": "ข้อผิดพลาดที่ไม่คาดคิด — โปรดตรวจสอบบันทึกของ Home Assistant",
       "base_url_invalid_scheme": "URL ต้องขึ้นต้นด้วย http:// หรือ https://",
       "base_url_missing_host": "URL ไม่สมบูรณ์ — ขาดชื่อโฮสต์",
-      "path_invalid": "Path must be absolute and the parent directory must already exist."
+      "path_invalid": "Path must be absolute and the parent directory must already exist.",
+      "export_already_enabled_elsewhere": "Markdown export is already enabled on another BookStack Sync instance. Only one instance per Home Assistant setup may export - otherwise the Markdown files collide. Disable the export on the other instance first."
     },
     "abort": {
       "already_configured": "อินสแตนซ์ BookStack นี้ได้รับการกำหนดค่าแล้ว",

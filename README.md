@@ -1,5 +1,9 @@
 # BookStack Sync for Home Assistant
 
+> Available in: **English** · [Deutsch](README.de.md)
+>
+> *(The integration's HA UI itself is localised in 28 languages since v0.12.0 — this README exists in DE + EN.)*
+
 A Home Assistant custom integration (installable via HACS) that
 documents your entire HA setup as markdown pages inside an existing
 [BookStack](https://www.bookstackapp.com/) wiki book and keeps it in
@@ -10,8 +14,6 @@ across syncs.** Every page is split into an auto-generated section and
 a manual section by markdown markers. The integration only ever
 rewrites the auto block — your notes, quirks, password references and
 "why we set option X" comments live in the manual block forever.
-
-> **Auch auf Deutsch verfügbar**: [README.de.md](README.de.md)
 
 ## What gets documented
 
@@ -308,22 +310,26 @@ moves them to the right chapter automatically.
 
 ## Known limitations
 
-- **One BookStack book per HA instance.** Multiple books are not
-  supported in v0.5; you'd need multiple HA instances.
 - **No bidirectional sync.** Edits in BookStack outside the manual
   block are detected, logged, and the page is skipped — not merged
   back into HA.
 - **Sync is HA-state-driven.** Renaming an area or device renames the
   page on next sync; the old page becomes orphan and gets a tombstone
   banner. Manual cleanup of tombstoned pages is left to the user.
-- **Languages: DE + EN only.** Other locales fall back to English in
-  the page output. Adding a language is a matter of populating
-  `_strings.py`; PRs welcome.
+- **Page-output languages: DE + EN only.** The integration UI itself
+  is localised in 28 languages (since v0.12.0), but the *content*
+  written into BookStack pages is German or English. Adding a content
+  language is a matter of populating `_strings.py`; PRs welcome.
 - **Excluded areas hide their devices.** A device assigned only to an
   excluded area disappears from the wiki entirely. If you also want
   the device, give it a second area outside the excluded set.
 - **API token has full book-level access.** BookStack does not offer
   per-page tokens; the integration uses whatever the token can reach.
+
+> *Multiple BookStack books / multiple BookStack instances **are**
+> supported* — add the integration once per target. Each config entry
+> is keyed by base URL and gets its own coordinator, storage and
+> status sensor.
 
 ## Non-goals
 

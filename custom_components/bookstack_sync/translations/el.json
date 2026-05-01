@@ -45,7 +45,8 @@
       "unknown": "Απρόσμενο σφάλμα — ελέγξτε το αρχείο καταγραφής Home Assistant.",
       "base_url_invalid_scheme": "Η URL πρέπει να ξεκινά με http:// ή https://.",
       "base_url_missing_host": "Η URL είναι ελλιπής — λείπει το όνομα κεντρικού υπολογιστή.",
-      "path_invalid": "Path must be absolute and the parent directory must already exist."
+      "path_invalid": "Path must be absolute and the parent directory must already exist.",
+      "export_already_enabled_elsewhere": "Markdown export is already enabled on another BookStack Sync instance. Only one instance per Home Assistant setup may export - otherwise the Markdown files collide. Disable the export on the other instance first."
     },
     "abort": {
       "already_configured": "Αυτή η εγκατάσταση BookStack είναι ήδη ρυθμισμένη.",

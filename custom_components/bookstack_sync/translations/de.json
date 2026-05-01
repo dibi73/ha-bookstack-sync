@@ -45,7 +45,8 @@
       "unknown": "Unbekannter Fehler – siehe Home-Assistant-Log.",
       "base_url_invalid_scheme": "URL muss mit http:// oder https:// beginnen.",
       "base_url_missing_host": "URL ist unvollständig – Hostname fehlt.",
-      "path_invalid": "Pfad muss absolut sein und das Elternverzeichnis muss bereits existieren."
+      "path_invalid": "Pfad muss absolut sein und das Elternverzeichnis muss bereits existieren.",
+      "export_already_enabled_elsewhere": "Markdown-Export ist bereits in einer anderen BookStack-Sync-Instanz aktiviert. Pro Home-Assistant-Setup darf nur eine Instanz exportieren — sonst kollidieren die Markdown-Dateien. Schalte den Export bei der anderen Instanz erst aus."
     },
     "abort": {
       "already_configured": "Diese BookStack-Instanz ist bereits konfiguriert.",

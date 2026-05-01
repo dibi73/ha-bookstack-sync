@@ -505,6 +505,18 @@ def _post_sync_notification(
     report: SyncReport,
     strings: dict[str, str],
 ) -> None:
+    """
+    Surface a persistent notification only when something needs attention.
+
+    Successful runs are silent — the status sensor + integration card already
+    show "ok", and a green-bell-every-night spam is more noise than value.
+    Errors and tampering-related skips do warrant a notification, because
+    those are exactly the cases the user has to act on.
+    """
+    has_errors = bool(report.errors)
+    has_skipped = bool(report.skipped_conflict)
+    if not has_errors and not has_skipped:
+        return
     body = strings["notification_body_template"].format(
         created=len(report.created),
         updated=len(report.updated),

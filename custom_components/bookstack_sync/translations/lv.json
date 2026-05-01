@@ -45,7 +45,8 @@
       "unknown": "Negaidīta kļūda — pārbaudiet Home Assistant žurnālu.",
       "base_url_invalid_scheme": "URL ir jāsākas ar http:// vai https://.",
       "base_url_missing_host": "URL ir nepilnīgs — trūkst resursdatora nosaukuma.",
-      "path_invalid": "Path must be absolute and the parent directory must already exist."
+      "path_invalid": "Path must be absolute and the parent directory must already exist.",
+      "export_already_enabled_elsewhere": "Markdown export is already enabled on another BookStack Sync instance. Only one instance per Home Assistant setup may export - otherwise the Markdown files collide. Disable the export on the other instance first."
     },
     "abort": {
       "already_configured": "Šī BookStack instance jau ir konfigurēta.",
