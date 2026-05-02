@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Synchronizuj teraz",
-      "description": "Uruchamia synchronizację natychmiast, bez czekania na interwał."
+      "description": "Uruchamia synchronizację natychmiast, bez czekania na interwał.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Podgląd synchronizacji",
-      "description": "Rejestruje, które strony zostałyby utworzone/zaktualizowane, bez zapisywania czegokolwiek do BookStack."
+      "description": "Rejestruje, które strony zostałyby utworzone/zaktualizowane, bez zapisywania czegokolwiek do BookStack.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

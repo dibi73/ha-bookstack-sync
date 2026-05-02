@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Synchronizovať teraz",
-      "description": "Spustí synchronizáciu okamžite bez čakania na interval."
+      "description": "Spustí synchronizáciu okamžite bez čakania na interval.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Náhľad synchronizácie",
-      "description": "Zaznamená, ktoré stránky by sa vytvorili/aktualizovali, bez zapisovania čohokoľvek do BookStack."
+      "description": "Zaznamená, ktoré stránky by sa vytvorili/aktualizovali, bez zapisovania čohokoľvek do BookStack.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Синхронизирай сега",
-      "description": "Стартира синхронизация веднага, без да чака интервала."
+      "description": "Стартира синхронизация веднага, без да чака интервала.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Преглед на синхронизация",
-      "description": "Записва в журнала кои страници ще бъдат създадени/актуализирани, без да пише нищо в BookStack."
+      "description": "Записва в журнала кои страници ще бъдат създадени/актуализирани, без да пише нищо в BookStack.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

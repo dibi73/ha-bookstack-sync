@@ -3,12 +3,33 @@ run_now:
   description: >-
     Runs the BookStack sync immediately for every configured BookStack Sync
     entry, regardless of the configured interval.
+  fields:
+    force:
+      name: Force overwrite tampered pages
+      description: >-
+        When true, pages whose AUTO block looks tampered (stored hash differs
+        from BookStack content) are overwritten instead of skipped. Use this
+        once after a major upgrade that reshapes the AUTO block format. The
+        MANUAL block is always preserved.
+      default: false
+      selector:
+        boolean:
 
 preview:
   name: Sync preview
   description: >-
     Performs a dry-run: logs which pages would be created or updated, but
     writes nothing to BookStack. Useful right after setup or template changes.
+  fields:
+    force:
+      name: Force overwrite tampered pages
+      description: >-
+        Mirror of run_now's force flag — see there. Combined with the dry-run
+        nature of preview this lets you check what would be overwritten before
+        committing.
+      default: false
+      selector:
+        boolean:
 
 export_markdown:
   name: Export Markdown (opt-in)

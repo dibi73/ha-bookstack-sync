@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Sünkrooni kohe",
-      "description": "Käivitab sünkroonimise kohe, ilma intervalli ootamata."
+      "description": "Käivitab sünkroonimise kohe, ilma intervalli ootamata.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Sünkroonimise eelvaade",
-      "description": "Logib, milliseid lehti loodaks/uuendataks, ilma BookStacki midagi kirjutamata."
+      "description": "Logib, milliseid lehti loodaks/uuendataks, ilma BookStacki midagi kirjutamata.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

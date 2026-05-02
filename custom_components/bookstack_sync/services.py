@@ -97,15 +97,20 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
     async def _handle_run_now(call: ServiceCall) -> None:
         await _require_admin(hass, call)
+        force = bool(call.data.get("force", False))
         for coordinator in _coordinators(hass):
-            LOGGER.info("Running BookStack sync (run_now)")
-            await coordinator.async_run_sync(dry_run=False)
+            LOGGER.info("Running BookStack sync (run_now, force=%s)", force)
+            await coordinator.async_run_sync(dry_run=False, force=force)
 
     async def _handle_preview(call: ServiceCall) -> None:
         await _require_admin(hass, call)
+        force = bool(call.data.get("force", False))
         for coordinator in _coordinators(hass):
-            LOGGER.info("Running BookStack sync preview (dry-run)")
-            report = await coordinator.async_run_sync(dry_run=True)
+            LOGGER.info(
+                "Running BookStack sync preview (dry-run, force=%s)",
+                force,
+            )
+            report = await coordinator.async_run_sync(dry_run=True, force=force)
             LOGGER.info("Preview result: %s", report.as_dict())
 
     async def _handle_export(call: ServiceCall) -> None:

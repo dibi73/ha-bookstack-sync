@@ -178,8 +178,22 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             f"{REPAIR_ISSUE_UNREACHABLE}_{self.config_entry.entry_id}",
         )
 
-    async def async_run_sync(self, *, dry_run: bool = False) -> SyncReport:
-        """Execute a sync immediately, regardless of the schedule."""
+    async def async_run_sync(
+        self,
+        *,
+        dry_run: bool = False,
+        force: bool = False,
+    ) -> SyncReport:
+        """
+        Execute a sync immediately, regardless of the schedule.
+
+        ``force=True`` (v0.14.3) bypasses the tamper-skip path: pages
+        whose stored hash drifted from the BookStack-stored AUTO block
+        AND whose new render genuinely differs (the typical fallout
+        from a version-bump that reshapes the AUTO block) get
+        overwritten instead of skipped. The MANUAL block is preserved
+        either way.
+        """
         async with self._sync_lock:
             self.is_syncing = True
             self.async_update_listeners()
@@ -201,6 +215,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     strings,
                     dry_run=dry_run,
                     excluded_area_ids=excluded_areas,
+                    force=force,
                 )
                 if not dry_run:
                     self.last_run = datetime.now(tz=UTC)

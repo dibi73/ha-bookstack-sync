@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Sofort synchronisieren",
-      "description": "Startet einen Sync sofort, ohne auf das Intervall zu warten."
+      "description": "Startet einen Sync sofort, ohne auf das Intervall zu warten.",
+      "fields": {
+        "force": {
+          "name": "Tampered-Pages erzwungen überschreiben",
+          "description": "Wenn aktiv, werden Pages mit scheinbar manipuliertem AUTO-Block überschrieben statt übersprungen. Einmalig nach großen Upgrades nutzen, die das AUTO-Block-Format ändern. Der MANUAL-Block bleibt unangetastet."
+        }
+      }
     },
     "preview": {
       "name": "Sync-Vorschau",
-      "description": "Loggt, welche Pages erstellt/aktualisiert würden, schreibt aber nichts in BookStack."
+      "description": "Loggt, welche Pages erstellt/aktualisiert würden, schreibt aber nichts in BookStack.",
+      "fields": {
+        "force": {
+          "name": "Tampered-Pages erzwungen überschreiben",
+          "description": "Spiegel zum force-Flag von run_now. In der Vorschau siehst du, welche Pages überschrieben würden, ohne dass tatsächlich geschrieben wird."
+        }
+      }
     },
     "export_markdown": {
       "name": "Markdown-Export (Opt-in)",
