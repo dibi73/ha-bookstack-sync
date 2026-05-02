@@ -84,6 +84,23 @@ class NetworkInfo:
     source_platform: str | None = None  # "unifi", "device_tracker", "registry"
 
 
+@dataclass(frozen=True)
+class DeviceIntegrationRef:
+    """
+    A device's link to one config entry (= one installed integration).
+
+    Carries both ``entry_id`` (stable HA-internal handle) and ``domain``
+    (human-readable, also what HA uses in its frontend URL
+    ``/config/integrations/integration/<domain>``). v0.14.5 introduced
+    this so the device page can render the friendly domain name and a
+    deep-link instead of the ULID-style entry_id that pre-v0.14.5 builds
+    accidentally exposed in the Stammdaten table.
+    """
+
+    entry_id: str
+    domain: str
+
+
 @dataclass
 class DeviceSnapshot:
     """One Home Assistant device with its entity list."""
@@ -95,7 +112,7 @@ class DeviceSnapshot:
     sw_version: str | None
     hw_version: str | None
     area_id: str | None
-    config_entries: tuple[str, ...]
+    config_entries: tuple[DeviceIntegrationRef, ...]
     entities: list[EntitySnapshot] = field(default_factory=list)
     # Primary network identity for this device. ``network_extra`` lists
     # additional concurrent connections (e.g. NUC plugged in via both
@@ -307,6 +324,15 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         if area.id not in excluded
     }
 
+    # v0.14.5: pre-resolve entry_id -> domain so DeviceSnapshot.config_entries
+    # can carry both. Pre-v0.14.5 the device's ``Integrationen`` cell
+    # accidentally rendered ULID-style entry_ids; users want the friendly
+    # domain plus a clickable deep-link to
+    # ``/config/integrations/integration/<domain>``.
+    entry_domains = {
+        entry.entry_id: entry.domain for entry in hass.config_entries.async_entries()
+    }
+
     devices: dict[str, DeviceSnapshot] = {}
     for device in device_reg.devices.values():
         if device.area_id in excluded:
@@ -317,6 +343,16 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         display_name = device.name_by_user or device.name
         if not display_name:
             continue
+        device_refs = tuple(
+            DeviceIntegrationRef(
+                entry_id=eid,
+                # Fallback to entry_id for the rare orphan case where a
+                # device still references an entry that's already gone
+                # from hass.config_entries — better than crashing.
+                domain=entry_domains.get(eid, eid),
+            )
+            for eid in sorted(device.config_entries)
+        )
         devices[device.id] = DeviceSnapshot(
             device_id=device.id,
             name=display_name,
@@ -325,7 +361,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
             sw_version=device.sw_version,
             hw_version=device.hw_version,
             area_id=device.area_id,
-            config_entries=tuple(sorted(device.config_entries)),
+            config_entries=device_refs,
         )
 
     orphan_entities_by_area: dict[str, list[EntitySnapshot]] = {}
@@ -561,6 +597,8 @@ def _extract_integrations(
 ) -> list[IntegrationSnapshot]:
     devices_per_entry: dict[str, int] = {}
     for device in device_reg.devices.values():
+        # device_reg's devices iterate the raw HA registry here (not our
+        # filtered DeviceSnapshots), so the values are still entry_id strings.
         for entry_id in device.config_entries:
             devices_per_entry[entry_id] = devices_per_entry.get(entry_id, 0) + 1
 

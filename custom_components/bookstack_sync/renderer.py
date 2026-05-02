@@ -96,6 +96,101 @@ def _md_escape(value: str) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# HA-Frontend deep-links (v0.14.5+)
+# ---------------------------------------------------------------------------
+# Every renderer that emits an object the user might want to inspect or edit
+# in the live HA UI takes a ``ha_url`` parameter (default ``""``). When set,
+# objects link out to the canonical config / dev-tools paths; when empty,
+# they degrade silently to plain code spans / bold labels — never a broken
+# href. The base URL is resolved once in sync.py from
+# ``hass.config.external_url or hass.config.internal_url`` and threaded down.
+
+
+_HA_FIXED_PATHS = {"helpers": "/config/helpers"}
+_HA_OBJECT_PATHS = {
+    "area": "/config/areas/area/{id}",
+    "device": "/config/devices/device/{id}",
+    "integration": "/config/integrations/integration/{id}",
+    "entity": "/developer-tools/state?entity_id={id}",
+}
+_HA_EDIT_KINDS = {"automation", "script", "scene"}
+
+
+def _ha_url_for(ha_url: str, kind: str, identifier: str) -> str:
+    """
+    Build a Home Assistant frontend URL for one object.
+
+    Returns ``""`` when no base URL is known, the kind is unrecognised, or
+    the identifier is empty — callers must check and fall back accordingly.
+
+    Path conventions (HA stable as of 2026.5):
+
+    * ``area``       → ``/config/areas/area/<area_id>``
+    * ``device``     → ``/config/devices/device/<device_id>``
+    * ``automation`` → ``/config/automation/edit/<entity_id_suffix>``
+    * ``script``     → ``/config/script/edit/<entity_id_suffix>``
+    * ``scene``      → ``/config/scene/edit/<entity_id_suffix>``
+    * ``integration``→ ``/config/integrations/integration/<domain>``
+    * ``entity``     → ``/developer-tools/state?entity_id=<entity_id>``
+    * ``helpers``    → ``/config/helpers`` (no per-helper deep-link;
+                       identifier is ignored)
+
+    For automation / script / scene the identifier is the bare entity_id;
+    we strip the domain prefix so callers can pass either form.
+    """
+    if not ha_url or not kind:
+        return ""
+    fixed = _HA_FIXED_PATHS.get(kind)
+    if fixed is not None:
+        return f"{ha_url}{fixed}"
+    if not identifier:
+        return ""
+    object_path = _HA_OBJECT_PATHS.get(kind)
+    if object_path is not None:
+        return f"{ha_url}{object_path.format(id=identifier)}"
+    if kind in _HA_EDIT_KINDS:
+        suffix = identifier.split(".", 1)[1] if "." in identifier else identifier
+        return f"{ha_url}/config/{kind}/edit/{suffix}"
+    return ""
+
+
+def _ha_open_line(
+    ha_url: str,
+    kind: str,
+    identifier: str,
+    strings: dict[str, str],
+) -> list[str]:
+    """
+    Return ``[link, ""]`` ready to extend into a body, or ``[]`` if no URL.
+
+    Used at the top of single-object pages (device, area) right after the
+    attribution line. Empty list when ``ha_url`` is unset keeps pre-config
+    setups producing valid Markdown without dangling labels.
+    """
+    url = _ha_url_for(ha_url, kind, identifier)
+    if not url:
+        return []
+    label = _md_escape(strings["link_open_in_ha"])
+    return [f"[{label}]({url})", ""]
+
+
+def _entity_id_md(entity_id: str, ha_url: str) -> str:
+    r"""
+    Render an entity_id as a clickable code-span when ``ha_url`` is set.
+
+    Plain ``\`button.foo\``` becomes
+    ``[\`button.foo\`](http://.../developer-tools/state?entity_id=button.foo)``.
+    Without ``ha_url`` the bare code-span is returned unchanged so existing
+    layouts stay byte-identical until the user sets ``external_url``.
+    """
+    code = f"`{entity_id}`"
+    url = _ha_url_for(ha_url, "entity", entity_id)
+    if not url:
+        return code
+    return f"[{code}]({url})"
+
+
 def render_tombstone_auto_block(strings: dict[str, str], now: datetime) -> str:
     """Render the AUTO block for a page whose HA object no longer exists."""
     attribution = strings["tombstone_attribution_template"].format(
@@ -228,6 +323,7 @@ def render_area_auto_block(
     now: datetime,
     strings: dict[str, str],
     page_links: dict[str, str] | None = None,
+    ha_url: str = "",
 ) -> str:
     """
     Render the AUTO block of one area page.
@@ -248,6 +344,7 @@ def render_area_auto_block(
     """
     links = page_links or {}
     lines: list[str] = [_format_attribution(strings, now), ""]
+    lines.extend(_ha_open_line(ha_url, "area", area.area_id, strings))
 
     lines.extend(
         [
@@ -269,7 +366,7 @@ def render_area_auto_block(
                 "",
                 f"## {strings['section_orphan_entities']}",
                 "",
-                *_entity_lines(area.orphan_entities, strings),
+                *_entity_lines(area.orphan_entities, strings, ha_url),
             ],
         )
 
@@ -284,7 +381,7 @@ def render_area_auto_block(
                 "",
             ],
         )
-        lines.extend(f"- {_md_escape(a.name)}" for a in area.automations)
+        lines.extend(_area_automation_line(a, ha_url) for a in area.automations)
 
     if area.scripts:
         lines.extend(
@@ -297,7 +394,7 @@ def render_area_auto_block(
                 "",
             ],
         )
-        lines.extend(f"- {_md_escape(s.name)}" for s in area.scripts)
+        lines.extend(_area_script_line(s, ha_url) for s in area.scripts)
 
     if area.scenes:
         lines.extend(
@@ -310,11 +407,21 @@ def render_area_auto_block(
                 "",
             ],
         )
-        lines.extend(
-            f"- **{_md_escape(s.name)}** – `{s.entity_id}`" for s in area.scenes
-        )
+        lines.extend(_scene_line(s, ha_url) for s in area.scenes)
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _area_automation_line(auto: AutomationSnapshot, ha_url: str) -> str:
+    name_md = _md_escape(auto.name)
+    edit_url = _ha_url_for(ha_url, "automation", auto.entity_id)
+    return f"- [{name_md}]({edit_url})" if edit_url else f"- {name_md}"
+
+
+def _area_script_line(script: ScriptSnapshot, ha_url: str) -> str:
+    name_md = _md_escape(script.name)
+    edit_url = _ha_url_for(ha_url, "script", script.entity_id)
+    return f"- [{name_md}]({edit_url})" if edit_url else f"- {name_md}"
 
 
 def render_device_auto_block(
@@ -322,20 +429,26 @@ def render_device_auto_block(
     now: datetime,
     strings: dict[str, str],
     reverse_usage: dict[str, list[ReverseUsageEntry]] | None = None,
+    ha_url: str = "",
 ) -> str:
     """Render the AUTO block of one device page."""
     lines: list[str] = [
         _format_attribution(strings, now),
         "",
-        f"## {strings['section_master_data']}",
-        "",
-        _device_facts_table(device, strings),
     ]
+    lines.extend(_ha_open_line(ha_url, "device", device.device_id, strings))
+    lines.extend(
+        [
+            f"## {strings['section_master_data']}",
+            "",
+            _device_facts_table(device, strings, ha_url),
+        ],
+    )
     if device.network is not None:
         lines.extend(_network_section(device, strings))
     lines.extend(["", f"## {strings['section_entities']}", ""])
     if device.entities:
-        lines.extend(_entity_lines(device.entities, strings))
+        lines.extend(_entity_lines(device.entities, strings, ha_url))
     else:
         lines.append(strings["empty_entities_in_device"])
     if reverse_usage:
@@ -513,6 +626,7 @@ def render_automations_auto_block(
     automations: list[AutomationSnapshot],
     now: datetime,
     strings: dict[str, str],
+    ha_url: str = "",
 ) -> str:
     """Render the AUTO block listing every HA automation."""
     lines: list[str] = [
@@ -529,7 +643,7 @@ def render_automations_auto_block(
         return "\n".join(lines).rstrip() + "\n"
 
     for auto in automations:
-        lines.extend(_automation_block(auto, strings))
+        lines.extend(_automation_block(auto, strings, ha_url))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -537,6 +651,7 @@ def render_scripts_auto_block(
     scripts: list[ScriptSnapshot],
     now: datetime,
     strings: dict[str, str],
+    ha_url: str = "",
 ) -> str:
     """Render the AUTO block listing every HA script."""
     lines: list[str] = [
@@ -550,7 +665,7 @@ def render_scripts_auto_block(
         return "\n".join(lines).rstrip() + "\n"
 
     for script in scripts:
-        lines.extend(_script_block(script, strings))
+        lines.extend(_script_block(script, strings, ha_url))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -558,6 +673,7 @@ def render_scenes_auto_block(
     scenes: list[SceneSnapshot],
     now: datetime,
     strings: dict[str, str],
+    ha_url: str = "",
 ) -> str:
     """Render the AUTO block listing every HA scene."""
     lines: list[str] = [
@@ -570,14 +686,22 @@ def render_scenes_auto_block(
         lines.append(strings["empty_scenes"])
         return "\n".join(lines).rstrip() + "\n"
 
-    lines.extend(f"- **{_md_escape(s.name)}** – `{s.entity_id}`" for s in scenes)
+    lines.extend(_scene_line(s, ha_url) for s in scenes)
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _scene_line(scene: SceneSnapshot, ha_url: str) -> str:
+    name_md = _md_escape(scene.name)
+    edit_url = _ha_url_for(ha_url, "scene", scene.entity_id)
+    head = f"[**{name_md}**]({edit_url})" if edit_url else f"**{name_md}**"
+    return f"- {head} – {_entity_id_md(scene.entity_id, ha_url)}"
 
 
 def render_integrations_auto_block(
     integrations: list[IntegrationSnapshot],
     now: datetime,
     strings: dict[str, str],
+    ha_url: str = "",
 ) -> str:
     """Render the AUTO block listing every installed integration / config entry."""
     lines: list[str] = [
@@ -608,8 +732,10 @@ def render_integrations_auto_block(
         docs_cell = (
             f"[{docs_label}]({i.documentation_url})" if i.documentation_url else "—"
         )
+        domain_url = _ha_url_for(ha_url, "integration", i.domain)
+        domain_cell = f"[`{i.domain}`]({domain_url})" if domain_url else f"`{i.domain}`"
         lines.append(
-            f"| `{i.domain}` | {_md_escape(i.title)} | {i.state} | {i.source} "
+            f"| {domain_cell} | {_md_escape(i.title)} | {i.state} | {i.source} "
             f"| {i.device_count} | {i.entity_count} | {docs_cell} |",
         )
     return "\n".join(lines).rstrip() + "\n"
@@ -757,22 +883,43 @@ def render_network_auto_block(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive ren
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _device_facts_table(device: DeviceSnapshot, strings: dict[str, str]) -> str:
+def _device_facts_table(
+    device: DeviceSnapshot,
+    strings: dict[str, str],
+    ha_url: str = "",
+) -> str:
+    integrations_cell = (
+        _integrations_cell(device, ha_url) if device.config_entries else "—"
+    )
     rows = [
         (strings["field_manufacturer"], _md_escape(device.manufacturer or "—")),
         (strings["field_model"], _md_escape(device.model or "—")),
         (strings["field_firmware"], _md_escape(device.sw_version or "—")),
         (strings["field_hardware"], _md_escape(device.hw_version or "—")),
-        (
-            strings["field_integrations"],
-            _md_escape(", ".join(device.config_entries) or "—"),
-        ),
+        (strings["field_integrations"], integrations_cell),
         (strings["field_device_id"], device.device_id),
     ]
     header = f"| {strings['table_field_header']} | {strings['table_value_header']} |"
     out = [header, "| --- | --- |"]
     out.extend(f"| {key} | {value} |" for key, value in rows)
     return "\n".join(out)
+
+
+def _integrations_cell(device: DeviceSnapshot, ha_url: str) -> str:
+    """
+    Render the device's ``Integrationen`` cell as comma-separated domain names.
+
+    Pre-v0.14.5 this accidentally joined ULID-style entry_ids
+    (``01JK17JC46PYGDD6AABQTMKGKX``); v0.14.5 carries the resolved domain
+    name on each ``DeviceIntegrationRef`` and additionally deep-links to
+    ``/config/integrations/integration/<domain>`` when ``ha_url`` is set.
+    """
+    parts: list[str] = []
+    for ref in device.config_entries:
+        domain = _md_escape(ref.domain)
+        url = _ha_url_for(ha_url, "integration", ref.domain)
+        parts.append(f"[{domain}]({url})" if url else domain)
+    return ", ".join(parts)
 
 
 _STATE_CLASS_LONG_TERM_STATS = frozenset(
@@ -783,13 +930,14 @@ _STATE_CLASS_LONG_TERM_STATS = frozenset(
 def _entity_lines(
     entities: list[EntitySnapshot],
     strings: dict[str, str],
+    ha_url: str = "",
 ) -> list[str]:
     state_label = strings["entity_state_label"]
     topic_label = strings["entity_topic_label"]
     disabled = strings["entity_disabled_marker"]
     stats_marker = strings["entity_stats_marker"]
     return [
-        f"- `{e.entity_id}` – {_md_escape(e.name)}"
+        f"- {_entity_id_md(e.entity_id, ha_url)} – {_md_escape(e.name)}"
         + (f" ({state_label}: `{e.state}`)" if e.state is not None else "")
         + (f" ({topic_label}: `{e.mqtt_topic}`)" if e.mqtt_topic else "")
         + (
@@ -805,11 +953,15 @@ def _entity_lines(
 def _automation_block(
     auto: AutomationSnapshot,
     strings: dict[str, str],
+    ha_url: str = "",
 ) -> list[str]:
+    name_md = _md_escape(auto.name)
+    edit_url = _ha_url_for(ha_url, "automation", auto.entity_id)
+    heading = f"### [{name_md}]({edit_url})" if edit_url else f"### {name_md}"
     block = [
-        f"### {_md_escape(auto.name)}",
+        heading,
         "",
-        f"- {strings['field_entity']}: `{auto.entity_id}`",
+        f"- {strings['field_entity']}: {_entity_id_md(auto.entity_id, ha_url)}",
     ]
     if auto.state is not None:
         block.append(f"- {strings['field_status']}: `{auto.state}`")
@@ -826,11 +978,15 @@ def _automation_block(
 def _script_block(
     script: ScriptSnapshot,
     strings: dict[str, str],
+    ha_url: str = "",
 ) -> list[str]:
+    name_md = _md_escape(script.name)
+    edit_url = _ha_url_for(ha_url, "script", script.entity_id)
+    heading = f"### [{name_md}]({edit_url})" if edit_url else f"### {name_md}"
     block = [
-        f"### {_md_escape(script.name)}",
+        heading,
         "",
-        f"- {strings['field_entity']}: `{script.entity_id}`",
+        f"- {strings['field_entity']}: {_entity_id_md(script.entity_id, ha_url)}",
     ]
     if script.state is not None:
         block.append(f"- {strings['field_status']}: `{script.state}`")
@@ -1188,9 +1344,14 @@ def render_helpers_auto_block(
     groups: list[HelperGroup],
     now: datetime,
     strings: dict[str, str],
+    ha_url: str = "",
 ) -> str:
     """Render the AUTO block of the Helpers page (#42)."""
     lines: list[str] = [_format_attribution(strings, now), ""]
+    helpers_url = _ha_url_for(ha_url, "helpers", "")
+    if helpers_url:
+        helpers_label = _md_escape(strings["link_helpers_in_ha"])
+        lines.extend([f"[{helpers_label}]({helpers_url})", ""])
     if not groups:
         lines.append(strings["empty_helpers"])
         return "\n".join(lines).rstrip() + "\n"
@@ -1208,7 +1369,9 @@ def render_helpers_auto_block(
         for entry in group.entries:
             state = entry.state if entry.state is not None else "—"
             lines.append(
-                f"| **{_md_escape(entry.name)}** | `{entry.entity_id}` | `{state}` |",
+                f"| **{_md_escape(entry.name)}** "
+                f"| {_entity_id_md(entry.entity_id, ha_url)} "
+                f"| `{state}` |",
             )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"

@@ -179,6 +179,7 @@ def _device_page(
     now: datetime,
     strings: dict[str, str],
     reverse_usage: dict[str, list] | None = None,
+    ha_url: str = "",
 ) -> _PlannedPage:
     return _PlannedPage(
         key=f"{PAGE_KIND_DEVICE}:{device.device_id}",
@@ -188,6 +189,7 @@ def _device_page(
             now,
             strings,
             reverse_usage=reverse_usage,
+            ha_url=ha_url,
         ),
         chapter_key=CHAPTER_KEY_DEVICES,
     )
@@ -197,6 +199,7 @@ def _plan_pages(
     snapshot: HASnapshot,
     now: datetime,
     strings: dict[str, str],
+    ha_url: str = "",
 ) -> list[_PlannedPage]:
     """Plan all pages EXCEPT the overview (rendered in a second pass)."""
     planned: list[_PlannedPage] = [
@@ -207,6 +210,7 @@ def _plan_pages(
                 snapshot.integrations,
                 now,
                 strings,
+                ha_url=ha_url,
             ),
         ),
         _PlannedPage(
@@ -216,17 +220,28 @@ def _plan_pages(
                 snapshot.automations,
                 now,
                 strings,
+                ha_url=ha_url,
             ),
         ),
         _PlannedPage(
             key=f"{PAGE_KIND_SCRIPTS}:_",
             title=strings["title_scripts"],
-            auto_body=render_scripts_auto_block(snapshot.scripts, now, strings),
+            auto_body=render_scripts_auto_block(
+                snapshot.scripts,
+                now,
+                strings,
+                ha_url=ha_url,
+            ),
         ),
         _PlannedPage(
             key=f"{PAGE_KIND_SCENES}:_",
             title=strings["title_scenes"],
-            auto_body=render_scenes_auto_block(snapshot.scenes, now, strings),
+            auto_body=render_scenes_auto_block(
+                snapshot.scenes,
+                now,
+                strings,
+                ha_url=ha_url,
+            ),
         ),
     ]
     if snapshot.addons:
@@ -324,19 +339,21 @@ def _plan_pages(
                     snapshot.helpers,
                     now,
                     strings,
+                    ha_url=ha_url,
                 ),
             ),
         )
-    # Areas are rendered in a SECOND pass so they can carry ``{{@<id>}}``
-    # cross-links to the device pages (v0.14.0). Pass 1 only contains
-    # bundle pages + every device — we collect their page IDs first,
-    # then ``_plan_area_pages`` renders each area on top of those IDs.
+    # Areas are rendered in a SECOND pass so they can carry cross-page
+    # Markdown links to the device pages (v0.14.0/v0.14.4). Pass 1 only
+    # contains bundle pages + every device — we collect their page IDs
+    # first, then ``_plan_area_pages`` renders each area on top of those.
     for area in snapshot.areas:
         planned.extend(
-            _device_page(d, now, strings, snapshot.reverse_usage) for d in area.devices
+            _device_page(d, now, strings, snapshot.reverse_usage, ha_url=ha_url)
+            for d in area.devices
         )
     planned.extend(
-        _device_page(d, now, strings, snapshot.reverse_usage)
+        _device_page(d, now, strings, snapshot.reverse_usage, ha_url=ha_url)
         for d in snapshot.unassigned_devices
     )
     return planned
@@ -363,6 +380,7 @@ def _plan_area_pages(
     now: datetime,
     strings: dict[str, str],
     page_links: dict[str, str],
+    ha_url: str = "",
 ) -> list[_PlannedPage]:
     """Render area pages with cross-page Markdown links to device pages."""
     return [
@@ -374,6 +392,7 @@ def _plan_area_pages(
                 now,
                 strings,
                 page_links=page_links,
+                ha_url=ha_url,
             ),
             chapter_key=CHAPTER_KEY_AREAS,
         )
@@ -439,7 +458,14 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
     # Registries are pure in-memory dict lookups and must run on the event
     # loop thread - never wrap them in async_add_executor_job.
     snapshot = extract_snapshot(hass, excluded_area_ids=excluded_area_ids)
-    planned = _plan_pages(snapshot, now, strings)
+    # v0.14.5: HA-frontend deep-links use this base. ``external_url``
+    # wins over ``internal_url`` because the same Markdown lands in
+    # exported .md files that the optional RAG add-on serves to the
+    # household — internal-only URLs would 404 from a phone browser
+    # outside the LAN. When neither is configured, renderers degrade
+    # silently to plain code-spans / bold labels — never broken hrefs.
+    ha_url = (hass.config.external_url or hass.config.internal_url or "").rstrip("/")
+    planned = _plan_pages(snapshot, now, strings, ha_url=ha_url)
 
     await store.async_load()
     chapters = (
@@ -481,7 +507,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
             if url:
                 page_links[page_key] = url
 
-    area_planned = _plan_area_pages(snapshot, now, strings, page_links)
+    area_planned = _plan_area_pages(snapshot, now, strings, page_links, ha_url=ha_url)
     total_steps = len(planned) + len(area_planned) + 1  # +1 for the overview
     step = 0
     for page in planned:
@@ -516,7 +542,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
     # Pass 2: render area pages (now that device URLs exist) and sync them.
     # Re-plan with the populated page_links so each area's auto-body
     # contains real cross-page Markdown links instead of bold-name fallbacks.
-    area_planned = _plan_area_pages(snapshot, now, strings, page_links)
+    area_planned = _plan_area_pages(snapshot, now, strings, page_links, ha_url=ha_url)
     for page in area_planned:
         step += 1
         try:
