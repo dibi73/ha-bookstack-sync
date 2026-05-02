@@ -476,3 +476,54 @@ async def test_dry_run_writes_nothing_to_disk(
     assert result.written == 1
     # tmp_path itself exists (pytest fixture) but no files were created.
     assert not list(tmp_path.rglob("*.md"))  # noqa: ASYNC240 - test-only filesystem assertion
+
+
+async def test_progress_callback_fires_per_page_plus_seed(
+    hass: HomeAssistant,
+    tmp_path: Path,
+    fake_client_state: dict[str, Any],
+    export_entry: tuple[MockConfigEntry, BookStackSyncStore, BookStackSyncExportStore],
+) -> None:
+    """v0.14.7: export emits (0, total) seed + one tick per managed page."""
+    entry, sync_store, _ = export_entry
+    _seed_managed_page(
+        fake_client_state,
+        sync_store,
+        mapping_key="device:a",
+        page_id=10,
+        name="Light",
+    )
+    _seed_managed_page(
+        fake_client_state,
+        sync_store,
+        mapping_key="device:b",
+        page_id=11,
+        name="Sensor",
+    )
+    _seed_managed_page(
+        fake_client_state,
+        sync_store,
+        mapping_key="area:living_room",
+        page_id=12,
+        name="Living Room",
+        chapter_id=201,
+    )
+
+    progress: list[tuple[int, int]] = []
+
+    def record(step: int, total: int) -> None:
+        progress.append((step, total))
+
+    await export(
+        hass,
+        entry,
+        output_path=tmp_path,
+        progress_callback=record,
+    )
+
+    # 3 managed pages → seed + 3 per-page ticks = 4 emissions.
+    assert progress, "progress_callback was never invoked"
+    totals = {total for _, total in progress}
+    assert totals == {3}, f"total should be stable at 3, got {totals!r}"
+    steps = [step for step, _ in progress]
+    assert steps == [0, 1, 2, 3], f"unexpected step sequence: {steps!r}"

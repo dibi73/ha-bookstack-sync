@@ -198,8 +198,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         # HA-Frontend deep-links (v0.14.5+)
         "link_open_in_ha": "In Home Assistant öffnen",
         "link_helpers_in_ha": "Helper-Konfiguration in Home Assistant öffnen",
-        # Diagnostic sensor live-progress (v0.14.6)
+        # Diagnostic sensor live-progress (v0.14.6 + v0.14.7)
         "sensor_state_syncing_progress_template": "Sync läuft {step}/{total}",
+        "sensor_state_exporting_progress_template": "Export läuft {step}/{total}",
         # Entity-line bits
         "entity_state_label": "State",
         "entity_topic_label": "Topic",
@@ -388,6 +389,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "link_open_in_ha": "Open in Home Assistant",
         "link_helpers_in_ha": "Open helper configuration in Home Assistant",
         "sensor_state_syncing_progress_template": "Syncing {step}/{total}",
+        "sensor_state_exporting_progress_template": "Exporting {step}/{total}",
         "entity_state_label": "State",
         "entity_topic_label": "Topic",
         "entity_disabled_marker": "_[disabled]_",

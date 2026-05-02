@@ -37,6 +37,8 @@ from .merge import split_blocks
 from .slug import make_unique_slug, slugify
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from homeassistant.core import HomeAssistant
 
     from .api import BookStackApiClient
@@ -141,6 +143,7 @@ async def export(  # noqa: PLR0912, PLR0915 — single linear orchestration is c
     *,
     dry_run: bool = False,
     output_path: str | Path | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> ExportResult:
     """
     Run one export pass.
@@ -233,7 +236,18 @@ async def export(  # noqa: PLR0912, PLR0915 — single linear orchestration is c
         plan.append((mapping_key, page, target_root / rel, rel))
 
     # Second pass: render + diff + write.
-    for mapping_key, page, target_path, rel in plan:
+    # v0.14.7: emit a (0, total) seed tick so the diagnostic sensor jumps
+    # from "Export läuft" straight to "Export läuft 0/N" before any I/O —
+    # avoids a brief stretch where the user sees the bare ``export`` enum.
+    total_to_process = len(plan)
+
+    def _tick(step: int) -> None:
+        if progress_callback is not None:
+            progress_callback(step, total_to_process)
+
+    _tick(0)
+    for processed, (mapping_key, page, target_path, rel) in enumerate(plan, start=1):
+        _tick(processed)
         mapping_entry = sync_store.get(mapping_key)
         if mapping_entry is None:
             continue
