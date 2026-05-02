@@ -192,3 +192,58 @@ async def test_dry_run_does_not_record_last_run(
 
     assert coord.last_run is None
     assert coord.last_report is None
+
+
+async def test_stale_tamper_issues_resolved_after_restart(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    v0.13.4 regression: stale tamper repair-issues from previous sessions
+    are auto-deleted on the first clean sync after restart.
+
+    Before v0.13.4 the reconciler only consulted ``self._active_tamper_keys``
+    which is in-memory and resets on every coordinator construction. Old
+    repair-issues raised in a previous HA session would therefore never be
+    cleaned up — the user saw 260+ stale notifications hanging around even
+    after the v0.13.3 hash fix had stopped producing new ones.
+    """
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_TAMPERED,
+    )
+
+    config_entry.add_to_hass(hass)
+
+    # Simulate a previous HA session that raised tamper issues for two
+    # pages and then the user restarted before they could be resolved.
+    entry_id = config_entry.entry_id
+    for key in ("device:abc", "device:def"):
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_{key}",
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=REPAIR_ISSUE_TAMPERED,
+            translation_placeholders={"page_title": f"page-{key}"},
+        )
+
+    # Now construct a fresh coordinator (= post-restart).
+    coord = _make_coordinator(hass, config_entry)
+    assert coord._active_tamper_keys == set()  # in-memory cache empty
+
+    # Simulate a clean sync run — no tampered pages reported.
+    coord._reconcile_tamper_issues(SyncReport())
+
+    # All previously-stored tamper issues for this entry are gone.
+    issue_reg = ir.async_get(hass)
+    remaining = [
+        issue_id
+        for (issue_domain, issue_id) in issue_reg.issues
+        if issue_domain == DOMAIN
+        and issue_id.startswith(f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_")
+    ]
+    assert remaining == [], f"stale tamper issues survived: {remaining}"

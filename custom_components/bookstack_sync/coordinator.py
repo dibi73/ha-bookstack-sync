@@ -106,16 +106,25 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         """
         Create / auto-resolve ``page_tampered`` repair issues.
 
-        Diffs the current sync's tampered keys against the previous run.
-        New tampered pages → fresh repair issue. Pages no longer
-        tampered → repair issue auto-deleted.
+        Source of truth is the HA issue-registry, NOT the in-memory cache:
+        ``self._active_tamper_keys`` resets on every HA restart, which used
+        to leave stale repair issues from previous sessions hanging around
+        forever (v0.13.3 follow-up). We now query the registry directly so
+        the diff against the current sync's tampered keys produces the
+        correct delete-set even right after a restart.
         """
         current = dict(
             zip(report.tampered_page_keys, report.tampered_page_titles, strict=True),
         )
-        new_keys = set(current.keys()) - self._active_tamper_keys
-        resolved_keys = self._active_tamper_keys - set(current.keys())
         entry_id = self.config_entry.entry_id
+        prefix = f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_"
+        existing = {
+            issue_id.removeprefix(prefix)
+            for (issue_domain, issue_id) in ir.async_get(self.hass).issues
+            if issue_domain == DOMAIN and issue_id.startswith(prefix)
+        }
+        new_keys = set(current.keys()) - existing
+        resolved_keys = existing - set(current.keys())
 
         for key in new_keys:
             ir.async_create_issue(
@@ -134,6 +143,8 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_{key}",
             )
 
+        # In-memory cache kept for tests + diagnostics; no longer the
+        # authoritative source.
         self._active_tamper_keys = set(current.keys())
 
     def _note_failure(self) -> None:
