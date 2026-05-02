@@ -413,6 +413,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
     strings: dict[str, str],
     *,
     dry_run: bool = False,
+    force: bool = False,
     excluded_area_ids: Iterable[str] = (),
 ) -> SyncReport:
     """Execute one full sync cycle and return a report."""
@@ -449,6 +450,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
                 index=step,
                 total=total_steps,
                 dry_run=dry_run,
+                force=force,
             )
             if page_id is not None:
                 page_ids[page.key] = page_id
@@ -481,6 +483,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
                 index=step,
                 total=total_steps,
                 dry_run=dry_run,
+                force=force,
             )
             if page_id is not None:
                 page_ids[page.key] = page_id
@@ -518,6 +521,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
             index=total_steps,
             total=total_steps,
             dry_run=dry_run,
+            force=force,
         )
     except BookStackApiAuthError:
         raise
@@ -600,6 +604,7 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
     index: int,
     total: int,
     dry_run: bool,
+    force: bool = False,
 ) -> int | None:
     """Sync one page; return the BookStack page id (or None on dry-run create)."""
     chapter_id = chapters.get(page.chapter_key) if page.chapter_key else None
@@ -699,11 +704,29 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
                 page.title,
                 mapping.page_id,
             )
+        elif force:
+            # User explicitly opted in to overwrite via the
+            # ``force=true`` service parameter. Used after a major
+            # version bump that reshapes the AUTO block format and
+            # leaves dozens of pages stuck on a residual hash drift
+            # the v0.13.3 normaliser can't catch (real situation
+            # after the v0.14.0 area-page refactor).
+            #
+            # MANUAL block stays preserved (merge_page already kept
+            # it), only the AUTO block is overwritten with the fresh
+            # render.
+            LOGGER.warning(
+                "BookStack page %s (id=%s): force=True — overriding "
+                "tamper check, AUTO block will be overwritten. MANUAL "
+                "block stays preserved.",
+                page.title,
+                mapping.page_id,
+            )
         else:
             LOGGER.warning(
                 "BookStack page %s (id=%s): AUTO block was edited outside "
                 "of Home Assistant - skipping to avoid clobbering manual "
-                "changes.",
+                "changes. Re-run with force=true to override.",
                 page.title,
                 mapping.page_id,
             )

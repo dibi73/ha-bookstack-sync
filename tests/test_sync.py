@@ -377,3 +377,97 @@ async def test_drifted_stored_hash_does_not_trigger_tampering(
     assert report2.skipped_conflict == []
     assert report2.tampered_page_keys == []
     assert report2.errors == []
+
+
+async def test_force_overwrites_tampered_pages(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    v0.14.3: ``force=True`` bypasses the tamper-skip path.
+
+    Real-world trigger: after a major upgrade that reshapes the AUTO
+    block format (e.g. v0.14.0's area-page refactor), residual hash
+    drift the v0.13.3 normaliser can't catch combines with the
+    legitimate content change to make pages look tampered. ``force``
+    is the user-facing escape hatch: overwrite anyway, MANUAL block
+    stays preserved by the merge logic.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    # First run creates pages cleanly.
+    await run_sync(hass, client, store, 1, strings)
+
+    # Simulate hash drift + content change combo: corrupt the stored
+    # hash AND mutate the BookStack-side AUTO content so the next
+    # sync sees the page as legitimately-changed AND tampered.
+    from custom_components.bookstack_sync.store import PageMapping  # noqa: PLC0415
+
+    for key, mapping in store.all().items():
+        store.set(
+            key,
+            PageMapping(
+                page_id=mapping.page_id,
+                auto_block_hash="cafebabe" * 8,
+                last_seen=mapping.last_seen,
+                tombstoned_at=mapping.tombstoned_at,
+                hash_origin="bookstack",
+            ),
+        )
+    page_id, page = next(iter(state["pages"].items()))
+    state["pages"][page_id] = {
+        **page,
+        "markdown": page["markdown"].replace(
+            "Auto-generated",
+            "Auto-generated [drifted]",
+        ),
+    }
+
+    # Without force: the page is skipped.
+    report_skip = await run_sync(hass, client, store, 1, strings)
+    assert report_skip.skipped_conflict, "expected tamper-skip without force"
+
+    # With force=True: overwritten, no skip.
+    report_force = await run_sync(hass, client, store, 1, strings, force=True)
+    assert report_force.skipped_conflict == [], (
+        f"force=True should bypass skip, got {report_force.skipped_conflict!r}"
+    )
+    assert report_force.tampered_page_keys == []
+
+
+async def test_force_default_false_preserves_safety(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    v0.14.3 invariant: when ``force`` is NOT explicitly passed, the
+    tamper-skip protection MUST still fire. The escape hatch is
+    user-opt-in only — no silent regressions on the schedule path.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    # Tamper a single page.
+    page_id, page = next(iter(state["pages"].items()))
+    state["pages"][page_id] = {
+        **page,
+        "markdown": page["markdown"].replace(
+            "Auto-generated",
+            "Auto-generated [tampered]",
+        ),
+    }
+
+    # Default (no force kwarg): the page must be skipped.
+    report = await run_sync(hass, client, store, 1, strings)
+    assert report.skipped_conflict, (
+        "default run_sync (no force) must keep the tamper-skip protection"
+    )

@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Szinkronizálás most",
-      "description": "Azonnal elindít egy szinkronizálást az időköz bevárása nélkül."
+      "description": "Azonnal elindít egy szinkronizálást az időköz bevárása nélkül.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Szinkronizálási előnézet",
-      "description": "Naplózza, mely oldalak jönnének létre/frissülnének, anélkül hogy bármit a BookStackbe írna."
+      "description": "Naplózza, mely oldalak jönnének létre/frissülnének, anélkül hogy bármit a BookStackbe írna.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "立即同步",
-      "description": "立即开始同步，无需等待间隔。"
+      "description": "立即开始同步，无需等待间隔。",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "同步预览",
-      "description": "记录将创建/更新哪些页面，但不向 BookStack 写入任何内容。"
+      "description": "记录将创建/更新哪些页面，但不向 BookStack 写入任何内容。",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

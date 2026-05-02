@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Sinkroniziraj sada",
-      "description": "Pokreće sinkronizaciju odmah, bez čekanja na interval."
+      "description": "Pokreće sinkronizaciju odmah, bez čekanja na interval.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Pregled sinkronizacije",
-      "description": "Bilježi koje bi se stranice kreirale/ažurirale, ali ne piše ništa u BookStack."
+      "description": "Bilježi koje bi se stranice kreirale/ažurirale, ali ne piše ništa u BookStack.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

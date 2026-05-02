@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Συγχρονισμός τώρα",
-      "description": "Ξεκινά συγχρονισμό αμέσως, χωρίς αναμονή για το διάστημα."
+      "description": "Ξεκινά συγχρονισμό αμέσως, χωρίς αναμονή για το διάστημα.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Προεπισκόπηση συγχρονισμού",
-      "description": "Καταγράφει ποιες σελίδες θα δημιουργούνταν/ενημερώνονταν χωρίς να γράφει τίποτα στο BookStack."
+      "description": "Καταγράφει ποιες σελίδες θα δημιουργούνταν/ενημερώνονταν χωρίς να γράφει τίποτα στο BookStack.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

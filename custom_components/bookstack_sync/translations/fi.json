@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Synkronoi nyt",
-      "description": "Käynnistää synkronoinnin heti odottamatta väliä."
+      "description": "Käynnistää synkronoinnin heti odottamatta väliä.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Synkronoinnin esikatselu",
-      "description": "Kirjaa, mitkä sivut luotaisiin/päivitettäisiin, mutta ei kirjoita mitään BookStackiin."
+      "description": "Kirjaa, mitkä sivut luotaisiin/päivitettäisiin, mutta ei kirjoita mitään BookStackiin.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

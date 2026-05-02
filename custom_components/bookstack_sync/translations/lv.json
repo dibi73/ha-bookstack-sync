@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Sinhronizēt tagad",
-      "description": "Nekavējoties sāk sinhronizāciju, negaidot intervālu."
+      "description": "Nekavējoties sāk sinhronizāciju, negaidot intervālu.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Sinhronizācijas priekšskatījums",
-      "description": "Reģistrē, kuras lapas tiktu izveidotas/atjauninātas, nerakstot neko BookStack."
+      "description": "Reģistrē, kuras lapas tiktu izveidotas/atjauninātas, nerakstot neko BookStack.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

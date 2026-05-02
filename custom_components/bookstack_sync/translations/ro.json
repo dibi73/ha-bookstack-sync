@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Sincronizează acum",
-      "description": "Pornește o sincronizare imediat, fără a aștepta intervalul."
+      "description": "Pornește o sincronizare imediat, fără a aștepta intervalul.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Previzualizare sincronizare",
-      "description": "Înregistrează ce pagini ar fi create/actualizate fără a scrie nimic în BookStack."
+      "description": "Înregistrează ce pagini ar fi create/actualizate fără a scrie nimic în BookStack.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

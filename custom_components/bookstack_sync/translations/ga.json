@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Sioncronú anois",
-      "description": "Tosaíonn sioncronú láithreach gan fanacht leis an eatramh."
+      "description": "Tosaíonn sioncronú láithreach gan fanacht leis an eatramh.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Réamhamharc sioncronaithe",
-      "description": "Logáil cad iad na leathanaigh a chruthófaí/nuashonrófaí gan rud ar bith a scríobh chuig BookStack."
+      "description": "Logáil cad iad na leathanaigh a chruthófaí/nuashonrófaí gan rud ar bith a scríobh chuig BookStack.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

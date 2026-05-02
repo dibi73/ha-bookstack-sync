@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Nu synchroniseren",
-      "description": "Start direct een synchronisatie zonder te wachten op het interval."
+      "description": "Start direct een synchronisatie zonder te wachten op het interval.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Synchronisatievoorbeeld",
-      "description": "Logt welke pagina's zouden worden aangemaakt/bijgewerkt zonder iets naar BookStack te schrijven."
+      "description": "Logt welke pagina's zouden worden aangemaakt/bijgewerkt zonder iets naar BookStack te schrijven.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",

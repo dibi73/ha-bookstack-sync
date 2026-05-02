@@ -93,11 +93,23 @@
   "services": {
     "run_now": {
       "name": "Sinkronizza issa",
-      "description": "Tibda sinkronizzazzjoni minnufih mingħajr ma tistenna l-intervall."
+      "description": "Tibda sinkronizzazzjoni minnufih mingħajr ma tistenna l-intervall.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "When true, pages whose AUTO block looks tampered are overwritten instead of skipped. Use after a major upgrade. MANUAL block stays preserved."
+        }
+      }
     },
     "preview": {
       "name": "Anteprima ta' sinkronizzazzjoni",
-      "description": "Tirreġistra liema paġni jinħolqu/jiġu aġġornati mingħajr ma tikteb xejn f'BookStack."
+      "description": "Tirreġistra liema paġni jinħolqu/jiġu aġġornati mingħajr ma tikteb xejn f'BookStack.",
+      "fields": {
+        "force": {
+          "name": "Force overwrite tampered pages",
+          "description": "Mirror of run_now's force flag. With preview, it shows what would be overwritten without actually committing."
+        }
+      }
     },
     "export_markdown": {
       "name": "Export Markdown (opt-in)",
