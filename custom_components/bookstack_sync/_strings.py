@@ -195,6 +195,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "integration_col_entities": "Entities",
         "integration_col_docs": "Doku",
         "integration_docs_link_label": "Doku",
+        # HA-Frontend deep-links (v0.14.5+)
+        "link_open_in_ha": "In Home Assistant öffnen",
+        "link_helpers_in_ha": "Helper-Konfiguration in Home Assistant öffnen",
         # Entity-line bits
         "entity_state_label": "State",
         "entity_topic_label": "Topic",
@@ -380,6 +383,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "integration_col_entities": "Entities",
         "integration_col_docs": "Docs",
         "integration_docs_link_label": "Docs",
+        "link_open_in_ha": "Open in Home Assistant",
+        "link_helpers_in_ha": "Open helper configuration in Home Assistant",
         "entity_state_label": "State",
         "entity_topic_label": "Topic",
         "entity_disabled_marker": "_[disabled]_",

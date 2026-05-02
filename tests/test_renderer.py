@@ -16,9 +16,12 @@ from custom_components.bookstack_sync.extractor import (
     AddonSnapshot,
     AreaSnapshot,
     AutomationSnapshot,
+    DeviceIntegrationRef,
     DeviceSnapshot,
     EntitySnapshot,
     HASnapshot,
+    HelperEntry,
+    HelperGroup,
     IntegrationSnapshot,
     NetworkInfo,
     SceneSnapshot,
@@ -30,6 +33,7 @@ from custom_components.bookstack_sync.renderer import (
     render_area_auto_block,
     render_automations_auto_block,
     render_device_auto_block,
+    render_helpers_auto_block,
     render_integrations_auto_block,
     render_network_auto_block,
     render_overview_auto_block,
@@ -68,7 +72,7 @@ def _device(device_id: str = "dev1", *, name: str = "Device 1") -> DeviceSnapsho
         sw_version="1.0",
         hw_version="A",
         area_id=None,
-        config_entries=("entry1",),
+        config_entries=(DeviceIntegrationRef(entry_id="entry1", domain="acme"),),
     )
 
 
@@ -1005,3 +1009,259 @@ class TestUsedBySectionViaGroup:
         # Bullet appears once — the bare line, no via-group annotation.
         assert out.count("- X") == 1
         assert "über Gruppe" not in out
+
+
+# ---------------------------------------------------------------------------
+# v0.14.5: HA-frontend deep-links
+
+
+_HA_URL = "http://homeassistant.local:8123"
+
+
+class TestHaLinksDevicePage:
+    """Device pages link out to the live HA UI when ``ha_url`` is set."""
+
+    def test_device_page_has_open_in_ha_line(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_device_auto_block(
+            _device("abc"),
+            fixed_now,
+            strings_de,
+            ha_url=_HA_URL,
+        )
+        assert (
+            f"[In Home Assistant öffnen]({_HA_URL}/config/devices/device/abc)"
+        ) in out
+
+    def test_integrations_cell_uses_domain_not_entry_id(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device()
+        out = render_device_auto_block(
+            device,
+            fixed_now,
+            strings_de,
+            ha_url=_HA_URL,
+        )
+        # Friendly domain rendered, not the ULID-style entry_id.
+        assert (f"[acme]({_HA_URL}/config/integrations/integration/acme)") in out
+        assert "entry1" not in out
+
+    def test_entity_id_becomes_dev_tools_link(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device()
+        device.entities.append(_entity("sensor.foo"))
+        out = render_device_auto_block(
+            device,
+            fixed_now,
+            strings_de,
+            ha_url=_HA_URL,
+        )
+        assert (
+            f"[`sensor.foo`]({_HA_URL}/developer-tools/state?entity_id=sensor.foo)"
+        ) in out
+
+    def test_no_ha_url_means_no_link_no_dangling_label(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device()
+        device.entities.append(_entity("sensor.foo"))
+        out = render_device_auto_block(device, fixed_now, strings_de)
+        assert "homeassistant" not in out
+        assert "In Home Assistant öffnen" not in out
+        # Plain code-span survives unchanged when no URL is configured.
+        assert "`sensor.foo`" in out
+
+    def test_integrations_cell_falls_back_to_plain_domain_without_ha_url(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_device_auto_block(_device(), fixed_now, strings_de)
+        # Domain is still shown (the v0.14.5 bug-fix), just not as a link.
+        assert "| acme |" in out
+        assert "entry1" not in out
+
+
+class TestHaLinksAreaPage:
+    """Area pages get an open-in-HA line; entity_ids in the area become links."""
+
+    def test_area_page_has_open_in_ha_line(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_area_auto_block(
+            AreaSnapshot(area_id="kitchen", name="Küche"),
+            fixed_now,
+            strings_de,
+            ha_url=_HA_URL,
+        )
+        assert (
+            f"[In Home Assistant öffnen]({_HA_URL}/config/areas/area/kitchen)"
+        ) in out
+
+    def test_area_automations_link_to_edit(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        area = AreaSnapshot(area_id="kitchen", name="Küche")
+        area.automations.append(
+            AutomationSnapshot(
+                entity_id="automation.morning_lights",
+                name="Morgenlicht",
+                description=None,
+                state="on",
+                mode=None,
+                last_triggered=None,
+            ),
+        )
+        out = render_area_auto_block(area, fixed_now, strings_de, ha_url=_HA_URL)
+        assert (
+            f"[Morgenlicht]({_HA_URL}/config/automation/edit/morning_lights)"
+        ) in out
+
+
+class TestHaLinksBundles:
+    """Automation / script / scene bundles get edit links per entry."""
+
+    def test_automation_heading_links_to_edit(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_automations_auto_block(
+            [
+                AutomationSnapshot(
+                    entity_id="automation.foo_bar",
+                    name="Foo Bar",
+                    description=None,
+                    state="on",
+                    mode="single",
+                    last_triggered=None,
+                ),
+            ],
+            fixed_now,
+            strings_de,
+            ha_url=_HA_URL,
+        )
+        assert (f"### [Foo Bar]({_HA_URL}/config/automation/edit/foo_bar)") in out
+
+    def test_script_heading_links_to_edit(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_scripts_auto_block(
+            [
+                ScriptSnapshot(
+                    entity_id="script.party_mode",
+                    name="Partymodus",
+                    description=None,
+                    state="off",
+                    last_triggered=None,
+                ),
+            ],
+            fixed_now,
+            strings_de,
+            ha_url=_HA_URL,
+        )
+        assert (f"### [Partymodus]({_HA_URL}/config/script/edit/party_mode)") in out
+
+    def test_scene_line_links_to_edit(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_scenes_auto_block(
+            [SceneSnapshot(entity_id="scene.movie_night", name="Filmabend")],
+            fixed_now,
+            strings_de,
+            ha_url=_HA_URL,
+        )
+        assert (f"[**Filmabend**]({_HA_URL}/config/scene/edit/movie_night)") in out
+
+
+class TestHaLinksIntegrations:
+    """Domain cell in integrations table links to the HA frontend."""
+
+    def test_domain_cell_is_clickable(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_integrations_auto_block(
+            [
+                IntegrationSnapshot(
+                    entry_id="abc",
+                    domain="mqtt",
+                    title="MQTT Broker",
+                    state="loaded",
+                    source="user",
+                    device_count=3,
+                    entity_count=12,
+                ),
+            ],
+            fixed_now,
+            strings_de,
+            ha_url=_HA_URL,
+        )
+        assert (f"[`mqtt`]({_HA_URL}/config/integrations/integration/mqtt)") in out
+
+
+class TestHaLinksHelpers:
+    """Helpers page gets a single sammel-link to /config/helpers."""
+
+    def test_helpers_page_links_to_helpers_section(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        groups = [
+            HelperGroup(
+                domain="input_boolean",
+                entries=[
+                    HelperEntry(
+                        entity_id="input_boolean.guest_mode",
+                        name="Gastmodus",
+                        domain="input_boolean",
+                        state="off",
+                        attributes={},
+                    ),
+                ],
+            ),
+        ]
+        out = render_helpers_auto_block(
+            groups,
+            fixed_now,
+            strings_de,
+            ha_url=_HA_URL,
+        )
+        assert (
+            f"[Helper-Konfiguration in Home Assistant öffnen]({_HA_URL}/config/helpers)"
+        ) in out
+        # Per-entry deep-links go through the entity_id code-span.
+        assert (
+            "[`input_boolean.guest_mode`]"
+            f"({_HA_URL}/developer-tools/state?entity_id=input_boolean.guest_mode)"
+        ) in out
+
+    def test_helpers_page_no_link_without_ha_url(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_helpers_auto_block([], fixed_now, strings_de)
+        assert "Helper-Konfiguration" not in out
+        assert "/config/helpers" not in out
