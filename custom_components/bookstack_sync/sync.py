@@ -111,7 +111,7 @@ def _hash_from_response(
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from homeassistant.core import HomeAssistant
 
@@ -440,7 +440,7 @@ async def _ensure_chapters(
     return chapters
 
 
-async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry point
+async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry point
     hass: HomeAssistant,
     client: BookStackApiClient,
     store: BookStackSyncStore,
@@ -450,6 +450,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
     dry_run: bool = False,
     force: bool = False,
     excluded_area_ids: Iterable[str] = (),
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> SyncReport:
     """Execute one full sync cycle and return a report."""
     report = SyncReport(dry_run=dry_run)
@@ -510,6 +511,13 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
     area_planned = _plan_area_pages(snapshot, now, strings, page_links, ha_url=ha_url)
     total_steps = len(planned) + len(area_planned) + 1  # +1 for the overview
     step = 0
+
+    def _emit_progress() -> None:
+        """Tell the coordinator (and via it, the status sensor) where we are."""
+        if progress_callback is not None:
+            progress_callback(step, total_steps)
+
+    _emit_progress()
     for page in planned:
         step += 1
         try:
@@ -536,6 +544,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
         except Exception as err:  # noqa: BLE001 - report and continue
             LOGGER.exception("Unexpected error syncing %s", page.key)
             report.errors.append(f"{page.key}: {err}")
+        _emit_progress()
         if not dry_run:
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
@@ -569,6 +578,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
         except Exception as err:  # noqa: BLE001 - report and continue
             LOGGER.exception("Unexpected error syncing %s", page.key)
             report.errors.append(f"{page.key}: {err}")
+        _emit_progress()
         if not dry_run:
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
@@ -583,6 +593,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
             page_links=page_links,
         ),
     )
+    step += 1
     try:
         await _sync_one(
             client,
@@ -602,6 +613,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
     except BookStackApiError as err:
         LOGGER.exception("BookStack sync failed for overview")
         report.errors.append(f"{overview.key}: {err}")
+    _emit_progress()
 
     all_planned = [overview, *area_planned, *planned]
     await _tombstone_orphans(

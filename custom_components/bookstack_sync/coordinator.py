@@ -78,6 +78,12 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         # "syncing" while a run is in progress. Toggled in
         # ``async_run_sync`` (try/finally so failed runs also clear it).
         self.is_syncing: bool = False
+        # Per-page progress (v0.14.6): sync.py calls ``_on_sync_progress``
+        # after each managed page so the diagnostic status sensor can
+        # show ``Sync läuft 12/345`` instead of bare ``Sync läuft``.
+        # Reset to (0, 0) at the start of every run.
+        self.current_step: int = 0
+        self.current_total: int = 0
         # Consecutive-failure counter for the "BookStack unreachable"
         # repair issue. Resets to 0 on the first successful sync.
         self._failure_streak: int = 0
@@ -178,6 +184,37 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             f"{REPAIR_ISSUE_UNREACHABLE}_{self.config_entry.entry_id}",
         )
 
+    def _on_sync_progress(self, step: int, total: int) -> None:
+        """
+        Receive a progress tick from ``run_sync`` and refresh listeners.
+
+        Called once per managed page; we just store the counts and call
+        ``async_update_listeners()`` so the diagnostic status sensor
+        re-renders. ~5 ticks/sec on a typical sync (rate-limited by
+        ``WRITE_PAUSE_SECONDS = 0.2``); fine for a diagnostic-category
+        sensor whose recorder traffic is acceptable.
+        """
+        self.current_step = step
+        self.current_total = total
+        self.async_update_listeners()
+
+    @property
+    def sync_progress_text(self) -> str | None:
+        """
+        Localised ``Sync läuft 12/345`` line for the diagnostic sensor.
+
+        Returns ``None`` when the sync hasn't reported any progress yet
+        (very brief window at the start of a run); the sensor falls back
+        to the bare ``syncing`` enum so HA's translation kicks in.
+        """
+        if self.current_total <= 0:
+            return None
+        strings = get_strings(self._resolve_output_language())
+        return strings["sensor_state_syncing_progress_template"].format(
+            step=self.current_step,
+            total=self.current_total,
+        )
+
     async def async_run_sync(
         self,
         *,
@@ -196,6 +233,8 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         """
         async with self._sync_lock:
             self.is_syncing = True
+            self.current_step = 0
+            self.current_total = 0
             self.async_update_listeners()
             try:
                 runtime = self.config_entry.runtime_data
@@ -216,6 +255,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     dry_run=dry_run,
                     excluded_area_ids=excluded_areas,
                     force=force,
+                    progress_callback=self._on_sync_progress,
                 )
                 if not dry_run:
                     self.last_run = datetime.now(tz=UTC)
@@ -229,6 +269,8 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     self._reconcile_tamper_issues(report)
             finally:
                 self.is_syncing = False
+                self.current_step = 0
+                self.current_total = 0
                 self.async_update_listeners()
         # Lock is released. Opt-in markdown back-export runs here so it
         # cannot deadlock against itself if it ever calls back into a

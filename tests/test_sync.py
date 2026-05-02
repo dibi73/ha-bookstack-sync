@@ -478,3 +478,44 @@ async def test_force_default_false_preserves_safety(
     assert report.skipped_conflict, (
         "default run_sync (no force) must keep the tamper-skip protection"
     )
+
+
+async def test_progress_callback_is_called_with_step_and_total(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """v0.14.6: each managed page emits a (step, total) progress tick."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    progress: list[tuple[int, int]] = []
+
+    def record(step: int, total: int) -> None:
+        progress.append((step, total))
+
+    await run_sync(
+        hass,
+        client,
+        store,
+        1,
+        strings,
+        progress_callback=record,
+    )
+
+    assert progress, "progress_callback was never invoked"
+    # Total stays constant for every tick within a run.
+    totals = {total for _, total in progress}
+    assert len(totals) == 1, f"total should be stable, got {totals!r}"
+    total = next(iter(totals))
+    assert total >= 6, f"expected at least 6 pages, got {total}"
+    # First emitted tick is the (0, total) seed before any page is written.
+    assert progress[0] == (0, total)
+    # Steps are monotonically non-decreasing and the final tick reaches total.
+    steps = [step for step, _ in progress]
+    assert steps == sorted(steps), f"step counter regressed: {steps!r}"
+    assert steps[-1] == total, (
+        f"final tick must show step==total, got {steps[-1]}/{total}"
+    )

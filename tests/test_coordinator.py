@@ -306,3 +306,104 @@ async def test_stale_tamper_issues_resolved_after_restart(
         and issue_id.startswith(f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_")
     ]
     assert remaining == [], f"stale tamper issues survived: {remaining}"
+
+
+async def test_progress_callback_updates_sensor_progress_state(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """v0.14.6: progress callback feeds the diagnostic sensor mid-sync."""
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+
+    progress_seen: list[tuple[int, int, str | None]] = []
+
+    async def fake_run_sync(*args: object, **kwargs: object) -> SyncReport:
+        progress_callback = kwargs.get("progress_callback")
+        assert progress_callback is not None, "coordinator must wire a callback"
+        progress_callback(0, 5)
+        progress_seen.append(
+            (coord.current_step, coord.current_total, coord.sync_progress_text),
+        )
+        progress_callback(2, 5)
+        progress_seen.append(
+            (coord.current_step, coord.current_total, coord.sync_progress_text),
+        )
+        progress_callback(5, 5)
+        progress_seen.append(
+            (coord.current_step, coord.current_total, coord.sync_progress_text),
+        )
+        return SyncReport(dry_run=bool(kwargs.get("dry_run")))
+
+    with patch(
+        "custom_components.bookstack_sync.coordinator.run_sync",
+        new=fake_run_sync,
+    ):
+        await coord.async_run_sync()
+
+    # First tick: total=5, step=0 — text is "X 0/5".
+    assert progress_seen[0][:2] == (0, 5)
+    assert progress_seen[0][2] is not None
+    assert "0/5" in progress_seen[0][2]
+    assert progress_seen[1][:2] == (2, 5)
+    assert "2/5" in progress_seen[1][2]
+    assert progress_seen[2][:2] == (5, 5)
+    assert "5/5" in progress_seen[2][2]
+
+    # After the run: counters reset, no progress text.
+    assert coord.current_step == 0
+    assert coord.current_total == 0
+    assert coord.sync_progress_text is None
+
+
+async def test_sync_progress_text_is_none_before_first_tick(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """No progress data yet -> property returns None so sensor falls back."""
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    assert coord.sync_progress_text is None
+
+
+async def test_sensor_state_shows_progress_string_while_syncing(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """v0.14.6: status sensor surfaces ``Sync läuft 12/345`` mid-run."""
+    from custom_components.bookstack_sync.sensor import (  # noqa: PLC0415
+        BookStackSyncStatusSensor,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    sensor = BookStackSyncStatusSensor(coord)
+
+    # Before any sync: never_run.
+    assert sensor.native_value == "never_run"
+
+    # Mid-sync, no progress yet: enum-fallback so HA's state translation
+    # still kicks in for the brief pre-first-tick window.
+    coord.is_syncing = True
+    assert sensor.native_value == "syncing"
+
+    # Progress arrives — sensor now shows the formatted string.
+    coord.current_step = 12
+    coord.current_total = 345
+    state = sensor.native_value
+    assert "12/345" in state
+    # Localised — German default.
+    assert state.startswith(("Sync läuft", "Syncing"))
+
+    # Sync done: counters reset, sensor falls back to ok.
+    coord.is_syncing = False
+    coord.current_step = 0
+    coord.current_total = 0
+    coord.last_report = SyncReport()
+    coord.last_run = None  # last_run gets stamped only after successful sync
+    assert sensor.native_value == "ok"
