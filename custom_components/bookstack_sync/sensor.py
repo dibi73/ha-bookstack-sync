@@ -62,9 +62,18 @@ class BookStackSyncStatusSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        """Top-level status: ``syncing``, ``ok``, ``error`` or ``never_run``."""
+        """
+        Top-level status: ``syncing``, ``ok``, ``error`` or ``never_run``.
+
+        v0.14.6: while syncing we replace the bare ``syncing`` enum with
+        a localised ``Sync läuft 12/345`` string when progress data is
+        available, so the diagnostic card shows live progress instead
+        of just a spinner-without-numbers. Falls back to the enum value
+        before the first progress tick so HA's state translations still
+        apply during that brief window.
+        """
         if self.coordinator.is_syncing:
-            return "syncing"
+            return self.coordinator.sync_progress_text or "syncing"
         report = self.coordinator.last_report
         if report is None:
             return "never_run"
