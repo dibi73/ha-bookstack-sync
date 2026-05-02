@@ -99,7 +99,11 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             raise UpdateFailed(str(err)) from err
         else:
             self._note_success()
-            self._reconcile_tamper_issues(report)
+            # Tamper-issue reconciliation now runs from inside
+            # ``async_run_sync`` (v0.14.1) so the manual
+            # ``bookstack_sync.run_now`` service path also cleans up
+            # stale issues. We keep the call here harmless / no-op
+            # because the registry already reflects the current state.
             return report
 
     def _reconcile_tamper_issues(self, report: SyncReport) -> None:
@@ -201,6 +205,13 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 if not dry_run:
                     self.last_run = datetime.now(tz=UTC)
                     self.last_report = report
+                    # Reconcile tamper repair-issues inside the lock so
+                    # both the scheduled-sync path and the manual
+                    # ``run_now`` service path clean up stale issues.
+                    # v0.13.4 only reconciled from ``_async_update_data``,
+                    # so users on ``manual`` interval saw their old
+                    # repair-issues hang around forever (v0.14.1 fix).
+                    self._reconcile_tamper_issues(report)
             finally:
                 self.is_syncing = False
                 self.async_update_listeners()

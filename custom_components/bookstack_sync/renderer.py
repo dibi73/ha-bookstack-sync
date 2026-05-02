@@ -19,11 +19,6 @@ from typing import TYPE_CHECKING
 
 from .const import ATTRIBUTION, PAGE_KIND_DEVICE
 
-# Inline TOC at the top of an area page only renders when the area has
-# at least this many "elements" (devices + automations + scripts + scenes).
-# Below this we'd be adding noise to a page that already fits on one
-# screen.
-
 if TYPE_CHECKING:
     from datetime import datetime
 
@@ -127,32 +122,38 @@ def render_overview_auto_block(
     strings: dict[str, str],
     page_links: dict[str, int] | None = None,
 ) -> str:
-    """Render the AUTO block of the overview page (with optional page links)."""
-    links = page_links or {}
-    total_devices = sum(len(area.devices) for area in snapshot.areas) + len(
-        snapshot.unassigned_devices,
-    )
-    total_entities = sum(
-        len(d.entities) for area in snapshot.areas for d in area.devices
-    ) + sum(len(d.entities) for d in snapshot.unassigned_devices)
+    """
+    Render the AUTO block of the overview page.
 
-    lines: list[str] = [
-        _format_attribution(strings, now),
-        "",
-        f"## {strings['section_statistics']}",
-        "",
-        f"- {strings['stat_areas']}: **{len(snapshot.areas)}**",
-        f"- {strings['stat_devices']}: **{total_devices}**",
-        f"- {strings['stat_entities']}: **{total_entities}**",
-        f"- {strings['stat_integrations']}: **{len(snapshot.integrations)}**",
-        f"- {strings['stat_automations']}: **{len(snapshot.automations)}**",
-        f"- {strings['stat_scripts']}: **{len(snapshot.scripts)}**",
-        f"- {strings['stat_scenes']}: **{len(snapshot.scenes)}**",
-        f"- {strings['stat_addons']}: **{len(snapshot.addons)}**",
-        "",
-        f"## {strings['section_categories']}",
-        "",
-    ]
+    v0.14.1: stripped to pure navigation. Per user feedback, an *Übersicht*
+    is exactly that — a hub of cross-page links to the actual content,
+    nothing more. The pre-v0.14.1 layout duplicated derived information
+    (8-line statistics block, per-area device counts) that the user could
+    just as well read off the linked pages themselves. Gone now.
+
+    Output structure:
+
+    * Areas — one ``{{@<id>}}`` link per area (bare, no device counts)
+    * Bundle pages — one ``{{@<id>}}`` link per managed cross-cutting
+      page (Automations, Scripts, Network, MQTT, …)
+    * Unassigned devices — only present when there are any
+    """
+    links = page_links or {}
+
+    lines: list[str] = [_format_attribution(strings, now), ""]
+
+    lines.extend([f"## {strings['section_areas']}", ""])
+    if snapshot.areas:
+        for area in snapshot.areas:
+            page_id = links.get(f"area:{area.area_id}")
+            if page_id is not None:
+                lines.append(f"- {{{{@{page_id}}}}}")
+            else:
+                lines.append(f"- **{_md_escape(area.name)}**")
+    else:
+        lines.append(strings["empty_areas"])
+
+    lines.extend(["", f"## {strings['section_categories']}", ""])
     bundle_links = (
         ("integrations:_", strings["bundle_integrations"]),
         ("automations:_", strings["bundle_automations"]),
@@ -171,39 +172,21 @@ def render_overview_auto_block(
         page_id = links.get(key)
         if page_id is not None:
             # BookStack expands ``{{@<id>}}`` server-side into a clickable
-            # link to the page with that id (rendered with the actual
-            # page title). Plain markdown ``[label](page:id)`` doesn't
-            # work — BookStack treats ``page:id`` as a relative URL and
-            # 404s on click.
+            # link rendered with the actual page title. Plain markdown
+            # ``[label](page:id)`` doesn't work — BookStack treats
+            # ``page:id`` as a relative URL and 404s on click.
             lines.append(f"- {{{{@{page_id}}}}}")
         else:
             lines.append(f"- {label}")
 
-    lines.extend(["", f"## {strings['section_areas']}", ""])
-    if snapshot.areas:
-        for area in snapshot.areas:
-            label = _md_escape(area.name)
-            page_id = links.get(f"area:{area.area_id}")
-            link = f"{{{{@{page_id}}}}}" if page_id is not None else f"**{label}**"
-            lines.append(
-                f"- {link} – {len(area.devices)} {strings['stat_devices']}",
-            )
-    else:
-        lines.append(strings["empty_areas"])
-
     if snapshot.unassigned_devices:
-        lines.extend(
-            [
-                "",
-                f"## {strings['section_unassigned_devices']}",
-                "",
-            ],
-        )
+        lines.extend(["", f"## {strings['section_unassigned_devices']}", ""])
         for device in snapshot.unassigned_devices:
-            label = _md_escape(device.name)
             page_id = links.get(f"device:{device.device_id}")
-            link = f"{{{{@{page_id}}}}}" if page_id is not None else label
-            lines.append(f"- {link}")
+            if page_id is not None:
+                lines.append(f"- {{{{@{page_id}}}}}")
+            else:
+                lines.append(f"- {_md_escape(device.name)}")
 
     return "\n".join(lines)
 
