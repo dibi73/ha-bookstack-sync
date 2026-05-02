@@ -120,36 +120,45 @@ def render_overview_auto_block(
     snapshot: HASnapshot,
     now: datetime,
     strings: dict[str, str],
-    page_links: dict[str, int] | None = None,
+    page_links: dict[str, str] | None = None,
 ) -> str:
     """
     Render the AUTO block of the overview page.
 
-    v0.14.1: stripped to pure navigation. Per user feedback, an *Übersicht*
-    is exactly that — a hub of cross-page links to the actual content,
-    nothing more. The pre-v0.14.1 layout duplicated derived information
-    (8-line statistics block, per-area device counts) that the user could
-    just as well read off the linked pages themselves. Gone now.
+    v0.14.4: ``page_links`` carries full BookStack URLs (e.g.
+    ``https://bookstack.local/books/<book>/page/<slug>``). v0.10.1's
+    ``{{@<id>}}`` syntax is gone — BookStack interprets that as
+    INCLUDE/transclusion, not as a cross-link, so the overview ended
+    up containing the inline content of every linked page instead of
+    a flat list of clickable links.
+
+    v0.14.1: stripped to pure navigation. The pre-v0.14.1 layout
+    duplicated derived information (statistics block, per-area device
+    counts) that the user could just as well read off the linked
+    pages themselves. Gone now.
 
     Output structure:
 
-    * Areas — one ``{{@<id>}}`` link per area (bare, no device counts)
-    * Bundle pages — one ``{{@<id>}}`` link per managed cross-cutting
-      page (Automations, Scripts, Network, MQTT, …)
+    * Areas — one Markdown link per area
+    * Bundle pages — one Markdown link per managed cross-cutting page
     * Unassigned devices — only present when there are any
     """
     links = page_links or {}
+
+    def link_or_bold(label: str, key: str) -> str:
+        url = links.get(key)
+        if url:
+            return f"[{_md_escape(label)}]({url})"
+        return f"**{_md_escape(label)}**"
 
     lines: list[str] = [_format_attribution(strings, now), ""]
 
     lines.extend([f"## {strings['section_areas']}", ""])
     if snapshot.areas:
-        for area in snapshot.areas:
-            page_id = links.get(f"area:{area.area_id}")
-            if page_id is not None:
-                lines.append(f"- {{{{@{page_id}}}}}")
-            else:
-                lines.append(f"- **{_md_escape(area.name)}**")
+        lines.extend(
+            f"- {link_or_bold(area.name, f'area:{area.area_id}')}"
+            for area in snapshot.areas
+        )
     else:
         lines.append(strings["empty_areas"])
 
@@ -169,47 +178,44 @@ def render_overview_auto_block(
         ("energy:_", strings["bundle_energy"]),
     )
     for key, label in bundle_links:
-        page_id = links.get(key)
-        if page_id is not None:
-            # BookStack expands ``{{@<id>}}`` server-side into a clickable
-            # link rendered with the actual page title. Plain markdown
-            # ``[label](page:id)`` doesn't work — BookStack treats
-            # ``page:id`` as a relative URL and 404s on click.
-            lines.append(f"- {{{{@{page_id}}}}}")
+        url = links.get(key)
+        if url:
+            lines.append(f"- [{_md_escape(label)}]({url})")
         else:
             lines.append(f"- {label}")
 
     if snapshot.unassigned_devices:
         lines.extend(["", f"## {strings['section_unassigned_devices']}", ""])
-        for device in snapshot.unassigned_devices:
-            page_id = links.get(f"device:{device.device_id}")
-            if page_id is not None:
-                lines.append(f"- {{{{@{page_id}}}}}")
-            else:
-                lines.append(f"- {_md_escape(device.name)}")
+        lines.extend(
+            f"- {link_or_bold(device.name, f'device:{device.device_id}')}"
+            for device in snapshot.unassigned_devices
+        )
 
     return "\n".join(lines)
 
 
 def _device_link_line(
     device: DeviceSnapshot,
-    page_links: dict[str, int],
+    page_links: dict[str, str],
 ) -> str:
     """
-    One bullet line for a device on the new minimal area page (v0.14.0).
+    One bullet line for a device on the minimal area page (v0.14.0+).
 
-    Format: ``- {{@<id>}} — Manufacturer Model`` if a BookStack page id
-    is known, falling back to ``- **Name** — Manufacturer Model``. The
-    parenthetical metadata is dropped silently when manufacturer + model
-    are both absent — most user-named devices already encode the model
-    in their name, so a trailing dash with nothing after it would be
-    pure noise.
+    Format: ``- [Name](URL) — Manufacturer Model`` if the URL is known,
+    falling back to ``- **Name** — Manufacturer Model`` when ``page_links``
+    doesn't have an entry for this device (e.g. dry-run or first sync
+    before slugs are cached). v0.14.4: switched from BookStack's
+    ``{{@<id>}}`` (which is transclusion, not link!) to plain Markdown
+    links pointing at the BookStack page URL.
+
+    The parenthetical metadata is dropped silently when manufacturer +
+    model are both absent — most user-named devices already encode the
+    model in their name, so a trailing dash with nothing after it would
+    be pure noise.
     """
-    page_id = page_links.get(f"{PAGE_KIND_DEVICE}:{device.device_id}")
-    if page_id is not None:
-        head = f"{{{{@{page_id}}}}}"
-    else:
-        head = f"**{_md_escape(device.name)}**"
+    label = _md_escape(device.name)
+    url = page_links.get(f"{PAGE_KIND_DEVICE}:{device.device_id}")
+    head = f"[{label}]({url})" if url else f"**{label}**"
     meta_bits = [bit for bit in (device.manufacturer, device.model) if bit]
     if meta_bits:
         meta = " ".join(_md_escape(bit) for bit in meta_bits)
@@ -221,18 +227,24 @@ def render_area_auto_block(
     area: AreaSnapshot,
     now: datetime,
     strings: dict[str, str],
-    page_links: dict[str, int] | None = None,
+    page_links: dict[str, str] | None = None,
 ) -> str:
     """
     Render the AUTO block of one area page.
 
     v0.14.0 reshapes this from a "full duplicate of every device card"
-    to a *navigation hub*: each device is one bullet linking to its own
-    BookStack page via ``{{@<id>}}``; automations / scripts / scenes
-    are listed by name only. The full per-device tables, entity lists,
-    network blocks, MQTT topics and stats markers live exclusively on
-    the dedicated device pages now — the area page just answers
-    "what's in this room and where do I click for details".
+    to a *navigation hub*: each device is one bullet with a Markdown link
+    to its own BookStack page; automations / scripts / scenes are listed
+    by name only. The full per-device tables, entity lists, network
+    blocks, MQTT topics and stats markers live exclusively on the
+    dedicated device pages now — the area page just answers "what's in
+    this room and where do I click for details".
+
+    v0.14.4: switched from ``{{@<id>}}`` to ``[Label](URL)`` syntax.
+    BookStack treats ``{{@<id>}}`` as INCLUDE/transclusion, not as a
+    cross-link, so the previous version inlined the entire device-page
+    content under each area's bullet. Plain Markdown links work as
+    expected.
     """
     links = page_links or {}
     lines: list[str] = [_format_attribution(strings, now), ""]

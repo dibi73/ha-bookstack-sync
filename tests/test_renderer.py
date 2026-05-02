@@ -257,10 +257,11 @@ class TestOverviewLinks:
     ) -> None:
         """v0.14.1 invariant: overview = pure navigation, no derived data.
 
-        Specifically: no ``Statistik`` block, no per-area device counts,
-        no aggregated totals. Just cross-page links to areas + bundle
-        pages + (when present) unassigned devices.
+        v0.14.4: cross-references are now plain Markdown links pointing
+        at the BookStack page URL, not the ``{{@<id>}}`` template
+        (which BookStack treats as include/transclusion).
         """
+        url = "http://bookstack.local/books/book/page/lr"
         snap = _empty_snapshot()
         snap.areas.append(
             AreaSnapshot(
@@ -273,24 +274,29 @@ class TestOverviewLinks:
             snap,
             fixed_now,
             strings_de,
-            page_links={"area:lr": 42},
+            page_links={"area:lr": url},
         )
-        # Navigation links present.
-        assert "{{@42}}" in out
+        # Navigation link present in Markdown form.
+        assert f"[Living Room]({url})" in out
         # No statistics anywhere.
         assert "Statistik" not in out
-        assert "**3**" not in out  # the old per-area device count
-        assert "Geräte" not in out.split("## Räume")[0]  # nothing before areas
-        # Per-area device count gone — the bullet is the bare link only.
+        assert "**3**" not in out
+        assert "Geräte" not in out.split("## Räume")[0]
+        # Bare link, no per-area device count appended.
         for line in out.splitlines():
-            if line.startswith("- {{@42}}"):
-                assert line == "- {{@42}}", f"area bullet should be bare link: {line!r}"
+            if line.startswith(f"- [Living Room]({url})"):
+                assert line == f"- [Living Room]({url})", (
+                    f"area bullet should be bare link: {line!r}"
+                )
+        # And the deprecated transclusion syntax must not appear.
+        assert "{{@" not in out
 
-    def test_area_link_rendered(
+    def test_area_link_rendered_as_markdown_link(
         self,
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
+        url = "http://bookstack.local/books/book/page/living"
         area = AreaSnapshot(area_id="living", name="Living Room")
         snap = _empty_snapshot()
         snap.areas.append(area)
@@ -298,10 +304,11 @@ class TestOverviewLinks:
             snap,
             fixed_now,
             strings_de,
-            page_links={"area:living": 42},
+            page_links={"area:living": url},
         )
-        # BookStack-internal cross-link syntax — server expands {{@N}}.
-        assert "{{@42}}" in out
+        # v0.14.4: plain Markdown link, not {{@id}} include syntax.
+        assert f"[Living Room]({url})" in out
+        assert "{{@" not in out
 
     def test_area_falls_back_to_bold_when_no_link(
         self,
@@ -314,46 +321,49 @@ class TestOverviewLinks:
         out = render_overview_auto_block(snap, fixed_now, strings_de)
         assert "**Living Room**" in out
         assert "{{@" not in out
+        assert "](http" not in out  # no link rendered without URL in map
 
-    def test_bundle_links_rendered(
+    def test_bundle_links_rendered_as_markdown(
         self,
         fixed_now: datetime,
         strings_en: dict[str, str],
     ) -> None:
         snap = _empty_snapshot()
+        urls = {
+            "integrations:_": "http://b/books/book/page/int",
+            "automations:_": "http://b/books/book/page/auto",
+            "scripts:_": "http://b/books/book/page/scr",
+            "scenes:_": "http://b/books/book/page/scn",
+            "addons:_": "http://b/books/book/page/add",
+        }
         out = render_overview_auto_block(
             snap,
             fixed_now,
             strings_en,
-            page_links={
-                "integrations:_": 1,
-                "automations:_": 2,
-                "scripts:_": 3,
-                "scenes:_": 4,
-                "addons:_": 5,
-            },
+            page_links=urls,
         )
-        assert "{{@1}}" in out
-        assert "{{@2}}" in out
-        assert "{{@3}}" in out
-        assert "{{@4}}" in out
-        assert "{{@5}}" in out
+        for url in urls.values():
+            assert f"]({url})" in out
+        assert "{{@" not in out
 
-    def test_no_legacy_page_link_syntax_anywhere(
+    def test_no_legacy_or_transclusion_syntax_anywhere(
         self,
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
-        """
-        Regression #55: never emit ``](page:`` anywhere in any rendered page.
+        """v0.14.4: never emit ``{{@<id>}}`` (transclusion!) or ``](page:``.
 
-        The naïve markdown link form ``[label](page:42)`` is treated by
-        BookStack as a relative URL ``page:42`` and 404s on click. The
-        correct format is the BookStack server-side template
-        ``{{@42}}``. This test calls every ``render_*_auto_block`` we
-        ship and asserts the bad pattern never appears.
+        Both are bug histories: ``[label](page:N)`` 404s (issue #55 in
+        v0.10.0), ``{{@<id>}}`` causes BookStack to inline-include the
+        linked page's whole content (the user-visible misbehaviour
+        leading to v0.14.4). The correct form is plain Markdown
+        ``[label](https://bookstack.../books/<book>/page/<slug>)``.
         """
-        # Exercise a snapshot with all the page-link entry-points populated.
+        url_a = "http://b/books/book/page/wz"
+        url_d = "http://b/books/book/page/dev1"
+        url_unassigned = "http://b/books/book/page/unassigned"
+        url_int = "http://b/books/book/page/int"
+
         area = AreaSnapshot(area_id="living", name="Wohnzimmer")
         snap = _empty_snapshot()
         snap.areas.append(area)
@@ -365,16 +375,17 @@ class TestOverviewLinks:
                 fixed_now,
                 strings_de,
                 page_links={
-                    "integrations:_": 1,
-                    "automations:_": 2,
-                    "scripts:_": 3,
-                    "scenes:_": 4,
-                    "addons:_": 5,
-                    "area:living": 99,
-                    "device:dev1": 100,
+                    "integrations:_": url_int,
+                    "area:living": url_a,
+                    "device:dev1": url_unassigned,
                 },
             ),
-            render_area_auto_block(area, fixed_now, strings_de),
+            render_area_auto_block(
+                area,
+                fixed_now,
+                strings_de,
+                page_links={"device:dev1": url_d},
+            ),
             render_device_auto_block(
                 _device(name="Plain Device"),
                 fixed_now,
@@ -383,22 +394,20 @@ class TestOverviewLinks:
         ]
         for out in outputs:
             assert "](page:" not in out, (
-                f"legacy [label](page:N) syntax found in output: {out[:200]!r}"
+                f"legacy [label](page:N) syntax found: {out[:200]!r}"
             )
+            assert "{{@" not in out, f"transclusion syntax found: {out[:200]!r}"
 
     def test_special_chars_in_area_name_escaped_when_no_link(
         self,
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
-        # When a page-link IS available, BookStack's ``{{@id}}`` expands
-        # to the page title server-side — our custom label is dropped.
-        # When NO page-link exists we fall back to ``**escaped_label**``
-        # — and that path must still escape special chars.
+        """Fall-back path (no URL) must escape special chars in the bold label."""
         area = AreaSnapshot(area_id="living", name="Wohn|zimmer <stage>")
         snap = _empty_snapshot()
         snap.areas.append(area)
-        out = render_overview_auto_block(snap, fixed_now, strings_de)  # no links
+        out = render_overview_auto_block(snap, fixed_now, strings_de)
         assert r"Wohn\|zimmer &lt;stage&gt;" in out
 
 
@@ -863,17 +872,18 @@ class TestAreaPageMinimal:
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
-        """Devices appear as ``- {{@<id>}} — Manufacturer Model`` lines."""
-        # _device defaults: manufacturer="Acme", model="Model X"
+        """v0.14.4: devices appear as ``- [Name](URL) — Manufacturer Model``."""
+        url = "http://bookstack.local/books/book/page/bm-gang"
         device = _device("abc", name="Bewegungsmelder Gang")
         area = AreaSnapshot(area_id="hall", name="Gang", devices=[device])
         out = render_area_auto_block(
             area,
             fixed_now,
             strings_de,
-            page_links={"device:abc": 142},
+            page_links={"device:abc": url},
         )
-        assert "- {{@142}} — Acme Model X" in out
+        assert f"- [Bewegungsmelder Gang]({url}) — Acme Model X" in out
+        assert "{{@" not in out
 
     def test_device_falls_back_to_bold_name_when_no_link(
         self,

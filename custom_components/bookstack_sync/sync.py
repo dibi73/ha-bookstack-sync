@@ -342,13 +342,29 @@ def _plan_pages(
     return planned
 
 
+def _build_page_url(base_url: str, book_slug: str, page_slug: str) -> str | None:
+    """
+    Construct a full BookStack URL for a page.
+
+    Returns ``None`` when any component is missing — caller falls back
+    to a bold-name label rather than rendering a broken link. Empty
+    ``book_slug`` typically means the post-v0.14.4 first sync hasn't
+    finished caching the slug yet; empty ``page_slug`` means the
+    mapping was migrated from a pre-v0.14.4 store and we haven't
+    re-fetched the page since.
+    """
+    if not base_url or not book_slug or not page_slug:
+        return None
+    return f"{base_url.rstrip('/')}/books/{book_slug}/page/{page_slug}"
+
+
 def _plan_area_pages(
     snapshot: HASnapshot,
     now: datetime,
     strings: dict[str, str],
-    page_links: dict[str, int],
+    page_links: dict[str, str],
 ) -> list[_PlannedPage]:
-    """Render area pages with ``{{@<id>}}`` cross-links to device pages (v0.14.0)."""
+    """Render area pages with cross-page Markdown links to device pages."""
     return [
         _PlannedPage(
             key=f"{PAGE_KIND_AREA}:{area.area_id}",
@@ -430,10 +446,42 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
         {} if dry_run else await _ensure_chapters(client, store, book_id, strings)
     )
 
-    # Pass 1: sync devices + bundles. Collect IDs so areas + overview can
-    # cross-link them via BookStack's ``{{@<id>}}`` syntax.
-    page_ids: dict[str, int] = {}
-    area_planned = _plan_area_pages(snapshot, now, strings, page_ids)
+    # v0.14.4: capture (and persist) the BookStack book slug so we can
+    # build proper Markdown links of the form
+    # ``{base_url}/books/{book_slug}/page/{page_slug}`` instead of the
+    # ``{{@<id>}}`` syntax we used through v0.14.3 — which BookStack
+    # interprets as INCLUDE/transclusion (it inlines the linked page's
+    # whole content), not as a cross-link.
+    base_url = client.base_url
+    book_slug = store.get_book_slug()
+    if not book_slug:
+        try:
+            for book in await client.list_books():
+                if int(book.get("id", 0)) == book_id:
+                    book_slug = str(book.get("slug") or "")
+                    break
+        except BookStackApiError as err:
+            LOGGER.warning(
+                "Could not fetch book slug for URL construction: %s. "
+                "Falling back to bold-name labels in cross-references.",
+                err,
+            )
+        if book_slug:
+            store.set_book_slug(book_slug)
+
+    # Pass 1: sync devices + bundles. Build URL map so areas + overview can
+    # render proper Markdown links to them.
+    page_links: dict[str, str] = {}
+
+    def _refresh_url(page_key: str) -> None:
+        """Look up the current slug in the store and add the URL to page_links."""
+        m = store.get(page_key)
+        if m and m.slug:
+            url = _build_page_url(base_url, book_slug, m.slug)
+            if url:
+                page_links[page_key] = url
+
+    area_planned = _plan_area_pages(snapshot, now, strings, page_links)
     total_steps = len(planned) + len(area_planned) + 1  # +1 for the overview
     step = 0
     for page in planned:
@@ -453,7 +501,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
                 force=force,
             )
             if page_id is not None:
-                page_ids[page.key] = page_id
+                _refresh_url(page.key)
         except BookStackApiAuthError:
             raise
         except BookStackApiError as err:
@@ -465,10 +513,10 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
         if not dry_run:
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
-    # Pass 2: render area pages (now that device IDs exist) and sync them.
-    # Re-plan with the populated page_ids so each area's auto-body
-    # contains real cross-links instead of bold-name fallbacks.
-    area_planned = _plan_area_pages(snapshot, now, strings, page_ids)
+    # Pass 2: render area pages (now that device URLs exist) and sync them.
+    # Re-plan with the populated page_links so each area's auto-body
+    # contains real cross-page Markdown links instead of bold-name fallbacks.
+    area_planned = _plan_area_pages(snapshot, now, strings, page_links)
     for page in area_planned:
         step += 1
         try:
@@ -486,7 +534,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
                 force=force,
             )
             if page_id is not None:
-                page_ids[page.key] = page_id
+                _refresh_url(page.key)
         except BookStackApiAuthError:
             raise
         except BookStackApiError as err:
@@ -498,7 +546,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
         if not dry_run:
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
-    # Pass 3: render overview with the full page-link map + sync it.
+    # Pass 3: render overview with the full URL map + sync it.
     overview = _PlannedPage(
         key=f"{PAGE_KIND_OVERVIEW}:_",
         title=strings["title_overview"],
@@ -506,7 +554,7 @@ async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry p
             snapshot,
             now,
             strings,
-            page_links=page_ids,
+            page_links=page_links,
         ),
     )
     try:
@@ -647,6 +695,7 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
                 auto_block_hash=saved_hash,
                 last_seen=datetime.now(tz=UTC).isoformat(),
                 hash_origin=hash_origin,
+                slug=str(created.get("slug") or ""),
             ),
         )
         report.created.append(page.title)
@@ -690,6 +739,7 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
                 last_seen=mapping.last_seen,
                 tombstoned_at=mapping.tombstoned_at,
                 hash_origin="bookstack",
+                slug=str(existing.get("slug") or "") or mapping.slug,
             )
             store.set(page.key, mapping)
         elif mapping.hash_origin != "bookstack":
@@ -745,6 +795,12 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
         # always re-write once to settle into the new regime.
         report.unchanged.append(page.title)
         mapping.last_seen = datetime.now(tz=UTC).isoformat()
+        # v0.14.4: refresh slug from BookStack — handles the case where
+        # a user renamed the page in BookStack and BookStack regenerated
+        # the slug. Without this update, our cross-page links would 404.
+        live_slug = str(existing.get("slug") or "")
+        if live_slug:
+            mapping.slug = live_slug
         store.set(page.key, mapping)
         return mapping.page_id
 
@@ -768,6 +824,7 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
             last_seen=datetime.now(tz=UTC).isoformat(),
             tombstoned_at=None,  # device is back; clear any prior tombstone
             hash_origin=hash_origin,
+            slug=str(saved.get("slug") or "") or mapping.slug,
         ),
     )
     report.updated.append(page.title)
