@@ -1327,6 +1327,9 @@ class ReverseUsageEntry:
 
     domain: str  # "automation" / "script" / "scene"
     name: str  # the alias / friendly_name
+    via_group: str | None = (
+        None  # group.* entity_id when reference came through a group
+    )
 
 
 # Pattern for an HA entity_id: `<domain>.<object_id>`. Domain is one or
@@ -1426,6 +1429,66 @@ def _entry_label(item: dict, domain: str) -> str:
     )
 
 
+def _build_group_map(hass: HomeAssistant) -> dict[str, list[str]]:
+    """
+    Build group_entity_id → [member_entity_id, ...] for every group HA knows.
+
+    Covers all HA "group" flavours that expose their members via the
+    ``entity_id`` state attribute:
+
+    - Classic ``group.*`` from the legacy group integration
+    - ``light.*`` / ``switch.*`` / ``cover.*`` / ``media_player.*`` /
+      ``fan.*`` / ``binary_sensor.*`` / ``sensor.*`` / ``lock.*`` /
+      ``climate.*`` / ``button.*`` configured with ``platform: group``
+    - UI-created helper-groups (which surface as one of the above)
+
+    A state qualifies as a group iff its ``entity_id`` attribute is a
+    non-empty iterable of strings shaped like entity_ids. Transitive
+    membership (group-in-group) is left to the resolver, not flattened
+    here, so the same map can answer both "direct members" and "all
+    leaves" queries.
+    """
+    group_map: dict[str, list[str]] = {}
+    for state in hass.states.async_all():
+        members = state.attributes.get("entity_id")
+        if not members or not isinstance(members, list | tuple | set):
+            continue
+        clean = [
+            str(member)
+            for member in members
+            if isinstance(member, str) and "." in member
+        ]
+        if clean:
+            group_map[state.entity_id] = clean
+    return group_map
+
+
+def _resolve_group_members(
+    group_id: str,
+    group_map: dict[str, list[str]],
+    _seen: set[str] | None = None,
+) -> set[str]:
+    """
+    Resolve a group recursively to the set of leaf (non-group) members.
+
+    Cycle-safe: ``_seen`` tracks visited group_ids so a group that
+    contains itself (or any cycle through nested groups) terminates
+    rather than recursing forever.
+    """
+    seen = _seen if _seen is not None else set()
+    if group_id in seen:
+        return set()
+    seen = seen | {group_id}
+
+    leaves: set[str] = set()
+    for member in group_map.get(group_id, ()):
+        if member in group_map:
+            leaves |= _resolve_group_members(member, group_map, seen)
+        else:
+            leaves.add(member)
+    return leaves
+
+
 def _extract_reverse_usage(hass: HomeAssistant) -> dict[str, list[ReverseUsageEntry]]:
     """
     Build entity_id → list of automations/scripts/scenes that reference it.
@@ -1436,9 +1499,18 @@ def _extract_reverse_usage(hass: HomeAssistant) -> dict[str, list[ReverseUsageEn
     them. False positives (e.g. ``automation.morning`` matching as an
     entity_id token in another automation's body) are filtered out at
     render time by matching against the snapshot's actual entity set.
+
+    Group-aware (v0.14.0): if a YAML entry references a group, the
+    automation also gets credited to every leaf member of that group,
+    tagged with ``via_group=<group_entity_id>`` so the device-page
+    "Verwendet in" section can label the indirect link as
+    *„über Gruppe ``group.foo``"*. The outer-most group the user
+    actually wrote in the YAML is kept; intermediate groups in a
+    nested chain are flattened away as implementation detail.
     """
     usage: dict[str, list[ReverseUsageEntry]] = {}
     loader_cls = _build_ha_yaml_loader()
+    group_map = _build_group_map(hass)
 
     for fname, domain in (
         ("automations.yaml", "automation"),
@@ -1451,12 +1523,39 @@ def _extract_reverse_usage(hass: HomeAssistant) -> dict[str, list[ReverseUsageEn
         for entry in _read_yaml_entries(path, loader_cls):
             label = _entry_label(entry, domain)
             text = repr(entry)
-            for entity_id in _extract_entity_ids_from_text(text):
+            referenced = _extract_entity_ids_from_text(text)
+            for entity_id in referenced:
                 usage.setdefault(entity_id, []).append(
                     ReverseUsageEntry(domain=domain, name=label),
                 )
+                # Group-expansion: if this reference is a group, also
+                # credit every leaf member with a ``via_group`` tag.
+                if entity_id in group_map:
+                    for leaf in _resolve_group_members(entity_id, group_map):
+                        usage.setdefault(leaf, []).append(
+                            ReverseUsageEntry(
+                                domain=domain,
+                                name=label,
+                                via_group=entity_id,
+                            ),
+                        )
 
-    # Stable ordering for byte-identical sync output.
-    for entries in usage.values():
-        entries.sort(key=lambda e: (e.domain, e.name.lower()))
+    # Deduplicate within each entity bucket (a single automation might
+    # reach the same leaf through multiple groups; we keep the FIRST
+    # via_group hit, dropping later duplicates).
+    for entity_id, entries in usage.items():
+        seen: set[tuple[str, str, str | None]] = set()
+        deduped: list[ReverseUsageEntry] = []
+        for entry in entries:
+            key = (entry.domain, entry.name, entry.via_group)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(entry)
+        # Stable ordering for byte-identical sync output. Direct hits
+        # (via_group=None) sort before group-mediated hits.
+        deduped.sort(
+            key=lambda e: (e.domain, e.name.lower(), e.via_group or ""),
+        )
+        usage[entity_id] = deduped
     return usage

@@ -418,15 +418,15 @@ class TestAreaPerArea:
         assert "Szenen in" not in out
 
 
-class TestAreaToc:
-    """Inline TOC at the top of area pages, threshold-gated."""
+class TestAreaTocRemoved:
+    """v0.14.0 dropped the inline TOC: area pages are short navigation hubs now."""
 
-    def test_no_toc_below_threshold(
+    def test_no_toc_on_small_area(
         self,
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
-        # 1 device + 1 scene = 2 elements, below the threshold of 3.
+        """Few elements: no TOC, never had one (was below threshold)."""
         area = AreaSnapshot(
             area_id="small",
             name="Klein",
@@ -436,12 +436,17 @@ class TestAreaToc:
         out = render_area_auto_block(area, fixed_now, strings_de)
         assert "**Inhalt**" not in out
 
-    def test_toc_at_threshold(
+    def test_no_toc_on_large_area(
         self,
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
-        # 3 devices = exactly threshold.
+        """Many elements: still no TOC. v0.14.0 removed it entirely.
+
+        The full per-device tables that used to bloat area pages are gone,
+        so the page stays scrollable without an inline TOC. Cross-page
+        ``{{@<id>}}`` links to the dedicated device pages do the navigation.
+        """
         area = AreaSnapshot(
             area_id="big",
             name="Wohnzimmer",
@@ -450,24 +455,6 @@ class TestAreaToc:
                 _device("d2", name="Stehlampe"),
                 _device("d3", name="Heizung"),
             ],
-        )
-        out = render_area_auto_block(area, fixed_now, strings_de)
-        assert "**Inhalt**" in out
-        # TOC must list each device's anchor link.
-        assert "[Lampe](#lampe)" in out
-        assert "[Heizung](#heizung)" in out
-        # And the section anchor for Geräte.
-        assert "(#gerate-in-wohnzimmer)" in out
-
-    def test_toc_includes_automations_and_scenes(
-        self,
-        fixed_now: datetime,
-        strings_de: dict[str, str],
-    ) -> None:
-        area = AreaSnapshot(
-            area_id="mixed",
-            name="Mix",
-            devices=[_device("d1", name="Lampe")],
             automations=[
                 AutomationSnapshot(
                     entity_id="automation.morning",
@@ -481,23 +468,18 @@ class TestAreaToc:
             scenes=[SceneSnapshot(entity_id="scene.cinema", name="Cinema")],
         )
         out = render_area_auto_block(area, fixed_now, strings_de)
-        assert "**Inhalt**" in out
-        # Section bullets for each populated category.
-        assert "(#gerate-in-mix)" in out
-        assert "(#automatisierungen-in-mix)" in out
-        assert "(#szenen-in-mix)" in out
-        # Sub-bullet for the automation but NOT for scenes (no per-scene H3).
-        assert "[Morgen](#morgen)" in out
-        # Scene listed in the scenes section, but not as a TOC sub-bullet.
-        toc_block = out.split("\n## ")[0]
-        assert "[Cinema]" not in toc_block
+        assert "**Inhalt**" not in out
+        # No same-page anchor links either; navigation goes via {{@id}}
+        # cross-links to the device pages.
+        assert "(#gerate-in-wohnzimmer)" not in out
+        assert "(#lampe)" not in out
 
-    def test_toc_only_on_areas_not_devices(
+    def test_no_toc_on_devices(
         self,
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
-        # Device pages with many entities should NOT get a TOC.
+        """Device pages never had a TOC; v0.14.0 doesn't change that."""
         device = _device(name="Hub")
         device.entities.extend(
             [_entity(f"sensor.x{i}") for i in range(10)],
@@ -833,3 +815,145 @@ class TestNetworkPage:
         assert "## Unbekannte Clients (1)" in out
         assert "12:34:56:78:9a:bc" in out
         assert "192.168.1.99" in out
+
+
+class TestAreaPageMinimal:
+    """v0.14.0: area pages are navigation hubs only — no full device data."""
+
+    def test_device_renders_as_cross_link_with_metadata(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """Devices appear as ``- {{@<id>}} — Manufacturer Model`` lines."""
+        # _device defaults: manufacturer="Acme", model="Model X"
+        device = _device("abc", name="Bewegungsmelder Gang")
+        area = AreaSnapshot(area_id="hall", name="Gang", devices=[device])
+        out = render_area_auto_block(
+            area,
+            fixed_now,
+            strings_de,
+            page_links={"device:abc": 142},
+        )
+        assert "- {{@142}} — Acme Model X" in out
+
+    def test_device_falls_back_to_bold_name_when_no_link(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """No page_links yet (e.g. dry-run) → bold name + meta."""
+        device = _device("abc", name="Lampe")
+        area = AreaSnapshot(area_id="lr", name="Wohnzimmer", devices=[device])
+        out = render_area_auto_block(area, fixed_now, strings_de)
+        assert "- **Lampe** — Acme Model X" in out
+
+    def test_no_full_device_table_anymore(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """The pre-v0.14 per-device fact table + entity list MUST NOT appear."""
+        device = _device("abc", name="Lampe")
+        device.entities.append(_entity("light.lampe"))
+        area = AreaSnapshot(area_id="r", name="Raum", devices=[device])
+        out = render_area_auto_block(area, fixed_now, strings_de)
+        # No "### Lampe" sub-heading anymore (full per-device sections gone)
+        assert "### Lampe" not in out
+        # No "Stammdaten" facts table on the area page
+        assert "Stammdaten" not in out
+        # No entity bullet from the per-device entity list
+        assert "light.lampe" not in out
+
+    def test_automation_listed_by_name_only(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """Automations are now just ``- <name>`` — no bodies, modes, triggers."""
+        area = AreaSnapshot(
+            area_id="r",
+            name="Raum",
+            automations=[
+                AutomationSnapshot(
+                    entity_id="automation.morgen",
+                    name="Morgenlicht",
+                    description="(should not appear on area page anymore)",
+                    state="on",
+                    mode="single",
+                    last_triggered="2026-04-30T07:00",
+                ),
+            ],
+        )
+        out = render_area_auto_block(area, fixed_now, strings_de)
+        assert "- Morgenlicht" in out
+        # The detail fields belong on bundle pages, not on the area page.
+        assert "single" not in out
+        assert "(should not appear on area page anymore)" not in out
+        assert "2026-04-30" not in out
+
+
+class TestUsedBySectionViaGroup:
+    """v0.14.0: ``Verwendet in`` annotates group-mediated references."""
+
+    def test_via_group_annotation_rendered(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """Group-mediated reference shows ``(über Gruppe `group.X`)`` inline."""
+        from custom_components.bookstack_sync.extractor import (  # noqa: PLC0415
+            ReverseUsageEntry,
+        )
+
+        device = _device("abc", name="Lampe")
+        device.entities.append(_entity("light.lampe"))
+        reverse_usage = {
+            "light.lampe": [
+                ReverseUsageEntry(
+                    domain="automation",
+                    name="Abends an",
+                    via_group="group.alle_lichter",
+                ),
+            ],
+        }
+        out = render_device_auto_block(
+            device,
+            fixed_now,
+            strings_de,
+            reverse_usage=reverse_usage,
+        )
+        assert "Abends an" in out
+        assert "über Gruppe `group.alle_lichter`" in out
+
+    def test_direct_reference_suppresses_group_dupes(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """Same automation referenced direct AND via a group: only direct shows."""
+        from custom_components.bookstack_sync.extractor import (  # noqa: PLC0415
+            ReverseUsageEntry,
+        )
+
+        device = _device("abc", name="Lampe")
+        device.entities.append(_entity("light.lampe"))
+        reverse_usage = {
+            "light.lampe": [
+                ReverseUsageEntry(domain="automation", name="X"),
+                ReverseUsageEntry(
+                    domain="automation",
+                    name="X",
+                    via_group="group.foo",
+                ),
+            ],
+        }
+        out = render_device_auto_block(
+            device,
+            fixed_now,
+            strings_de,
+            reverse_usage=reverse_usage,
+        )
+        # Bullet appears once — the bare line, no via-group annotation.
+        assert out.count("- X") == 1
+        assert "über Gruppe" not in out

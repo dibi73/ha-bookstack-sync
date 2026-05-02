@@ -459,6 +459,96 @@ async def test_reverse_usage_from_automations_yaml(
     assert any(e.domain == "automation" and e.name == "Morning Lights" for e in refs)
 
 
+async def test_reverse_usage_resolves_through_groups(
+    hass: HomeAssistant,
+) -> None:
+    """v0.14.0: an automation referencing a group also credits each member.
+
+    Setup: ``group.lights`` contains [``light.bedroom``, ``light.kitchen``].
+    Automation triggers on ``group.lights``. Expected reverse_usage:
+
+    * ``group.lights`` → direct entry, ``via_group=None``
+    * ``light.bedroom`` → entry tagged ``via_group="group.lights"``
+    * ``light.kitchen`` → entry tagged ``via_group="group.lights"``
+    """
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    # Stage the group as a state with the canonical entity_id attribute.
+    hass.states.async_set(
+        "group.lights",
+        "on",
+        {"entity_id": ["light.bedroom", "light.kitchen"]},
+    )
+    Path(hass.config.path("automations.yaml")).write_text(  # noqa: ASYNC240 - test setup
+        "- alias: Evening On\n"
+        "  trigger: []\n"
+        "  action:\n"
+        "    - service: light.turn_on\n"
+        "      target:\n"
+        "        entity_id: group.lights\n",
+        encoding="utf-8",
+    )
+
+    snap = extract_snapshot(hass)
+
+    # Direct hit on the group itself.
+    direct = snap.reverse_usage.get("group.lights", [])
+    assert any(
+        e.domain == "automation" and e.name == "Evening On" and e.via_group is None
+        for e in direct
+    ), f"direct group reference missing: {direct!r}"
+
+    # Each leaf member is credited with via_group set.
+    for leaf in ("light.bedroom", "light.kitchen"):
+        leaf_refs = snap.reverse_usage.get(leaf, [])
+        assert any(
+            e.domain == "automation"
+            and e.name == "Evening On"
+            and e.via_group == "group.lights"
+            for e in leaf_refs
+        ), f"{leaf} missing via_group reference: {leaf_refs!r}"
+
+
+async def test_reverse_usage_resolves_groups_transitively(
+    hass: HomeAssistant,
+) -> None:
+    """v0.14.0: nested groups resolve to their leaves.
+
+    ``group.outer`` contains ``group.inner`` contains ``light.deep``.
+    An automation referencing ``group.outer`` should credit ``light.deep``
+    with ``via_group="group.outer"`` — the user wrote ``group.outer``,
+    so that's what they see, not the implementation-detail inner group.
+    """
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    hass.states.async_set(
+        "group.outer",
+        "on",
+        {"entity_id": ["group.inner"]},
+    )
+    hass.states.async_set(
+        "group.inner",
+        "on",
+        {"entity_id": ["light.deep"]},
+    )
+    Path(hass.config.path("automations.yaml")).write_text(  # noqa: ASYNC240
+        "- alias: Outer\n"
+        "  trigger: []\n"
+        "  action:\n"
+        "    - service: light.turn_on\n"
+        "      target:\n"
+        "        entity_id: group.outer\n",
+        encoding="utf-8",
+    )
+
+    snap = extract_snapshot(hass)
+    leaf_refs = snap.reverse_usage.get("light.deep", [])
+    assert any(
+        e.domain == "automation" and e.name == "Outer" and e.via_group == "group.outer"
+        for e in leaf_refs
+    ), f"transitive resolution failed: {leaf_refs!r}"
+
+
 def test_package_modules_all_parse() -> None:
     """
     Regression guard: every Python file in the package must parse cleanly.

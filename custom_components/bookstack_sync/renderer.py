@@ -17,13 +17,12 @@ import re
 import unicodedata
 from typing import TYPE_CHECKING
 
-from .const import ATTRIBUTION
+from .const import ATTRIBUTION, PAGE_KIND_DEVICE
 
 # Inline TOC at the top of an area page only renders when the area has
 # at least this many "elements" (devices + automations + scripts + scenes).
 # Below this we'd be adding noise to a page that already fits on one
 # screen.
-_AREA_TOC_THRESHOLD = 3
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -209,105 +208,63 @@ def render_overview_auto_block(
     return "\n".join(lines)
 
 
-def _area_toc_lines(
-    area: AreaSnapshot,
-    strings: dict[str, str],
-) -> list[str]:
+def _device_link_line(
+    device: DeviceSnapshot,
+    page_links: dict[str, int],
+) -> str:
     """
-    Build an inline TOC for big area pages.
+    One bullet line for a device on the new minimal area page (v0.14.0).
 
-    Returns ``[]`` for areas with fewer than ``_AREA_TOC_THRESHOLD``
-    elements (devices + automations + scripts + scenes) so small areas
-    don't get a noisy table-of-one.
+    Format: ``- {{@<id>}} — Manufacturer Model`` if a BookStack page id
+    is known, falling back to ``- **Name** — Manufacturer Model``. The
+    parenthetical metadata is dropped silently when manufacturer + model
+    are both absent — most user-named devices already encode the model
+    in their name, so a trailing dash with nothing after it would be
+    pure noise.
     """
-    total = (
-        len(area.devices) + len(area.automations) + len(area.scripts) + len(area.scenes)
-    )
-    if total < _AREA_TOC_THRESHOLD:
-        return []
-
-    name = _md_escape(area.name)
-    raw_name = area.name
-    lines: list[str] = [f"**{strings['toc_label']}**", ""]
-
-    if area.devices:
-        section = strings["section_devices_in_area_template"].format(name=name)
-        section_anchor = _slugify(
-            strings["section_devices_in_area_template"].format(name=raw_name),
-        )
-        lines.append(f"- [{section}](#{section_anchor})")
-        lines.extend(
-            f"  - [{_md_escape(d.name)}](#{_slugify(d.name)})" for d in area.devices
-        )
-
-    if area.automations:
-        section = strings["section_automations_in_area_template"].format(name=name)
-        section_anchor = _slugify(
-            strings["section_automations_in_area_template"].format(name=raw_name),
-        )
-        lines.append(f"- [{section}](#{section_anchor})")
-        lines.extend(
-            f"  - [{_md_escape(a.name)}](#{_slugify(a.name)})" for a in area.automations
-        )
-
-    if area.scripts:
-        section = strings["section_scripts_in_area_template"].format(name=name)
-        section_anchor = _slugify(
-            strings["section_scripts_in_area_template"].format(name=raw_name),
-        )
-        lines.append(f"- [{section}](#{section_anchor})")
-        lines.extend(
-            f"  - [{_md_escape(s.name)}](#{_slugify(s.name)})" for s in area.scripts
-        )
-
-    if area.scenes:
-        section = strings["section_scenes_in_area_template"].format(name=name)
-        section_anchor = _slugify(
-            strings["section_scenes_in_area_template"].format(name=raw_name),
-        )
-        lines.append(f"- [{section}](#{section_anchor})")
-        # Scenes don't get individual H3 headings (they're rendered as a
-        # bulleted list), so no per-scene sub-bullets.
-
-    lines.append("")
-    return lines
+    page_id = page_links.get(f"{PAGE_KIND_DEVICE}:{device.device_id}")
+    if page_id is not None:
+        head = f"{{{{@{page_id}}}}}"
+    else:
+        head = f"**{_md_escape(device.name)}**"
+    meta_bits = [bit for bit in (device.manufacturer, device.model) if bit]
+    if meta_bits:
+        meta = " ".join(_md_escape(bit) for bit in meta_bits)
+        return f"- {head} — {meta}"
+    return f"- {head}"
 
 
 def render_area_auto_block(
     area: AreaSnapshot,
     now: datetime,
     strings: dict[str, str],
+    page_links: dict[str, int] | None = None,
 ) -> str:
-    """Render the AUTO block of one area page."""
-    lines: list[str] = [
-        _format_attribution(strings, now),
-        "",
-        *_area_toc_lines(area, strings),
-        "## "
-        + strings["section_devices_in_area_template"].format(
-            name=_md_escape(area.name),
-        ),
-        "",
-    ]
+    """
+    Render the AUTO block of one area page.
+
+    v0.14.0 reshapes this from a "full duplicate of every device card"
+    to a *navigation hub*: each device is one bullet linking to its own
+    BookStack page via ``{{@<id>}}``; automations / scripts / scenes
+    are listed by name only. The full per-device tables, entity lists,
+    network blocks, MQTT topics and stats markers live exclusively on
+    the dedicated device pages now — the area page just answers
+    "what's in this room and where do I click for details".
+    """
+    links = page_links or {}
+    lines: list[str] = [_format_attribution(strings, now), ""]
+
+    lines.extend(
+        [
+            "## "
+            + strings["section_devices_in_area_template"].format(
+                name=_md_escape(area.name),
+            ),
+            "",
+        ],
+    )
     if area.devices:
-        for device in area.devices:
-            lines.extend(
-                [
-                    f"### {_md_escape(device.name)}",
-                    "",
-                    _device_facts_table(device, strings),
-                ],
-            )
-            if device.entities:
-                lines.extend(
-                    [
-                        "",
-                        f"**{strings['label_entities']}**",
-                        "",
-                        *_entity_lines(device.entities, strings),
-                    ],
-                )
-            lines.append("")
+        lines.extend(_device_link_line(d, links) for d in area.devices)
     else:
         lines.append(strings["empty_devices_in_room"])
 
@@ -332,8 +289,7 @@ def render_area_auto_block(
                 "",
             ],
         )
-        for auto in area.automations:
-            lines.extend(_automation_block(auto, strings))
+        lines.extend(f"- {_md_escape(a.name)}" for a in area.automations)
 
     if area.scripts:
         lines.extend(
@@ -346,8 +302,7 @@ def render_area_auto_block(
                 "",
             ],
         )
-        for script in area.scripts:
-            lines.extend(_script_block(script, strings))
+        lines.extend(f"- {_md_escape(s.name)}" for s in area.scripts)
 
     if area.scenes:
         lines.extend(
@@ -404,18 +359,33 @@ def _used_by_section(
     Aggregates reverse-usage across all entities of the device. Output
     grouped by domain (automation / script / scene). Returns ``[]`` when
     no entity is referenced anywhere — keeps unused devices clean.
+
+    v0.14.0: when a reference reaches the device only through a group
+    (``ReverseUsageEntry.via_group`` set), the line carries an inline
+    "(über Gruppe ``group.X``)" annotation so the user can see the
+    indirection. If the same automation references the device BOTH
+    directly and via a group, the direct hit wins and the group
+    versions are suppressed — direct + group both showing would be
+    redundant noise.
     """
-    by_domain: dict[str, set[str]] = {
-        "automation": set(),
-        "script": set(),
-        "scene": set(),
+    by_domain: dict[str, dict[str, set[str | None]]] = {
+        "automation": {},
+        "script": {},
+        "scene": {},
     }
     for entity in device.entities:
         for entry in reverse_usage.get(entity.entity_id, []):
             if entry.domain in by_domain:
-                by_domain[entry.domain].add(entry.name)
+                by_domain[entry.domain].setdefault(entry.name, set()).add(
+                    entry.via_group,
+                )
     if not any(by_domain.values()):
         return []
+
+    via_template = strings.get(
+        "used_by_via_group_template",
+        " (via group `{group}`)",
+    )
 
     lines: list[str] = ["", f"## {strings['section_used_by']}", ""]
     for domain, domain_label_key in (
@@ -423,11 +393,21 @@ def _used_by_section(
         ("script", "used_by_scripts"),
         ("scene", "used_by_scenes"),
     ):
-        names = by_domain[domain]
-        if not names:
+        items = by_domain[domain]
+        if not items:
             continue
         lines.extend(["", f"### {strings[domain_label_key]}", ""])
-        lines.extend(f"- {_md_escape(name)}" for name in sorted(names, key=str.lower))
+        for name in sorted(items, key=str.lower):
+            via_groups = items[name]
+            # Direct hit wins: if any reference is direct (None), show
+            # the bare name once and drop all group-mediated dupes.
+            if None in via_groups:
+                lines.append(f"- {_md_escape(name)}")
+            else:
+                lines.extend(
+                    f"- {_md_escape(name)}{via_template.format(group=group)}"
+                    for group in sorted(g for g in via_groups if g is not None)
+                )
     return lines
 
 
