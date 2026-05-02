@@ -182,11 +182,13 @@ class TestI18n:
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
+        """v0.14.1: overview is link-only — assert the section headings."""
         out = render_overview_auto_block(_empty_snapshot(), fixed_now, strings_de)
-        assert "## Statistik" in out
-        assert "Räume" in out
-        assert "Bereiche" in out
-        assert "Statistics" not in out
+        assert "## Räume" in out
+        assert "## Weitere Seiten" in out
+        # No statistics section anymore — overview is pure navigation.
+        assert "## Statistik" not in out
+        assert "## Statistics" not in out
 
     def test_overview_is_english(
         self,
@@ -194,10 +196,10 @@ class TestI18n:
         strings_en: dict[str, str],
     ) -> None:
         out = render_overview_auto_block(_empty_snapshot(), fixed_now, strings_en)
-        assert "## Statistics" in out
-        assert "Areas" in out
-        assert "Sections" in out
-        assert "Statistik" not in out
+        assert "## Areas" in out
+        assert "## Other pages" in out
+        assert "## Statistics" not in out
+        assert "## Statistik" not in out
 
     def test_device_table_translates_field_labels(
         self,
@@ -247,6 +249,42 @@ class TestI18n:
 
 class TestOverviewLinks:
     """Overview must use BookStack page-link syntax when ids are provided."""
+
+    def test_overview_is_link_only_no_statistics(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """v0.14.1 invariant: overview = pure navigation, no derived data.
+
+        Specifically: no ``Statistik`` block, no per-area device counts,
+        no aggregated totals. Just cross-page links to areas + bundle
+        pages + (when present) unassigned devices.
+        """
+        snap = _empty_snapshot()
+        snap.areas.append(
+            AreaSnapshot(
+                area_id="lr",
+                name="Living Room",
+                devices=[_device("d1"), _device("d2"), _device("d3")],
+            ),
+        )
+        out = render_overview_auto_block(
+            snap,
+            fixed_now,
+            strings_de,
+            page_links={"area:lr": 42},
+        )
+        # Navigation links present.
+        assert "{{@42}}" in out
+        # No statistics anywhere.
+        assert "Statistik" not in out
+        assert "**3**" not in out  # the old per-area device count
+        assert "Geräte" not in out.split("## Räume")[0]  # nothing before areas
+        # Per-area device count gone — the bullet is the bare link only.
+        for line in out.splitlines():
+            if line.startswith("- {{@42}}"):
+                assert line == "- {{@42}}", f"area bullet should be bare link: {line!r}"
 
     def test_area_link_rendered(
         self,

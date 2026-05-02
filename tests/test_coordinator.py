@@ -194,6 +194,65 @@ async def test_dry_run_does_not_record_last_run(
     assert coord.last_report is None
 
 
+async def test_run_now_path_reconciles_tamper_issues(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    v0.14.1: stale tamper repair-issues also auto-resolve when the user
+    triggers ``bookstack_sync.run_now`` (which calls ``async_run_sync``
+    directly, bypassing ``_async_update_data``).
+
+    v0.13.4 only reconciled from the scheduled-sync path. Users on
+    ``manual`` interval — or anyone who restarted HA and used the
+    ``run_now`` service before the daily schedule fired — kept seeing
+    the 260+ "AUTO block was edited" repair-issues forever. The fix
+    moves ``_reconcile_tamper_issues`` into ``async_run_sync`` so every
+    successful sync (scheduled OR manual) sweeps the registry.
+    """
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_TAMPERED,
+    )
+
+    config_entry.add_to_hass(hass)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+
+    entry_id = config_entry.entry_id
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_device:abc",
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=REPAIR_ISSUE_TAMPERED,
+        translation_placeholders={"page_title": "Acurite-Rain-25"},
+    )
+
+    coord = _make_coordinator(hass, config_entry)
+
+    with patch(
+        "custom_components.bookstack_sync.coordinator.run_sync",
+        new=AsyncMock(return_value=SyncReport()),
+    ):
+        await coord.async_run_sync()
+
+    issue_reg = ir.async_get(hass)
+    remaining = [
+        issue_id
+        for (issue_domain, issue_id) in issue_reg.issues
+        if issue_domain == DOMAIN
+        and issue_id.startswith(f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_")
+    ]
+    assert remaining == [], f"run_now did not clean up stale issues: {remaining}"
+
+
 async def test_stale_tamper_issues_resolved_after_restart(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
