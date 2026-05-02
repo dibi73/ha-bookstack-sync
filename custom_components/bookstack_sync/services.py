@@ -23,12 +23,35 @@ if TYPE_CHECKING:
 
 
 def _coordinators(hass: HomeAssistant) -> list:
-    """Return all loaded BookStack coordinators across config entries."""
-    return [
-        entry.runtime_data.coordinator
+    """
+    Return all loaded BookStack coordinators across config entries.
+
+    v0.14.2: order matters when multiple BookStack instances are
+    configured and one of them has the markdown back-export enabled.
+    The export-enabled instance MUST sync first, otherwise its
+    post-sync export pass would run while the OTHER instances are
+    still in mid-sync — leaving the exported folder with a stale
+    snapshot of one instance and a fresh snapshot of another.
+
+    Sort key: ``not export_enabled`` (False sorts before True), so
+    the single export-enabled entry comes out at index 0; remaining
+    entries keep their config-entry creation order via Python's
+    stable sort.
+    """
+    entries = [
+        entry
         for entry in hass.config_entries.async_entries(DOMAIN)
         if getattr(entry, "runtime_data", None) is not None
     ]
+    entries.sort(
+        key=lambda entry: (
+            not entry.options.get(
+                CONF_EXPORT_ENABLED,
+                DEFAULT_EXPORT_ENABLED,
+            )
+        ),
+    )
+    return [entry.runtime_data.coordinator for entry in entries]
 
 
 async def _require_admin(hass: HomeAssistant, call: ServiceCall) -> None:
