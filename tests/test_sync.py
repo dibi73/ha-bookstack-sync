@@ -36,8 +36,13 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
     state.setdefault("pages", {})  # id -> {markdown, chapter_id, name}
     state.setdefault("chapters", {})  # id -> name
     state.setdefault("next_id", 100)
+    state.setdefault("books", [{"id": 1, "name": "Book", "slug": "book"}])
 
     client = MagicMock()
+    client.base_url = "http://bookstack.local"
+
+    async def list_books() -> list[dict[str, Any]]:
+        return list(state["books"])
 
     async def list_chapters(book_id: int) -> list[dict[str, Any]]:
         return [{"id": cid, "name": name} for cid, name in state["chapters"].items()]
@@ -65,6 +70,7 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
         state["pages"][pid] = {
             "id": pid,
             "name": name,
+            "slug": f"slug-{pid}",
             "markdown": markdown,
             "chapter_id": chapter_id,
             "book_id": book_id,
@@ -91,6 +97,7 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
             state["pages"][page_id]["tags"] = tags
         return state["pages"][page_id]
 
+    client.list_books = AsyncMock(side_effect=list_books)
     client.list_chapters = AsyncMock(side_effect=list_chapters)
     client.create_chapter = AsyncMock(side_effect=create_chapter)
     client.create_page = AsyncMock(side_effect=create_page)

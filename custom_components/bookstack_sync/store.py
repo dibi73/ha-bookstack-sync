@@ -36,6 +36,7 @@ class PageMapping:
     last_seen: str | None = None  # ISO timestamp of last successful sync
     tombstoned_at: str | None = None  # ISO timestamp; set when soft-deleted
     hash_origin: str = "write"  # "write" (legacy) or "bookstack" (round-trip)
+    slug: str = ""  # v0.14.4: BookStack page slug for proper Markdown URL links
 
 
 @dataclass
@@ -44,6 +45,10 @@ class StoredState:
 
     pages: dict[str, PageMapping] = field(default_factory=dict)
     chapters: dict[str, int] = field(default_factory=dict)
+    # v0.14.4: BookStack book slug, captured once at sync start so the
+    # renderers can build full ``/books/<book-slug>/page/<page-slug>``
+    # URLs for the overview / area cross-references.
+    book_slug: str = ""
 
 
 class BookStackSyncStore:
@@ -72,8 +77,9 @@ class BookStackSyncStore:
         raw = await self._store.async_load() or {}
         pages_raw = raw.get("pages", {}) or {}
         chapters_raw = raw.get("chapters", {}) or {}
-        # Migration: pre-v0.11 storage doesn't have ``hash_origin``.
-        # Drop unknown fields gracefully (forward-compat too).
+        # Migration: pre-v0.11 storage doesn't have ``hash_origin``;
+        # pre-v0.14.4 doesn't have ``slug``. Drop unknown fields
+        # gracefully (forward-compat too).
         known_fields = set(PageMapping.__dataclass_fields__)
         pages: dict[str, PageMapping] = {}
         for key, value in pages_raw.items():
@@ -82,6 +88,7 @@ class BookStackSyncStore:
         self._state = StoredState(
             pages=pages,
             chapters={key: int(value) for key, value in chapters_raw.items()},
+            book_slug=str(raw.get("book_slug") or ""),
         )
         self._loaded = True
 
@@ -93,6 +100,7 @@ class BookStackSyncStore:
                     key: asdict(value) for key, value in self._state.pages.items()
                 },
                 "chapters": dict(self._state.chapters),
+                "book_slug": self._state.book_slug,
             },
         )
 
@@ -119,3 +127,11 @@ class BookStackSyncStore:
     def all_chapters(self) -> dict[str, int]:
         """Return a shallow copy of the persisted chapter map."""
         return dict(self._state.chapters)
+
+    def get_book_slug(self) -> str:
+        """Return the BookStack book slug, empty string if not yet known."""
+        return self._state.book_slug
+
+    def set_book_slug(self, slug: str) -> None:
+        """Persist the BookStack book slug for URL construction."""
+        self._state.book_slug = slug
