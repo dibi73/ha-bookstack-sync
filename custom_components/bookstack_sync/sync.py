@@ -327,15 +327,11 @@ def _plan_pages(
                 ),
             ),
         )
+    # Areas are rendered in a SECOND pass so they can carry ``{{@<id>}}``
+    # cross-links to the device pages (v0.14.0). Pass 1 only contains
+    # bundle pages + every device — we collect their page IDs first,
+    # then ``_plan_area_pages`` renders each area on top of those IDs.
     for area in snapshot.areas:
-        planned.append(
-            _PlannedPage(
-                key=f"{PAGE_KIND_AREA}:{area.area_id}",
-                title=strings["title_area_template"].format(name=area.name),
-                auto_body=render_area_auto_block(area, now, strings),
-                chapter_key=CHAPTER_KEY_AREAS,
-            ),
-        )
         planned.extend(
             _device_page(d, now, strings, snapshot.reverse_usage) for d in area.devices
         )
@@ -344,6 +340,29 @@ def _plan_pages(
         for d in snapshot.unassigned_devices
     )
     return planned
+
+
+def _plan_area_pages(
+    snapshot: HASnapshot,
+    now: datetime,
+    strings: dict[str, str],
+    page_links: dict[str, int],
+) -> list[_PlannedPage]:
+    """Render area pages with ``{{@<id>}}`` cross-links to device pages (v0.14.0)."""
+    return [
+        _PlannedPage(
+            key=f"{PAGE_KIND_AREA}:{area.area_id}",
+            title=strings["title_area_template"].format(name=area.name),
+            auto_body=render_area_auto_block(
+                area,
+                now,
+                strings,
+                page_links=page_links,
+            ),
+            chapter_key=CHAPTER_KEY_AREAS,
+        )
+        for area in snapshot.areas
+    ]
 
 
 async def _ensure_chapters(
@@ -386,7 +405,7 @@ async def _ensure_chapters(
     return chapters
 
 
-async def run_sync(  # noqa: PLR0913 - cohesive entry point
+async def run_sync(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive 3-pass entry point
     hass: HomeAssistant,
     client: BookStackApiClient,
     store: BookStackSyncStore,
@@ -410,10 +429,14 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
         {} if dry_run else await _ensure_chapters(client, store, book_id, strings)
     )
 
-    # Pass 1: sync all non-overview pages, collect their IDs for the overview.
+    # Pass 1: sync devices + bundles. Collect IDs so areas + overview can
+    # cross-link them via BookStack's ``{{@<id>}}`` syntax.
     page_ids: dict[str, int] = {}
-    total_steps = len(planned) + 1  # +1 for the overview pass
-    for index, page in enumerate(planned, start=1):
+    area_planned = _plan_area_pages(snapshot, now, strings, page_ids)
+    total_steps = len(planned) + len(area_planned) + 1  # +1 for the overview
+    step = 0
+    for page in planned:
+        step += 1
         try:
             page_id = await _sync_one(
                 client,
@@ -423,7 +446,7 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
                 chapters,
                 report,
                 strings,
-                index=index,
+                index=step,
                 total=total_steps,
                 dry_run=dry_run,
             )
@@ -440,7 +463,39 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
         if not dry_run:
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
-    # Pass 2: render overview with page links + sync it.
+    # Pass 2: render area pages (now that device IDs exist) and sync them.
+    # Re-plan with the populated page_ids so each area's auto-body
+    # contains real cross-links instead of bold-name fallbacks.
+    area_planned = _plan_area_pages(snapshot, now, strings, page_ids)
+    for page in area_planned:
+        step += 1
+        try:
+            page_id = await _sync_one(
+                client,
+                store,
+                book_id,
+                page,
+                chapters,
+                report,
+                strings,
+                index=step,
+                total=total_steps,
+                dry_run=dry_run,
+            )
+            if page_id is not None:
+                page_ids[page.key] = page_id
+        except BookStackApiAuthError:
+            raise
+        except BookStackApiError as err:
+            LOGGER.exception("BookStack sync failed for %s", page.key)
+            report.errors.append(f"{page.key}: {err}")
+        except Exception as err:  # noqa: BLE001 - report and continue
+            LOGGER.exception("Unexpected error syncing %s", page.key)
+            report.errors.append(f"{page.key}: {err}")
+        if not dry_run:
+            await asyncio.sleep(WRITE_PAUSE_SECONDS)
+
+    # Pass 3: render overview with the full page-link map + sync it.
     overview = _PlannedPage(
         key=f"{PAGE_KIND_OVERVIEW}:_",
         title=strings["title_overview"],
@@ -470,7 +525,7 @@ async def run_sync(  # noqa: PLR0913 - cohesive entry point
         LOGGER.exception("BookStack sync failed for overview")
         report.errors.append(f"{overview.key}: {err}")
 
-    all_planned = [overview, *planned]
+    all_planned = [overview, *area_planned, *planned]
     await _tombstone_orphans(
         client,
         store,
