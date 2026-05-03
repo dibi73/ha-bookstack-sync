@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
@@ -77,11 +77,14 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         # Surfaced via the status sensor so the dashboard can show
         # "syncing" while a run is in progress. Toggled in
         # ``async_run_sync`` (try/finally so failed runs also clear it).
+        # v0.14.7: also True during the post-sync markdown back-export so
+        # the sync button stays disabled until the *whole* run is done.
         self.is_syncing: bool = False
-        # Per-page progress (v0.14.6): sync.py calls ``_on_sync_progress``
-        # after each managed page so the diagnostic status sensor can
-        # show ``Sync läuft 12/345`` instead of bare ``Sync läuft``.
-        # Reset to (0, 0) at the start of every run.
+        # Per-page progress (v0.14.6, extended in v0.14.7 to cover the
+        # markdown back-export phase). The sensor reads ``current_phase``
+        # to pick a phase-specific localised template. Reset to (None, 0,
+        # 0) at the start of every run and at the end of every phase.
+        self.current_phase: str | None = None  # "sync" | "export" | None
         self.current_step: int = 0
         self.current_total: int = 0
         # Consecutive-failure counter for the "BookStack unreachable"
@@ -198,19 +201,41 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         self.current_total = total
         self.async_update_listeners()
 
+    def _on_export_progress(self, step: int, total: int) -> None:
+        """
+        Receive a progress tick from the markdown back-export (v0.14.7).
+
+        Same shape as ``_on_sync_progress`` so the sensor's state-string
+        renderer can stay symmetric — the only differentiator is
+        ``current_phase`` which selects the right localised template.
+        """
+        self.current_step = step
+        self.current_total = total
+        self.async_update_listeners()
+
+    _PHASE_TEMPLATE_KEYS: ClassVar[dict[str, str]] = {
+        "sync": "sensor_state_syncing_progress_template",
+        "export": "sensor_state_exporting_progress_template",
+    }
+
     @property
     def sync_progress_text(self) -> str | None:
         """
-        Localised ``Sync läuft 12/345`` line for the diagnostic sensor.
+        Localised progress line for the diagnostic sensor.
 
-        Returns ``None`` when the sync hasn't reported any progress yet
-        (very brief window at the start of a run); the sensor falls back
-        to the bare ``syncing`` enum so HA's translation kicks in.
+        Phase-aware: ``Sync läuft 12/345`` while syncing,
+        ``Export läuft 12/345`` while running the markdown back-export.
+        Returns ``None`` between the very-first phase-set and the very-
+        first progress tick so the sensor falls back to the bare phase
+        enum and HA's translation kicks in.
         """
-        if self.current_total <= 0:
+        if self.current_phase is None or self.current_total <= 0:
+            return None
+        template_key = self._PHASE_TEMPLATE_KEYS.get(self.current_phase)
+        if template_key is None:
             return None
         strings = get_strings(self._resolve_output_language())
-        return strings["sensor_state_syncing_progress_template"].format(
+        return strings[template_key].format(
             step=self.current_step,
             total=self.current_total,
         )
@@ -233,6 +258,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         """
         async with self._sync_lock:
             self.is_syncing = True
+            self.current_phase = "sync"
             self.current_step = 0
             self.current_total = 0
             self.async_update_listeners()
@@ -268,9 +294,13 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     # repair-issues hang around forever (v0.14.1 fix).
                     self._reconcile_tamper_issues(report)
             finally:
-                self.is_syncing = False
+                # End of sync phase. ``is_syncing`` stays True if we're
+                # about to roll into the export phase below — keeps the
+                # sync button disabled across both phases.
+                self.current_phase = None
                 self.current_step = 0
                 self.current_total = 0
+                self.is_syncing = False
                 self.async_update_listeners()
         # Lock is released. Opt-in markdown back-export runs here so it
         # cannot deadlock against itself if it ever calls back into a
@@ -289,21 +319,41 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         export feature already implies wanting it to run. Errors are logged
         but never raised — the sync itself already succeeded and we don't
         want a missing folder to flip the sensor red.
+
+        v0.14.7: the export phase is surfaced on the diagnostic status
+        sensor as ``Export läuft N/total`` (German) / ``Exporting N/total``
+        (English) so the user no longer has to wonder whether the post-sync
+        export has actually finished writing the .md files.
         """
         options = self.config_entry.options or {}
         if not options.get(CONF_EXPORT_ENABLED, DEFAULT_EXPORT_ENABLED):
             return
+        self.is_syncing = True
+        self.current_phase = "export"
+        self.current_step = 0
+        self.current_total = 0
+        self.async_update_listeners()
         try:
             result = await export_run(
                 self.hass,
                 self.config_entry,
                 dry_run=False,
                 output_path=options.get(CONF_EXPORT_PATH),
+                progress_callback=self._on_export_progress,
             )
         except Exception:  # noqa: BLE001 - export must not break the sync sensor
             LOGGER.exception("BookStack markdown export after sync failed")
+            self.current_phase = None
+            self.current_step = 0
+            self.current_total = 0
+            self.is_syncing = False
+            self.async_update_listeners()
             return
         self.last_export_result = result
+        self.current_phase = None
+        self.current_step = 0
+        self.current_total = 0
+        self.is_syncing = False
         self.async_update_listeners()
 
     def _resolve_output_language(self) -> str:

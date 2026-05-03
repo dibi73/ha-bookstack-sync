@@ -68,9 +68,13 @@ class BookStackSyncStatusSensor(CoordinatorEntity, SensorEntity):
         v0.14.6: while syncing we replace the bare ``syncing`` enum with
         a localised ``Sync läuft 12/345`` string when progress data is
         available, so the diagnostic card shows live progress instead
-        of just a spinner-without-numbers. Falls back to the enum value
-        before the first progress tick so HA's state translations still
-        apply during that brief window.
+        of just a spinner-without-numbers.
+
+        v0.14.7: the post-sync markdown back-export emits its own phase,
+        so a typical run cycles through ``Sync läuft N/total`` →
+        ``Export läuft N/total`` → ``ok``. The sensor still falls back
+        to the bare ``syncing`` enum before the first phase-tick lands
+        so HA's state translation kicks in for that brief window.
         """
         if self.coordinator.is_syncing:
             return self.coordinator.sync_progress_text or "syncing"

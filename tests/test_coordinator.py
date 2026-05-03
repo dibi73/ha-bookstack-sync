@@ -390,6 +390,7 @@ async def test_sensor_state_shows_progress_string_while_syncing(
     # Mid-sync, no progress yet: enum-fallback so HA's state translation
     # still kicks in for the brief pre-first-tick window.
     coord.is_syncing = True
+    coord.current_phase = "sync"
     assert sensor.native_value == "syncing"
 
     # Progress arrives — sensor now shows the formatted string.
@@ -400,8 +401,18 @@ async def test_sensor_state_shows_progress_string_while_syncing(
     # Localised — German default.
     assert state.startswith(("Sync läuft", "Syncing"))
 
+    # v0.14.7: phase flips to ``export`` for the post-sync markdown
+    # back-export — sensor must localise that phase too.
+    coord.current_phase = "export"
+    coord.current_step = 5
+    coord.current_total = 100
+    state = sensor.native_value
+    assert "5/100" in state
+    assert state.startswith(("Export läuft", "Exporting"))
+
     # Sync done: counters reset, sensor falls back to ok.
     coord.is_syncing = False
+    coord.current_phase = None
     coord.current_step = 0
     coord.current_total = 0
     coord.last_report = SyncReport()
