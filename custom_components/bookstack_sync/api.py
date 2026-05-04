@@ -145,7 +145,21 @@ class BookStackApiClient:
         if (book_id is None) == (chapter_id is None):
             msg = "create_page needs exactly one of book_id or chapter_id"
             raise BookStackApiError(msg)
-        body: dict[str, Any] = {"name": name, "markdown": markdown}
+        # ``editor: "markdown"`` is sent defensively (v0.14.9): newer
+        # BookStack versions honour it as a per-page editor pin so the
+        # WYSIWYG toggle in the UI either disappears or warns the user;
+        # older versions silently ignore unknown fields, so this never
+        # breaks. The TinyMCE HTML round-trip drops our ``<!-- BEGIN -->``
+        # marker comments; pinning the editor is the cleanest way to
+        # prevent the corruption upfront. The ``markers_missing`` repair
+        # issue and the manual-block placeholder both still warn the
+        # user explicitly because BookStack's per-page editor pin is
+        # advisory, not enforced.
+        body: dict[str, Any] = {
+            "name": name,
+            "markdown": markdown,
+            "editor": "markdown",
+        }
         if chapter_id is not None:
             body["chapter_id"] = chapter_id
         else:
@@ -170,8 +184,17 @@ class BookStackApiClient:
         (``[{"name": "...", "value": "..."}]``); BookStack overwrites the
         full tag set on update, so passing the full intended list each
         write keeps things idempotent.
+
+        ``editor: "markdown"`` is repeated on every update so a page
+        that was switched to WYSIWYG between syncs gets pulled back to
+        the markdown editor on the next write — see ``create_page`` for
+        the rationale.
         """
-        body: dict[str, Any] = {"name": name, "markdown": markdown}
+        body: dict[str, Any] = {
+            "name": name,
+            "markdown": markdown,
+            "editor": "markdown",
+        }
         if chapter_id is not None:
             body["chapter_id"] = chapter_id
         if tags is not None:

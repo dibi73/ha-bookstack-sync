@@ -312,6 +312,19 @@ moves them to the right chapter automatically.
 
 ## Known limitations
 
+- **⚠ Edit pages in the markdown editor only — never WYSIWYG.**
+  BookStack's TinyMCE-based WYSIWYG editor round-trips Markdown
+  through HTML and silently drops HTML-comment markers
+  (`<!-- BEGIN AUTO-GENERATED -->` etc.). Once that happens, the
+  integration can no longer tell which part of the page is yours and
+  which is auto-generated. Since v0.14.9 the integration detects this
+  and refuses to overwrite affected pages — you'll see a *Marker-Kommentare
+  einer Page fehlen* repair issue in HA. Recovery: open the page in
+  the markdown editor, save your manual notes elsewhere, and re-run
+  *Sync now* with *Force overwrite tampered pages* enabled to recreate
+  the page with fresh markers. The integration also pins
+  `editor: "markdown"` on every write to deter the WYSIWYG toggle, but
+  BookStack treats that field as advisory in older versions.
 - **No bidirectional sync.** Edits in BookStack outside the manual
   block are detected, logged, and the page is skipped — not merged
   back into HA.

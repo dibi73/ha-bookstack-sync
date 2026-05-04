@@ -90,6 +90,14 @@ EXPORT_FORMAT_VERSION = "1"
 # on Settings → System → Repairs when the integration's invariants break.
 REPAIR_ISSUE_UNREACHABLE = "bookstack_unreachable"
 REPAIR_ISSUE_TAMPERED = "page_tampered"
+# Page was previously written with both marker blocks, but on the next
+# sync at least one of them is gone. The most common cause is the user
+# toggling BookStack's WYSIWYG editor — TinyMCE's HTML round-trip drops
+# the marker comments. We refuse to overwrite the page in that state
+# (would clobber whatever's left of the user's content) and post this
+# repair issue with instructions to reset the page in the markdown
+# editor.
+REPAIR_ISSUE_MARKERS_MISSING = "page_markers_missing"
 # After how many consecutive failed sync runs we surface an "unreachable"
 # repair issue. 3 = three runs in a row before the user gets a
 # notification, so a single transient outage doesn't spam Repairs.

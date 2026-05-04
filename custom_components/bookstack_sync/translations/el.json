@@ -154,6 +154,10 @@
     "page_tampered": {
       "title": "Το AUTO block μιας σελίδας έχει επεξεργαστεί χειροκίνητα",
       "description": "Η σελίδα „{page_title}\" στο BookStack έχει AUTO block που επεξεργάστηκε εκτός Home Assistant. Η ενσωμάτωση παρέλειψε αυτή τη σελίδα κατά τον συγχρονισμό για να μην αντικαταστήσει τις αλλαγές σας. Μετακινήστε τις σημειώσεις σας στο MANUAL block ή αναιρέστε την αλλαγή στο AUTO block, ώστε ο επόμενος συγχρονισμός να ενημερώσει ξανά τη σελίδα."
+    },
+    "page_markers_missing": {
+      "title": "A page's marker comments are missing",
+      "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in."
     }
   },
   "exceptions": {

@@ -446,6 +446,75 @@ async def test_force_overwrites_tampered_pages(
     assert report_force.tampered_page_keys == []
 
 
+async def test_markers_missing_skips_page_and_records_repair_keys(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    v0.14.9: WYSIWYG-toggle round-trip strips the ``<!-- BEGIN ... -->``
+    marker comments. Sync must refuse to overwrite the resulting page
+    (would clobber whatever the user typed) and surface a separate
+    repair issue so it doesn't get conflated with normal tampering.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    # Populate state by running a clean sync first.
+    await run_sync(hass, client, store, 1, strings)
+
+    # Simulate WYSIWYG-toggle damage on one page: replace its markdown
+    # with a plausible TinyMCE round-trip (no marker comments anywhere,
+    # whitespace-flattened — same shape Pandoc-style HTML→Markdown
+    # conversion produces).
+    page_id, page = next(iter(state["pages"].items()))
+    state["pages"][page_id] = {
+        **page,
+        "markdown": ("Living Room\n\nuser typed some notes here in WYSIWYG mode\n"),
+    }
+
+    report = await run_sync(hass, client, store, 1, strings)
+
+    # The damaged page is in skipped_conflict AND in markers_missing —
+    # not in tampered (the lists are mutually exclusive by construction).
+    assert report.skipped_conflict, (
+        "expected the markers-missing page to land in skipped_conflict"
+    )
+    assert report.markers_missing_page_keys, (
+        "expected at least one markers_missing_page_keys entry"
+    )
+    assert report.tampered_page_keys == [], (
+        "markers-missing must NOT also raise tamper — it's a distinct cause"
+    )
+
+
+async def test_markers_missing_force_overwrites(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """User escape hatch: ``force=True`` accepts the page recreation."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+    page_id, page = next(iter(state["pages"].items()))
+    state["pages"][page_id] = {
+        **page,
+        "markdown": "WYSIWYG-flattened content with no markers anywhere\n",
+    }
+
+    report = await run_sync(hass, client, store, 1, strings, force=True)
+    assert report.markers_missing_page_keys == [], (
+        f"force=True must skip markers_missing detection, got "
+        f"{report.markers_missing_page_keys!r}"
+    )
+
+
 async def test_force_default_false_preserves_safety(
     hass: HomeAssistant,
     store: BookStackSyncStore,
