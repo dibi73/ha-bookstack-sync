@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Kohdekirja",
           "sync_interval": "Synkronointiväli",
-          "excluded_areas": "Pois jätetyt alueet (ei synkronoida)",
           "output_language": "BookStack-sivujen kieli",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

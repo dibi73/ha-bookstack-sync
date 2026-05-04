@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Målbog",
           "sync_interval": "Synkroniseringsinterval",
-          "excluded_areas": "Ekskluderede områder (synkroniseres ikke)",
           "output_language": "Sprog for BookStack-sider",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

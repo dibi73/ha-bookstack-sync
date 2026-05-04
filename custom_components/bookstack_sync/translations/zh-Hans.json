@@ -62,7 +62,6 @@
         "data": {
           "book_id": "目标书籍",
           "sync_interval": "同步间隔",
-          "excluded_areas": "排除的区域（不会被同步）",
           "output_language": "BookStack 页面语言",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Ciljna knjiga",
           "sync_interval": "Interval sinkronizacije",
-          "excluded_areas": "Isključena područja (neće se sinkronizirati)",
           "output_language": "Jezik BookStack stranica",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

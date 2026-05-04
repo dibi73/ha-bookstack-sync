@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Ktieb mira",
           "sync_interval": "Intervall ta' sinkronizzazzjoni",
-          "excluded_areas": "Żoni esklużi (mhux ser jiġu sinkronizzati)",
           "output_language": "Lingwa tal-paġni BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

@@ -11,6 +11,7 @@ run_now:
         from BookStack content) are overwritten instead of skipped. Use this
         once after a major upgrade that reshapes the AUTO block format. The
         MANUAL block is always preserved.
+      required: true
       default: false
       selector:
         boolean:
@@ -27,6 +28,7 @@ preview:
         Mirror of run_now's force flag — see there. Combined with the dry-run
         nature of preview this lets you check what would be overwritten before
         committing.
+      required: true
       default: false
       selector:
         boolean:

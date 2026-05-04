@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Целева книга",
           "sync_interval": "Интервал на синхронизация",
-          "excluded_areas": "Изключени зони (няма да бъдат синхронизирани)",
           "output_language": "Език на BookStack страниците",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

@@ -14,7 +14,6 @@ CONF_TOKEN_SECRET = "token_secret"  # noqa: S105 - field name, not a secret
 CONF_BOOK_ID = "book_id"
 CONF_SYNC_INTERVAL = "sync_interval"
 CONF_VERIFY_SSL = "verify_ssl"
-CONF_EXCLUDED_AREAS = "excluded_areas"
 CONF_OUTPUT_LANGUAGE = "output_language"
 
 DEFAULT_VERIFY_SSL = True

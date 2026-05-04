@@ -26,7 +26,6 @@ from .api import (
 from .const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
-    CONF_EXCLUDED_AREAS,
     CONF_EXPORT_ENABLED,
     CONF_EXPORT_PATH,
     CONF_OUTPUT_LANGUAGE,
@@ -477,7 +476,6 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                     data={
                         CONF_BOOK_ID: new_book_id,
                         CONF_SYNC_INTERVAL: user_input[CONF_SYNC_INTERVAL],
-                        CONF_EXCLUDED_AREAS: user_input.get(CONF_EXCLUDED_AREAS, []),
                         CONF_OUTPUT_LANGUAGE: user_input.get(
                             CONF_OUTPUT_LANGUAGE,
                             DEFAULT_OUTPUT_LANGUAGE,
@@ -506,7 +504,6 @@ class BookStackSyncOptionsFlow(OptionsFlow):
             CONF_SYNC_INTERVAL,
             DEFAULT_INTERVAL,
         )
-        current_excluded = self.config_entry.options.get(CONF_EXCLUDED_AREAS, [])
         current_language = self.config_entry.options.get(
             CONF_OUTPUT_LANGUAGE,
             DEFAULT_OUTPUT_LANGUAGE,
@@ -544,12 +541,6 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         CONF_SYNC_INTERVAL,
                         default=current_interval,
                     ): _interval_selector(),
-                    vol.Optional(
-                        CONF_EXCLUDED_AREAS,
-                        default=current_excluded,
-                    ): selector.AreaSelector(
-                        selector.AreaSelectorConfig(multiple=True),
-                    ),
                     vol.Required(
                         CONF_OUTPUT_LANGUAGE,
                         default=current_language,

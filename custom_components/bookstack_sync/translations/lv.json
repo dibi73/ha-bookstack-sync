@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Mērķa grāmata",
           "sync_interval": "Sinhronizācijas intervāls",
-          "excluded_areas": "Izslēgtie apgabali (netiks sinhronizēti)",
           "output_language": "BookStack lapu valoda",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"
