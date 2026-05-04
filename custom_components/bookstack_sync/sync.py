@@ -111,7 +111,7 @@ def _hash_from_response(
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable
 
     from homeassistant.core import HomeAssistant
 
@@ -449,7 +449,6 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     *,
     dry_run: bool = False,
     force: bool = False,
-    excluded_area_ids: Iterable[str] = (),
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> SyncReport:
     """Execute one full sync cycle and return a report."""
@@ -458,7 +457,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
 
     # Registries are pure in-memory dict lookups and must run on the event
     # loop thread - never wrap them in async_add_executor_job.
-    snapshot = extract_snapshot(hass, excluded_area_ids=excluded_area_ids)
+    snapshot = extract_snapshot(hass)
     # v0.14.5: HA-frontend deep-links use this base. ``external_url``
     # wins over ``internal_url`` because the same Markdown lands in
     # exported .md files that the optional RAG add-on serves to the

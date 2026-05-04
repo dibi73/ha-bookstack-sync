@@ -112,25 +112,6 @@ async def test_extract_snapshot_basic_shape(hass: HomeAssistant) -> None:
     assert "Cinema" in scene_names
 
 
-async def test_extract_snapshot_excluded_area_drops_devices(
-    hass: HomeAssistant,
-) -> None:
-    await _seed_minimal_registry(hass)
-    area_reg = ar.async_get(hass)
-    kitchen = next(a for a in area_reg.areas.values() if a.name == "Kitchen")
-
-    snap = extract_snapshot(hass, excluded_area_ids=[kitchen.id])
-
-    area_names = [a.name for a in snap.areas]
-    assert "Kitchen" not in area_names
-    assert "Living Room" in area_names
-
-    # The fridge device was assigned to Kitchen, so it must be filtered out.
-    all_devices = [d.name for area in snap.areas for d in area.devices]
-    all_devices += [d.name for d in snap.unassigned_devices]
-    assert "Fridge Door" not in all_devices
-
-
 async def test_mqtt_topic_extracted_from_state_attributes(
     hass: HomeAssistant,
 ) -> None:

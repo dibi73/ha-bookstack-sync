@@ -21,8 +21,6 @@ from homeassistant.helpers import (
 from .const import LOGGER
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from homeassistant.core import HomeAssistant
 
 
@@ -299,21 +297,15 @@ class HASnapshot:
 
 def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     hass: HomeAssistant,
-    *,
-    excluded_area_ids: Iterable[str] = (),
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
 
     Includes areas/devices/entities, automations/scripts/scenes/integrations
-    and Supervisor add-ons (best-effort). ``excluded_area_ids`` skips entire
-    areas (and their devices) so the user can keep certain rooms out of the
-    wiki without losing the rest of the documentation. Sort order is stable
-    so the renderer can produce byte-identical output when nothing actually
+    and Supervisor add-ons (best-effort). Sort order is stable so the
+    renderer can produce byte-identical output when nothing actually
     changed.
     """
-    excluded = set(excluded_area_ids)
-
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
     entity_reg = er.async_get(hass)
@@ -321,7 +313,6 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     areas: dict[str, AreaSnapshot] = {
         area.id: AreaSnapshot(area_id=area.id, name=area.name)
         for area in area_reg.areas.values()
-        if area.id not in excluded
     }
 
     # v0.14.5: pre-resolve entry_id -> domain so DeviceSnapshot.config_entries
@@ -335,8 +326,6 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
 
     devices: dict[str, DeviceSnapshot] = {}
     for device in device_reg.devices.values():
-        if device.area_id in excluded:
-            continue
         # Skip stub devices that some integrations leave behind: no name AND
         # no user-given name. We later filter again on entity-emptiness so
         # only useful devices land in the wiki.
@@ -366,8 +355,6 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
 
     orphan_entities_by_area: dict[str, list[EntitySnapshot]] = {}
     for entity in entity_reg.entities.values():
-        if entity.area_id in excluded:
-            continue
         if entity.device_id and entity.device_id not in devices:
             # Device was filtered out -> skip its entities too.
             continue

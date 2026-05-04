@@ -14,7 +14,6 @@ from ._strings import get_strings
 from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     CONF_BOOK_ID,
-    CONF_EXCLUDED_AREAS,
     CONF_EXPORT_ENABLED,
     CONF_EXPORT_PATH,
     CONF_OUTPUT_LANGUAGE,
@@ -270,7 +269,6 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 # flow rewrites it into `options`. Look in options first,
                 # then fall back to data so both layouts work.
                 book_id = int(options.get(CONF_BOOK_ID) or data[CONF_BOOK_ID])
-                excluded_areas = options.get(CONF_EXCLUDED_AREAS, []) or []
                 strings = get_strings(self._resolve_output_language())
                 report = await run_sync(
                     self.hass,
@@ -279,7 +277,6 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     book_id,
                     strings,
                     dry_run=dry_run,
-                    excluded_area_ids=excluded_areas,
                     force=force,
                     progress_callback=self._on_sync_progress,
                 )

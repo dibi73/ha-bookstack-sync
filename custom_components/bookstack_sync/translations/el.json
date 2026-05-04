@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Βιβλίο προορισμού",
           "sync_interval": "Διάστημα συγχρονισμού",
-          "excluded_areas": "Εξαιρούμενες περιοχές (δεν θα συγχρονιστούν)",
           "output_language": "Γλώσσα των σελίδων BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

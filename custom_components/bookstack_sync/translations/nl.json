@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Doelboek",
           "sync_interval": "Synchronisatie-interval",
-          "excluded_areas": "Uitgesloten gebieden (worden niet gesynchroniseerd)",
           "output_language": "Taal van BookStack-pagina's",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

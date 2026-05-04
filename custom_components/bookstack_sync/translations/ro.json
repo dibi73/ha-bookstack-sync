@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Cartea țintă",
           "sync_interval": "Interval de sincronizare",
-          "excluded_areas": "Zone excluse (nu vor fi sincronizate)",
           "output_language": "Limba paginilor BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Célkönyv",
           "sync_interval": "Szinkronizálási időköz",
-          "excluded_areas": "Kizárt területek (nem lesznek szinkronizálva)",
           "output_language": "BookStack oldalak nyelve",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

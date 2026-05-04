@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Cílová kniha",
           "sync_interval": "Interval synchronizace",
-          "excluded_areas": "Vyloučené oblasti (nebudou synchronizovány)",
           "output_language": "Jazyk stránek BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

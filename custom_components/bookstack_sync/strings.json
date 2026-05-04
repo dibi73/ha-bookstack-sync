@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Ziel-Book",
           "sync_interval": "Sync-Intervall",
-          "excluded_areas": "Ausgeschlossene Räume (werden nicht synchronisiert)",
           "output_language": "Sprache der BookStack-Pages",
           "export_enabled": "Markdown-Rückexport aktivieren (standardmäßig aus)",
           "export_path": "Export-Ordner (absoluter Pfad)"
@@ -96,8 +95,8 @@
       "description": "Startet einen Sync sofort, ohne auf das Intervall zu warten.",
       "fields": {
         "force": {
-          "name": "Tampered-Pages erzwungen überschreiben",
-          "description": "Wenn aktiv, werden Pages mit scheinbar manipuliertem AUTO-Block überschrieben statt übersprungen. Einmalig nach großen Upgrades nutzen, die das AUTO-Block-Format ändern. Der MANUAL-Block bleibt unangetastet."
+          "name": "Geänderte Seiten erzwungen überschreiben (manuellen Teil bestehen lassen)",
+          "description": "Wenn aktiv, werden Seiten überschrieben, deren AUTO-Block seit dem letzten Sync verändert wurde — z. B. nach einem Upgrade, das das AUTO-Block-Format umgestellt hat. Der MANUAL-Block bleibt unangetastet."
         }
       }
     },
@@ -106,8 +105,8 @@
       "description": "Loggt, welche Pages erstellt/aktualisiert würden, schreibt aber nichts in BookStack.",
       "fields": {
         "force": {
-          "name": "Tampered-Pages erzwungen überschreiben",
-          "description": "Spiegel zum force-Flag von run_now. In der Vorschau siehst du, welche Pages überschrieben würden, ohne dass tatsächlich geschrieben wird."
+          "name": "Geänderte Seiten erzwungen überschreiben (manuellen Teil bestehen lassen)",
+          "description": "Spiegel zum force-Flag von „Sofort synchronisieren\". Im Trockenlauf siehst du, welche Seiten überschrieben würden, ohne dass tatsächlich geschrieben wird."
         }
       }
     },

@@ -322,9 +322,6 @@ moves them to the right chapter automatically.
   is localised in 28 languages (since v0.12.0), but the *content*
   written into BookStack pages is German or English. Adding a content
   language is a matter of populating `_strings.py`; PRs welcome.
-- **Excluded areas hide their devices.** A device assigned only to an
-  excluded area disappears from the wiki entirely. If you also want
-  the device, give it a second area outside the excluded set.
 - **API token has full book-level access.** BookStack does not offer
   per-page tokens; the integration uses whatever the token can reach.
 

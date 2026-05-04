@@ -62,7 +62,6 @@
         "data": {
           "book_id": "หนังสือปลายทาง",
           "sync_interval": "ช่วงเวลาการซิงค์",
-          "excluded_areas": "พื้นที่ที่ยกเว้น (จะไม่ถูกซิงค์)",
           "output_language": "ภาษาของหน้า BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Livre cible",
           "sync_interval": "Intervalle de synchronisation",
-          "excluded_areas": "Zones exclues (ne seront pas synchronisées)",
           "output_language": "Langue des pages BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"

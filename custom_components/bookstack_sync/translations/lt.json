@@ -62,7 +62,6 @@
         "data": {
           "book_id": "Tikslinė knyga",
           "sync_interval": "Sinchronizavimo intervalas",
-          "excluded_areas": "Neįtrauktos sritys (nebus sinchronizuojamos)",
           "output_language": "BookStack puslapių kalba",
           "export_enabled": "Enable Markdown back-export (off by default)",
           "export_path": "Export folder (absolute path)"
