@@ -154,6 +154,10 @@
     "page_tampered": {
       "title": "页面的 AUTO 块已被手动编辑",
       "description": "BookStack 中的页面「{page_title}」具有在 Home Assistant 之外编辑过的 AUTO 块。集成在同步期间跳过了此页面，以免覆盖您的更改。请将您的笔记移至 MANUAL 块，或撤销 AUTO 块中的更改，以便下次同步可以再次更新该页面。"
+    },
+    "page_markers_missing": {
+      "title": "A page's marker comments are missing",
+      "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in."
     }
   },
   "exceptions": {

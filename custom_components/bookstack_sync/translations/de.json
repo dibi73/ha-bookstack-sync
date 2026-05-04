@@ -154,6 +154,10 @@
     "page_tampered": {
       "title": "AUTO-Block einer Page wurde manuell editiert",
       "description": "Die Page „{page_title}\" in BookStack hat einen AUTO-Block der außerhalb von Home Assistant verändert wurde. Die Integration hat diese Page beim Sync übersprungen, um deine Änderungen nicht zu überschreiben. Verschiebe deine Notizen in den MANUAL-Block oder verwirf die Änderung im AUTO-Block, damit der nächste Sync die Page wieder aktualisieren kann."
+    },
+    "page_markers_missing": {
+      "title": "Marker-Kommentare einer Page fehlen",
+      "description": "Die Page „{page_title}\" in BookStack hat ihre AUTO/MANUAL-Marker-Kommentare verloren. Häufigste Ursache: der WYSIWYG-Editor wurde auf der Page geöffnet — beim Hin-und-zurück-Konvertieren zu HTML verwirft BookStack die Marker-Kommentare. Die Integration hat die Page übersprungen, um deinen Inhalt nicht zu überschreiben. Lösung: die Page im Markdown-Editor (NICHT WYSIWYG) öffnen, MANUAL-Block-Inhalte sichern, dann „Sofort synchronisieren\" mit aktiviertem „Geänderte Seiten erzwungen überschreiben\" aufrufen — damit wird die Page mit frischen Markern neu angelegt, der MANUAL-Block muss anschließend wieder eingefügt werden."
     }
   },
   "exceptions": {

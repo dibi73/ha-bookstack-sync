@@ -54,6 +54,15 @@ class MergeResult:
     auto_hash: str
     auto_block_changed: bool
     manual_block_tampered: bool
+    # True when the live page exists but neither marker block could be
+    # parsed out of it. Typical cause: the user toggled BookStack's
+    # WYSIWYG editor on the page, which round-trips Markdown→HTML→Markdown
+    # via Pandoc-ish conversion and drops the ``<!-- BEGIN ... -->``
+    # comments together with whitespace structure. Treated like
+    # ``manual_block_tampered`` by the sync caller (skip the page,
+    # surface a repair issue) so we don't blow away the user's edits on
+    # the next write.
+    markers_missing: bool = False
 
 
 def _normalise_for_hash(auto_body: str) -> str:
@@ -163,6 +172,20 @@ def merge_page(
     existing_auto = extract_auto_block(existing_markdown)
     existing_manual = extract_manual_block(existing_markdown)
 
+    # WYSIWYG-toggle detection: BookStack's TinyMCE editor round-trips
+    # Markdown→HTML→Markdown and drops our ``<!-- BEGIN ... -->`` comments
+    # together with the original whitespace. If the page has content but
+    # we previously wrote a known hash AND now neither marker is parseable
+    # (or only one of them survived), the page lost its block structure.
+    # Treat that like tampering: refuse to overwrite, surface a repair
+    # issue, let the user reset the page in the markdown editor.
+    has_existing_body = bool(existing_markdown and existing_markdown.strip())
+    markers_missing = (
+        has_existing_body
+        and bool(last_known_auto_hash)
+        and (existing_auto is None or existing_manual is None)
+    )
+
     placeholder = default_manual_body or _FALLBACK_MANUAL_BODY
     manual_body = existing_manual if existing_manual is not None else placeholder
 
@@ -186,4 +209,5 @@ def merge_page(
         auto_hash=new_hash,
         auto_block_changed=auto_changed,
         manual_block_tampered=tampered,
+        markers_missing=markers_missing,
     )

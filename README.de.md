@@ -95,6 +95,20 @@ Solange du nur **innerhalb** des MANUAL-Blocks editierst, bleibt alles erhalten.
 Editierst du im AUTO-Block, erkennt der Sync das beim nächsten Lauf am Hash
 und überspringt die Page mit einer Warnung im HA-Log.
 
+> **⚠ Pages NUR im Markdown-Editor bearbeiten — nicht im WYSIWYG-Editor.**
+> BookStacks WYSIWYG-Editor (TinyMCE) konvertiert Markdown → HTML →
+> Markdown beim Wechseln und verwirft dabei stillschweigend
+> HTML-Kommentare wie `<!-- BEGIN AUTO-GENERATED -->`. Sobald die
+> Marker weg sind, kann der Sync nicht mehr unterscheiden was AUTO und
+> was MANUAL ist. Seit v0.14.9 erkennt die Integration das und
+> überspringt betroffene Pages — du siehst dann ein Repair-Issue
+> *„Marker-Kommentare einer Page fehlen"*. Recovery: Page im
+> Markdown-Editor öffnen, MANUAL-Block-Notizen woanders sichern, dann
+> *Sofort synchronisieren* mit aktiviertem *Geänderte Seiten erzwungen
+> überschreiben* aufrufen. Die Integration setzt zusätzlich bei jedem
+> Write `editor: "markdown"`, um den WYSIWYG-Toggle zu deaktivieren —
+> ältere BookStack-Versionen ignorieren das Feld aber.
+
 ## Entwicklung
 
 Repo ist auf das ludeeus-Devcontainer-Layout aufgesetzt:

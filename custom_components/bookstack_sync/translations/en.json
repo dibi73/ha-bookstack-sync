@@ -154,6 +154,10 @@
     "page_tampered": {
       "title": "A page's AUTO block has been edited manually",
       "description": "The page \"{page_title}\" in BookStack has an AUTO block that was edited outside Home Assistant. The integration skipped that page on sync to avoid overwriting your edits. Move your notes into the MANUAL block, or revert the AUTO-block change, so the next sync can update the page again."
+    },
+    "page_markers_missing": {
+      "title": "A page's marker comments are missing",
+      "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in."
     }
   },
   "exceptions": {

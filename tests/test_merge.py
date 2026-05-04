@@ -179,3 +179,87 @@ class TestMergePage:
             last_known_auto_hash=None,
         )
         assert result.manual_block_tampered is False
+
+
+class TestMarkersMissing:
+    """v0.14.9: WYSIWYG-toggle round-trip drops the marker comments.
+
+    BookStack's TinyMCE editor converts Markdown to HTML when toggled on
+    and back to Markdown when toggled off; HTML comments
+    (``<!-- BEGIN AUTO-GENERATED -->`` etc) get stripped in that
+    round-trip. The next sync would otherwise overwrite the user's
+    edits with a fresh AUTO+placeholder MANUAL pair. ``markers_missing``
+    detects that and lets the caller skip + raise a repair issue.
+    """
+
+    def test_both_markers_present_means_not_missing(self) -> None:
+        existing_full = build_page_body("auto", "user notes")
+        result = merge_page(
+            new_auto_body="auto",
+            existing_markdown=existing_full,
+            last_known_auto_hash=hash_auto_block("auto"),
+        )
+        assert result.markers_missing is False
+
+    def test_no_markers_with_known_hash_flags_missing(self) -> None:
+        # Page has content but no markers anywhere — typical WYSIWYG
+        # round-trip output.
+        result = merge_page(
+            new_auto_body="auto fresh",
+            existing_markdown="Just plain text\n\nfrom WYSIWYG round-trip",
+            last_known_auto_hash="some-old-hash",
+        )
+        assert result.markers_missing is True
+
+    def test_only_auto_marker_missing_flags_missing(self) -> None:
+        # Partial damage: MANUAL block survived, AUTO didn't.
+        existing = (
+            "Just plain text from WYSIWYG\n\n"
+            f"{MANUAL_BEGIN_MARKER}\nuser notes\n{MANUAL_END_MARKER}\n"
+        )
+        result = merge_page(
+            new_auto_body="auto fresh",
+            existing_markdown=existing,
+            last_known_auto_hash="some-old-hash",
+        )
+        assert result.markers_missing is True
+
+    def test_only_manual_marker_missing_flags_missing(self) -> None:
+        # Partial damage: AUTO block survived, MANUAL didn't.
+        existing = (
+            f"{AUTO_BEGIN_MARKER}\nauto stuff\n{AUTO_END_MARKER}\n\n"
+            "Just plain text from WYSIWYG\n"
+        )
+        result = merge_page(
+            new_auto_body="auto stuff",
+            existing_markdown=existing,
+            last_known_auto_hash=hash_auto_block("auto stuff"),
+        )
+        assert result.markers_missing is True
+
+    def test_no_markers_without_known_hash_does_not_flag(self) -> None:
+        # No stored hash means this is a brand-new page (or first-ever
+        # sync against an existing BookStack page with random content).
+        # Don't false-flag those — the caller will create or merge in
+        # the regular path.
+        result = merge_page(
+            new_auto_body="auto",
+            existing_markdown="some pre-existing text",
+            last_known_auto_hash=None,
+        )
+        assert result.markers_missing is False
+
+    def test_empty_existing_markdown_does_not_flag(self) -> None:
+        # New page (no body yet) is not "markers missing" — it's "no page".
+        result = merge_page(
+            new_auto_body="auto",
+            existing_markdown="",
+            last_known_auto_hash="some-hash",
+        )
+        assert result.markers_missing is False
+        result_none = merge_page(
+            new_auto_body="auto",
+            existing_markdown=None,
+            last_known_auto_hash="some-hash",
+        )
+        assert result_none.markers_missing is False

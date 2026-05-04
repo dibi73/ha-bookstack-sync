@@ -25,6 +25,7 @@ from .const import (
     INTERVAL_MANUAL,
     LOGGER,
     OUTPUT_LANGUAGE_AUTO,
+    REPAIR_ISSUE_MARKERS_MISSING,
     REPAIR_ISSUE_TAMPERED,
     REPAIR_ISSUE_UNREACHABLE,
     REPAIR_ISSUE_UNREACHABLE_THRESHOLD,
@@ -93,6 +94,9 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         # repair issue is currently raised. Used to diff against the
         # latest sync report and auto-resolve issues on subsequent runs.
         self._active_tamper_keys: set[str] = set()
+        # Same shape for the v0.14.9 ``page_markers_missing`` repair
+        # issue (WYSIWYG editor toggled, marker comments dropped).
+        self._active_markers_missing_keys: set[str] = set()
         # Serialises every sync path - schedule, run_now service, preview -
         # so they cannot interleave and create duplicate pages on first run.
         self._sync_lock = asyncio.Lock()
@@ -158,6 +162,49 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         # In-memory cache kept for tests + diagnostics; no longer the
         # authoritative source.
         self._active_tamper_keys = set(current.keys())
+
+    def _reconcile_markers_missing_issues(self, report: SyncReport) -> None:
+        """
+        Create / auto-resolve ``page_markers_missing`` repair issues.
+
+        Same shape as ``_reconcile_tamper_issues`` (issue-registry is the
+        source of truth, in-memory cache only for tests/diagnostics).
+        """
+        current = dict(
+            zip(
+                report.markers_missing_page_keys,
+                report.markers_missing_page_titles,
+                strict=True,
+            ),
+        )
+        entry_id = self.config_entry.entry_id
+        prefix = f"{REPAIR_ISSUE_MARKERS_MISSING}_{entry_id}_"
+        existing = {
+            issue_id.removeprefix(prefix)
+            for (issue_domain, issue_id) in ir.async_get(self.hass).issues
+            if issue_domain == DOMAIN and issue_id.startswith(prefix)
+        }
+        new_keys = set(current.keys()) - existing
+        resolved_keys = existing - set(current.keys())
+
+        for key in new_keys:
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                f"{REPAIR_ISSUE_MARKERS_MISSING}_{entry_id}_{key}",
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=REPAIR_ISSUE_MARKERS_MISSING,
+                translation_placeholders={"page_title": current[key]},
+            )
+        for key in resolved_keys:
+            ir.async_delete_issue(
+                self.hass,
+                DOMAIN,
+                f"{REPAIR_ISSUE_MARKERS_MISSING}_{entry_id}_{key}",
+            )
+
+        self._active_markers_missing_keys = set(current.keys())
 
     def _note_failure(self) -> None:
         """Increment the failure streak; raise repair issue at threshold."""
@@ -290,6 +337,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     # so users on ``manual`` interval saw their old
                     # repair-issues hang around forever (v0.14.1 fix).
                     self._reconcile_tamper_issues(report)
+                    self._reconcile_markers_missing_issues(report)
             finally:
                 # End of sync phase. ``is_syncing`` stays True if we're
                 # about to roll into the export phase below — keeps the

@@ -40,7 +40,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         # Default manual-block placeholder
         "default_manual_body": (
             "_Notizen, die du hier zwischen den Markern einträgst, "
-            "bleiben beim Sync erhalten._"
+            "bleiben beim Sync erhalten._\n\n"
+            "_⚠ Diese Seite NUR im Markdown-Editor bearbeiten — "
+            "der WYSIWYG-Editor zerstört die Sync-Marker und macht "
+            "die Seite für die Integration unbrauchbar._"
         ),
         # Page titles
         "title_overview": "Übersicht",
@@ -240,7 +243,10 @@ _STRINGS: dict[str, dict[str, str]] = {
             "manually."
         ),
         "default_manual_body": (
-            "_Notes you put between the markers here are preserved across syncs._"
+            "_Notes you put between the markers here are preserved across syncs._\n\n"
+            "_⚠ Edit this page ONLY in the markdown editor — the WYSIWYG "
+            "editor destroys the sync markers and breaks the page for the "
+            "integration._"
         ),
         "title_overview": "Overview",
         "title_integrations": "Integrations",

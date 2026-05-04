@@ -141,6 +141,11 @@ class SyncReport:
     # Human-readable titles paired with the keys above (same length,
     # same order). Lets repair-issue translations show the page name.
     tampered_page_titles: list[str] = field(default_factory=list)
+    # Page keys + titles of pages where the marker comments are gone
+    # (typical cause: WYSIWYG-editor toggle). Same shape as the tampered
+    # lists so the coordinator can reconcile a separate repair issue.
+    markers_missing_page_keys: list[str] = field(default_factory=list)
+    markers_missing_page_titles: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     dry_run: bool = False
 
@@ -677,7 +682,7 @@ def _post_sync_notification(
     )
 
 
-async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clarity
+async def _sync_one(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915 - cohesive sync step, splitting hurts clarity
     client: BookStackApiClient,
     store: BookStackSyncStore,
     book_id: int,
@@ -751,6 +756,29 @@ async def _sync_one(  # noqa: PLR0913 - cohesive sync step, splitting hurts clar
         last_known_auto_hash=mapping.auto_block_hash or None,
         default_manual_body=strings.get("default_manual_body"),
     )
+
+    if merged.markers_missing and not force:
+        # WYSIWYG-toggle damage: page exists, has content, was previously
+        # written with both marker blocks, but at least one marker is
+        # gone. Most common cause is the user toggling BookStack's
+        # WYSIWYG editor on the page (TinyMCE round-trip drops the
+        # ``<!-- BEGIN ... -->`` comments). Refuse to overwrite — we'd
+        # otherwise blow away whatever the user typed in the WYSIWYG
+        # session — and surface a repair issue so the user can either
+        # restore the markers manually in the markdown editor or call
+        # run_now with force=true to accept a fresh AUTO+MANUAL pair.
+        LOGGER.warning(
+            "BookStack page %s (id=%s): marker comments are missing "
+            "(WYSIWYG editor toggled?) - skipping to avoid clobbering "
+            "user content. Reset the page in the markdown editor or "
+            "re-run with force=true.",
+            page.title,
+            mapping.page_id,
+        )
+        report.skipped_conflict.append(page.title)
+        report.markers_missing_page_keys.append(page.key)
+        report.markers_missing_page_titles.append(page.title)
+        return mapping.page_id
 
     if merged.manual_block_tampered:
         if not merged.auto_block_changed:

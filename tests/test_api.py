@@ -173,6 +173,20 @@ class TestCreatePage:
         with pytest.raises(BookStackApiError):
             await client.create_page("P", "body")
 
+    async def test_pins_markdown_editor(self, client: BookStackApiClient) -> None:
+        # v0.14.9: every create call sends `editor: "markdown"` so newer
+        # BookStack versions hide / disable the WYSIWYG toggle on the
+        # resulting page. Older versions silently ignore the field.
+        with aioresponses() as mocked:
+            mocked.post(
+                "http://bookstack.local:6875/api/pages",
+                payload={"id": 11, "name": "P"},
+            )
+            await client.create_page("P", "body", book_id=5)
+            request_kwargs = next(iter(mocked.requests.values()))[0].kwargs
+            assert request_kwargs["json"]["editor"] == "markdown"
+            assert request_kwargs["json"]["markdown"] == "body"
+
 
 class TestUpdatePage:
     """`update_page` optionally moves the page via chapter_id."""
@@ -195,6 +209,21 @@ class TestUpdatePage:
                 payload={"id": 42, "name": "P"},
             )
             await client.update_page(42, "P", "body", chapter_id=99)
+
+    async def test_pins_markdown_editor(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        # v0.14.9: every update call sends `editor: "markdown"` so a page
+        # that was switched to WYSIWYG between syncs gets pinned back.
+        with aioresponses() as mocked:
+            mocked.put(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P"},
+            )
+            await client.update_page(42, "P", "body")
+            request_kwargs = next(iter(mocked.requests.values()))[0].kwargs
+            assert request_kwargs["json"]["editor"] == "markdown"
 
 
 class TestRetryOnTransientErrors:
