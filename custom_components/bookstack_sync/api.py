@@ -40,10 +40,29 @@ class BookStackApiCommunicationError(BookStackApiError):
     """Raised on network/timeout problems."""
 
 
+class BookStackApiNotFoundError(BookStackApiCommunicationError):
+    """
+    Raised on 404 from BookStack.
+
+    Subclass of ``BookStackApiCommunicationError`` so existing
+    catch-all handlers keep working, but lets the sync orchestrator
+    treat ``page deleted in BookStack`` as a recoverable-state
+    instead of a hard failure: drop the stale mapping entry, recreate
+    the page if the underlying HA object still exists.
+    """
+
+
 def _raise_for_status(response: aiohttp.ClientResponse) -> None:
     if response.status in (401, 403):
         msg = f"BookStack rejected the API token (HTTP {response.status})"
         raise BookStackApiAuthError(msg)
+    if response.status == HTTPStatus.NOT_FOUND:
+        # 404 = the resource we asked for is gone. Most common cause:
+        # the user deleted a managed page directly in BookStack. The
+        # sync layer recovers by dropping the mapping entry and
+        # recreating the page on the next pass.
+        msg = f"BookStack resource not found ({response.url.path})"
+        raise BookStackApiNotFoundError(msg)
     response.raise_for_status()
 
 

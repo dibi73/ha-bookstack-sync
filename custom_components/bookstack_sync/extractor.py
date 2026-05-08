@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -297,6 +298,8 @@ class HASnapshot:
 
 def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     hass: HomeAssistant,
+    *,
+    energy_config: EnergyConfig | None = None,
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
@@ -305,6 +308,11 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     and Supervisor add-ons (best-effort). Sort order is stable so the
     renderer can produce byte-identical output when nothing actually
     changed.
+
+    ``energy_config`` is read separately by ``async_extract_energy_config``
+    (since v0.14.10) because it needs blocking file I/O — callers fetch
+    it on the executor and pass it through here. ``None`` is fine when
+    no Energy dashboard is configured.
     """
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
@@ -430,7 +438,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     snapshot.tts_services = _extract_services(hass, "tts")
     snapshot.recorder = _extract_recorder_config(hass)
     snapshot.mqtt_tree = _build_mqtt_topic_tree(snapshot)
-    snapshot.energy = _extract_energy_config(hass)
+    snapshot.energy = energy_config
     snapshot.helpers = _extract_helpers(hass, entity_reg)
     snapshot.reverse_usage = _extract_reverse_usage(hass)
     return snapshot
@@ -1202,22 +1210,29 @@ class EnergyConfig:
     individual_devices: list[str] = field(default_factory=list)
 
 
-def _extract_energy_config(hass: HomeAssistant) -> EnergyConfig | None:
-    """Read .storage/energy directly. Returns None when no Energy dashboard."""
-    from pathlib import Path  # noqa: PLC0415 - one-shot use
+def _read_energy_storage_blocking(storage_path: Path) -> dict | None:
+    """
+    Read ``.storage/energy`` synchronously (call via executor only).
 
-    storage_path = Path(hass.config.path(".storage", "energy"))
+    Blocking I/O — ``hass.async_add_executor_job`` is the right
+    transport. HA's loop guard (since 2025) raises a warning when
+    called directly from the event loop. Returns the parsed JSON
+    payload, or ``None`` if the file is missing / unreadable.
+    """
     if not storage_path.is_file():
         return None
     try:
-        import json  # noqa: PLC0415 - one-shot use
-
         with storage_path.open(encoding="utf-8") as f:
-            payload = json.load(f)
+            return json.load(f)
     except (OSError, ValueError) as err:
         LOGGER.debug("Could not read .storage/energy: %s", err)
         return None
 
+
+def _parse_energy_payload(payload: dict | None) -> EnergyConfig | None:
+    """Parse a ``.storage/energy`` payload into ``EnergyConfig`` (pure)."""
+    if not payload:
+        return None
     data = (payload.get("data") if isinstance(payload, dict) else None) or {}
     cfg = EnergyConfig()
 
@@ -1245,6 +1260,23 @@ def _extract_energy_config(hass: HomeAssistant) -> EnergyConfig | None:
     if not cfg.sources and not cfg.individual_devices:
         return None
     return cfg
+
+
+async def async_extract_energy_config(hass: HomeAssistant) -> EnergyConfig | None:
+    """
+    Read + parse ``.storage/energy`` without blocking the event loop.
+
+    Pre-step for ``extract_snapshot``: callers fetch the energy config
+    via this async helper and pass the result through the snapshot
+    pipeline. v0.14.10 split this off ``extract_snapshot`` so HA's
+    blocking-I/O guard stops warning on every sync.
+    """
+    storage_path = Path(hass.config.path(".storage", "energy"))
+    payload = await hass.async_add_executor_job(
+        _read_energy_storage_blocking,
+        storage_path,
+    )
+    return _parse_energy_payload(payload)
 
 
 # ----- #42 Helpers ------------------------------------------------------------

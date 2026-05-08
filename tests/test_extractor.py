@@ -21,7 +21,11 @@ from homeassistant.helpers import (
 )
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.bookstack_sync.extractor import extract_snapshot
+from custom_components.bookstack_sync.extractor import (
+    _parse_energy_payload,
+    async_extract_energy_config,
+    extract_snapshot,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -549,3 +553,71 @@ def test_package_modules_all_parse() -> None:
     for py_file in pkg.rglob("*.py"):
         with py_file.open(encoding="utf-8") as f:
             ast.parse(f.read(), filename=str(py_file))
+
+
+async def test_async_extract_energy_config_uses_executor(
+    hass: HomeAssistant,
+    tmp_path,
+) -> None:
+    """
+    v0.14.10: Energy-Dashboard config is read via async_add_executor_job
+    so HA's blocking-I/O loop guard (since 2025) doesn't warn on every
+    sync. Reads an actual file off-thread and parses it.
+    """
+    import json  # noqa: PLC0415 - test-only
+
+    storage_dir = tmp_path / ".storage"
+    storage_dir.mkdir()
+    (storage_dir / "energy").write_text(
+        json.dumps(
+            {
+                "data": {
+                    "energy_sources": [
+                        {
+                            "type": "grid",
+                            "stat_consumption": "sensor.grid_in",
+                            "stat_energy_to": "sensor.grid_out",
+                        },
+                    ],
+                    "device_consumption": [
+                        {"stat_consumption": "sensor.fridge_kwh"},
+                    ],
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+    hass.config.config_dir = str(tmp_path)
+
+    cfg = await async_extract_energy_config(hass)
+    assert cfg is not None
+    assert any(s.type == "grid" for s in cfg.sources)
+    assert "sensor.fridge_kwh" in cfg.individual_devices
+
+
+async def test_async_extract_energy_config_returns_none_when_missing(
+    hass: HomeAssistant,
+    tmp_path,
+) -> None:
+    """No ``.storage/energy`` file = no energy dashboard configured."""
+    hass.config.config_dir = str(tmp_path)
+    cfg = await async_extract_energy_config(hass)
+    assert cfg is None
+
+
+def test_parse_energy_payload_pure() -> None:
+    """The parser is pure (no IO) so it stays unit-testable post-split."""
+    cfg = _parse_energy_payload(
+        {
+            "data": {
+                "energy_sources": [{"type": "solar", "name": "PV"}],
+                "device_consumption": [{"stat_consumption": "sensor.boiler"}],
+            },
+        },
+    )
+    assert cfg is not None
+    assert cfg.sources[0].type == "solar"
+    assert cfg.individual_devices == ["sensor.boiler"]
+
+    assert _parse_energy_payload(None) is None
+    assert _parse_energy_payload({}) is None
