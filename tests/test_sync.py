@@ -446,6 +446,106 @@ async def test_force_overwrites_tampered_pages(
     assert report_force.tampered_page_keys == []
 
 
+async def test_404_on_get_page_recreates_page_and_keeps_sync_running(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    v0.14.10: a managed page deleted directly in BookStack used to
+    abort the whole area's sync with a BookStackApiCommunicationError
+    (logged: ``area:foo: BookStack request failed: 404``). Now we
+    treat 404 on get_page as ``page gone`` — drop the stale mapping,
+    recreate the page from scratch, the rest of the sync runs through.
+    """
+    from custom_components.bookstack_sync.api import (  # noqa: PLC0415
+        BookStackApiNotFoundError,
+    )
+
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    # First sync establishes mappings.
+    await run_sync(hass, client, store, 1, strings)
+
+    # Pick one mapping, simulate the page being deleted in BookStack:
+    # next get_page for that id raises 404. Other pages still resolve
+    # via the normal stub.
+    target_key, target_mapping = next(iter(store.all().items()))
+    deleted_id = target_mapping.page_id
+    real_get_page = client.get_page.side_effect
+
+    async def get_page_404_for_target(page_id: int) -> dict[str, Any]:
+        if page_id == deleted_id:
+            msg = f"BookStack resource not found (/api/pages/{page_id})"
+            raise BookStackApiNotFoundError(msg)
+        return await real_get_page(page_id)
+
+    client.get_page = AsyncMock(side_effect=get_page_404_for_target)
+    # Also drop the page from BookStack-state so the recreated id is
+    # genuinely fresh.
+    state["pages"].pop(deleted_id, None)
+
+    report = await run_sync(hass, client, store, 1, strings)
+
+    # The full run completes without a hard error, the deleted page
+    # gets recreated.
+    assert report.errors == [], f"unexpected errors: {report.errors}"
+    new_mapping = store.get(target_key)
+    assert new_mapping is not None
+    assert new_mapping.page_id != deleted_id, "stale mapping should have been replaced"
+
+
+async def test_404_on_tombstone_clears_mapping_silently(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    Page is gone AND HA object is gone: tombstone path used to crash
+    on get_page 404; now it just discards the mapping.
+    """
+    from custom_components.bookstack_sync.api import (  # noqa: PLC0415
+        BookStackApiNotFoundError,
+    )
+
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    living = area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    # Remove the area in HA so the next sync runs the tombstone path
+    # for it. Also delete the page from BookStack so the tombstone
+    # write would 404.
+    area_reg.async_delete(living.id)
+    area_keys = [k for k in store.all() if k.startswith("area:")]
+    assert area_keys, "test setup expected at least one area mapping"
+    target_key = area_keys[0]
+    target_mapping = store.get(target_key)
+    deleted_id = target_mapping.page_id
+    state["pages"].pop(deleted_id, None)
+    real_get_page = client.get_page.side_effect
+
+    async def get_page_404_for_target(page_id: int) -> dict[str, Any]:
+        if page_id == deleted_id:
+            msg = f"BookStack resource not found (/api/pages/{page_id})"
+            raise BookStackApiNotFoundError(msg)
+        return await real_get_page(page_id)
+
+    client.get_page = AsyncMock(side_effect=get_page_404_for_target)
+
+    report = await run_sync(hass, client, store, 1, strings)
+
+    assert report.errors == [], f"unexpected errors: {report.errors}"
+    assert store.get(target_key) is None, (
+        "tombstone path should have dropped the stale mapping"
+    )
+
+
 async def test_markers_missing_skips_page_and_records_repair_keys(
     hass: HomeAssistant,
     store: BookStackSyncStore,

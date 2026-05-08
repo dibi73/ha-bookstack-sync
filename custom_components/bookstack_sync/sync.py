@@ -25,7 +25,11 @@ from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
 )
 
-from .api import BookStackApiAuthError, BookStackApiError
+from .api import (
+    BookStackApiAuthError,
+    BookStackApiError,
+    BookStackApiNotFoundError,
+)
 from .const import (
     CHAPTER_KEY_AREAS,
     CHAPTER_KEY_DEVICES,
@@ -49,7 +53,7 @@ from .const import (
     TAG_VALUE_MANAGED,
     TAG_VALUE_ORPHANED,
 )
-from .extractor import extract_snapshot
+from .extractor import async_extract_energy_config, extract_snapshot
 from .merge import (
     build_page_body,
     extract_auto_block,
@@ -461,8 +465,12 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     now = datetime.now(tz=UTC)
 
     # Registries are pure in-memory dict lookups and must run on the event
-    # loop thread - never wrap them in async_add_executor_job.
-    snapshot = extract_snapshot(hass)
+    # loop thread - never wrap them in async_add_executor_job. The
+    # Energy-Dashboard config however is read from ``.storage/energy``,
+    # so we fetch it here on the executor (v0.14.10) and inject it into
+    # the otherwise-sync snapshot pipeline.
+    energy_config = await async_extract_energy_config(hass)
+    snapshot = extract_snapshot(hass, energy_config=energy_config)
     # v0.14.5: HA-frontend deep-links use this base. ``external_url``
     # wins over ``internal_url`` because the same Markdown lands in
     # exported .md files that the optional RAG add-on serves to the
@@ -682,7 +690,7 @@ def _post_sync_notification(
     )
 
 
-async def _sync_one(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915 - cohesive sync step, splitting hurts clarity
+async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, splitting hurts clarity
     client: BookStackApiClient,
     store: BookStackSyncStore,
     book_id: int,
@@ -708,7 +716,8 @@ async def _sync_one(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915 - cohesive sync
         page.title,
     )
 
-    if mapping is None:
+    async def _create_fresh() -> int | None:
+        """Create the BookStack page from scratch (no usable mapping)."""
         if dry_run:
             report.created.append(page.title)
             return None
@@ -743,7 +752,25 @@ async def _sync_one(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915 - cohesive sync
         report.created.append(page.title)
         return page_id
 
-    existing = await client.get_page(mapping.page_id)
+    if mapping is None:
+        return await _create_fresh()
+
+    try:
+        existing = await client.get_page(mapping.page_id)
+    except BookStackApiNotFoundError:
+        # v0.14.10: page was deleted directly in BookStack between
+        # syncs. Pre-fix this raised BookStackApiCommunicationError
+        # which aborted the whole area's sync; now we drop the stale
+        # mapping and recreate the page so the user's HA object stays
+        # documented.
+        LOGGER.warning(
+            "BookStack page %s was tracked under id=%s but is gone "
+            "from BookStack — dropping stale mapping and recreating.",
+            page.title,
+            mapping.page_id,
+        )
+        store.discard(page.key)
+        return await _create_fresh()
     needs_move = _needs_move(existing, chapter_id, page.key)
 
     existing_markdown = existing.get("markdown") or existing.get("raw_html") or ""
@@ -983,7 +1010,20 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
 ) -> None:
     auto_body = render_tombstone_auto_block(strings, now)
 
-    existing = await client.get_page(mapping.page_id)
+    try:
+        existing = await client.get_page(mapping.page_id)
+    except BookStackApiNotFoundError:
+        # v0.14.10: page is gone from BookStack already — the user
+        # deleted it directly. Nothing left to tombstone; just clear
+        # the stale mapping entry so future runs don't re-trigger
+        # this path.
+        LOGGER.info(
+            "BookStack page id=%s (%s) already gone — clearing tombstone mapping.",
+            mapping.page_id,
+            key,
+        )
+        store.discard(key)
+        return
     existing_markdown = existing.get("markdown") or existing.get("raw_html") or ""
 
     merged = merge_page(

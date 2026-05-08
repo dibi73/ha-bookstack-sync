@@ -112,6 +112,16 @@ class BookStackSyncStore:
         """Insert or replace a mapping in-memory (call async_save to persist)."""
         self._state.pages[key] = mapping
 
+    def discard(self, key: str) -> None:
+        """
+        Drop a mapping if present (call async_save to persist).
+
+        Used when BookStack returns 404 for a page we previously
+        managed — the page was deleted in BookStack, so the stored
+        mapping is stale and will block recreation if we keep it.
+        """
+        self._state.pages.pop(key, None)
+
     def all(self) -> dict[str, PageMapping]:
         """Return a shallow copy of all known mappings."""
         return dict(self._state.pages)

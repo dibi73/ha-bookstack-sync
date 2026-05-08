@@ -22,6 +22,7 @@ from custom_components.bookstack_sync.api import (
     BookStackApiClient,
     BookStackApiCommunicationError,
     BookStackApiError,
+    BookStackApiNotFoundError,
 )
 
 
@@ -224,6 +225,30 @@ class TestUpdatePage:
             await client.update_page(42, "P", "body")
             request_kwargs = next(iter(mocked.requests.values()))[0].kwargs
             assert request_kwargs["json"]["editor"] == "markdown"
+
+
+class TestNotFoundError:
+    """v0.14.10: 404 must raise the dedicated NotFoundError subclass."""
+
+    async def test_get_page_404_raises_not_found(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/999",
+                status=404,
+                payload={"error": {"code": 404, "message": "Page not found"}},
+            )
+            with pytest.raises(BookStackApiNotFoundError):
+                await client.get_page(999)
+
+    async def test_not_found_is_communication_error_subclass(self) -> None:
+        # Existing handlers that catch BookStackApiCommunicationError still
+        # see 404s — important for the export pipeline which already
+        # logs+skips at that level.
+        assert issubclass(BookStackApiNotFoundError, BookStackApiCommunicationError)
+        assert issubclass(BookStackApiNotFoundError, BookStackApiError)
 
 
 class TestRetryOnTransientErrors:
