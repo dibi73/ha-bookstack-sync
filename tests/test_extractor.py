@@ -22,12 +22,14 @@ from homeassistant.helpers import (
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync.extractor import (
+    _compute_device_groups,
     _parse_energy_payload,
     async_extract_energy_config,
     extract_snapshot,
 )
 
 if TYPE_CHECKING:
+    import pytest
     from homeassistant.core import HomeAssistant
 
 
@@ -261,6 +263,199 @@ async def test_device_network_mac_only_fallback(hass: HomeAssistant) -> None:
     assert sensor_snap.network.mac == "00:11:22:33:44:55"
     assert sensor_snap.network.ip is None
     assert sensor_snap.network.source_platform == "registry"
+
+
+def test_compute_device_groups_unions_shared_connections_and_identifiers() -> None:
+    """
+    Unit test for the union-find grouping itself, isolated from the registry.
+
+    This repo's pinned ``homeassistant==2026.5.3`` still auto-merges two
+    ``async_get_or_create`` calls that share a connection into a SINGLE
+    device_registry entry (the old pre-2026.8 behaviour) — so the
+    "two separate entries linked by a shared MAC" scenario this feature
+    targets can't be reproduced through the public registry API on this
+    HA version. It's exactly the scenario HA 2026.8 introduces (see
+    Anforderungsdokument 9.1: the split removes that auto-merge). This
+    test exercises the grouping algorithm directly against minimal
+    stand-ins for ``dr.DeviceEntry`` (only the 3 attributes
+    ``_compute_device_groups`` reads), independent of which HA version
+    is actually installed.
+    """
+
+    class _FakeDevice:
+        def __init__(
+            self,
+            device_id: str,
+            identifiers: set[tuple[str, str]] | None = None,
+            connections: set[tuple[str, str]] | None = None,
+        ) -> None:
+            self.id = device_id
+            self.identifiers = identifiers or set()
+            self.connections = connections or set()
+
+    class _FakeRegistry:
+        def __init__(self, devices: list[_FakeDevice]) -> None:
+            self.devices = {d.id: d for d in devices}
+
+    shared_mac = ("mac", "48:55:19:17:8e:10")
+    tasmota = _FakeDevice("z_tasmota", connections={shared_mac})
+    unifi = _FakeDevice("a_unifi", connections={shared_mac})
+    solo = _FakeDevice("solo", identifiers={("mqtt", "solo")})
+
+    groups = _compute_device_groups(_FakeRegistry([tasmota, unifi, solo]))
+
+    # Canonical key = lexicographically smallest member id.
+    assert groups["a_unifi"] == ["a_unifi", "z_tasmota"]
+    assert groups["solo"] == ["solo"]
+    assert "z_tasmota" not in groups  # only reachable as a member, not a key
+
+
+async def test_device_group_aggregation_unions_entities_and_network(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Two devices forced into one group get merged into a single DeviceSnapshot.
+
+    Grouping itself is covered separately (see the unit test above) since
+    the registry-level auto-merge on this HA pin prevents constructing
+    two genuinely separate linked entries. Here ``_compute_device_groups``
+    is monkeypatched to isolate and cover the AGGREGATION logic in
+    ``extract_snapshot`` (also_known_as, entity union, network-connection
+    union across group members) — the part that actually changed.
+    """
+    tasmota_entry = MockConfigEntry(domain="tasmota", entry_id="entry_tasmota")
+    unifi_entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi")
+    tasmota_entry.add_to_hass(hass)
+    unifi_entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    # No shared connection here — kept genuinely separate so this HA
+    # version's registry doesn't auto-merge them before our code runs.
+    tasmota_device = device_reg.async_get_or_create(
+        config_entry_id="entry_tasmota",
+        identifiers={("tasmota", "48558E10")},
+        name="Waschmaschinensteckdose",
+    )
+    unifi_device = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "client-48558e10")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "48:55:19:17:8e:10")},
+        name="tasmota-178E10-3600",
+    )
+    members = sorted([tasmota_device.id, unifi_device.id])
+    monkeypatch.setattr(
+        "custom_components.bookstack_sync.extractor._compute_device_groups",
+        lambda device_reg: {members[0]: members},
+    )
+
+    tasmota_switch = entity_reg.async_get_or_create(
+        domain="switch",
+        platform="tasmota",
+        unique_id="tasmota_switch",
+        device_id=tasmota_device.id,
+        suggested_object_id="waschmaschinensteckdose",
+    )
+    unifi_tracker = entity_reg.async_get_or_create(
+        domain="device_tracker",
+        platform="unifi",
+        unique_id="unifi_tracker",
+        device_id=unifi_device.id,
+        suggested_object_id="tasmota_178e10_3600",
+    )
+    hass.states.async_set(
+        unifi_tracker.entity_id,
+        "home",
+        {"ip": "192.168.1.42", "mac": "48:55:19:17:8e:10"},
+    )
+
+    snap = extract_snapshot(hass)
+    names = {"Waschmaschinensteckdose", "tasmota-178E10-3600"}
+
+    merged = [d for d in snap.unassigned_devices if d.name in names]
+    assert len(merged) == 1, "grouped devices must fold into a single page"
+    device = merged[0]
+    assert device.device_id == members[0]
+
+    # Whichever entry became canonical, the other shows up as an alias.
+    assert len(device.also_known_as) == 1
+    aka = device.also_known_as[0]
+    assert aka.name in names
+    assert aka.name != device.name
+    assert aka.domain in {"tasmota", "unifi"}
+    assert aka.device_id in {tasmota_device.id, unifi_device.id}
+    assert aka.device_id != device.device_id
+
+    # Entities from BOTH source integrations are unioned onto the one page.
+    entity_ids = {e.entity_id for e in device.entities}
+    assert tasmota_switch.entity_id in entity_ids
+    assert unifi_tracker.entity_id in entity_ids
+
+    # Network info survives even if the canonical member itself carries
+    # no connection of its own (union across group members, not just
+    # the primary) — the MAC only lives on the UniFi-side entry.
+    assert device.network is not None
+    assert device.network.mac == "48:55:19:17:8e:10"
+
+
+async def test_linked_device_unnamed_member_ignored(hass: HomeAssistant) -> None:
+    """An unnamed sibling in a linked group doesn't hide the named device.
+
+    HA sometimes leaves nameless stub devices behind. If one happens to
+    share a connection with a real, named device, the named one must
+    still be documented normally — and the stub must NOT show up as an
+    "also known as" alias (it's filtered the same way an unlinked
+    unnamed device always was).
+    """
+    entry_a = MockConfigEntry(domain="tasmota", entry_id="entry_a")
+    entry_b = MockConfigEntry(domain="mqtt", entry_id="entry_b")
+    entry_a.add_to_hass(hass)
+    entry_b.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    shared_mac = (dr.CONNECTION_NETWORK_MAC, "aa:11:22:33:44:55")
+    device_reg.async_get_or_create(
+        config_entry_id="entry_a",
+        identifiers={("tasmota", "stub")},
+        connections={shared_mac},
+        name=None,
+    )
+    device_reg.async_get_or_create(
+        config_entry_id="entry_b",
+        identifiers={("mqtt", "named")},
+        connections={shared_mac},
+        name="Named Plug",
+    )
+
+    snap = extract_snapshot(hass)
+    named = [d for d in snap.unassigned_devices if d.name == "Named Plug"]
+    assert len(named) == 1
+    assert named[0].also_known_as == ()
+
+
+async def test_unlinked_devices_stay_separate(hass: HomeAssistant) -> None:
+    """Two devices with no shared connection/identifier are NOT merged."""
+    entry = MockConfigEntry(domain="mqtt", entry_id="entry_solo")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    device_reg.async_get_or_create(
+        config_entry_id="entry_solo",
+        identifiers={("mqtt", "solo_a")},
+        name="Solo Device A",
+    )
+    device_reg.async_get_or_create(
+        config_entry_id="entry_solo",
+        identifiers={("mqtt", "solo_b")},
+        name="Solo Device B",
+    )
+
+    snap = extract_snapshot(hass)
+    solo_a = next(d for d in snap.unassigned_devices if d.name == "Solo Device A")
+    solo_b = next(d for d in snap.unassigned_devices if d.name == "Solo Device B")
+    assert solo_a.also_known_as == ()
+    assert solo_b.also_known_as == ()
 
 
 async def test_device_with_multiple_trackers_primary_first(

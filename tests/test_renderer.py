@@ -14,6 +14,7 @@ import pytest
 
 from custom_components.bookstack_sync.extractor import (
     AddonSnapshot,
+    AkaEntry,
     AreaSnapshot,
     AutomationSnapshot,
     DeviceIntegrationRef,
@@ -600,6 +601,90 @@ class TestDeviceNetworkSection:
         assert "192.168.5.10 (auch: 192.168.1.10)" in out
         # Both connection types visible.
         assert "WLAN (auch: LAN)" in out
+
+
+class TestDeviceAlsoKnownAs:
+    """
+    "Auch bekannt als" / "Also known as" section for merged device pages.
+
+    See extractor._compute_device_groups / DeviceSnapshot.also_known_as —
+    when a physical device is represented by several linked
+    device_registry entries, the non-canonical ones are folded into this
+    section instead of getting their own stub page.
+    """
+
+    def test_no_section_when_not_grouped(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device(name="Plain Device")
+        out = render_device_auto_block(device, fixed_now, strings_de)
+        assert "Auch bekannt als" not in out
+
+    def test_aka_entry_links_with_ha_url(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device(name="Waschmaschinensteckdose")
+        device.also_known_as = (
+            AkaEntry(
+                name="tasmota-178E10-3600",
+                domain="unifi",
+                device_id="dev-unifi-side",
+            ),
+        )
+        out = render_device_auto_block(
+            device,
+            fixed_now,
+            strings_de,
+            ha_url="http://ha.local:8123",
+        )
+        assert "## Auch bekannt als" in out
+        assert (
+            "[tasmota-178E10-3600]"
+            "(http://ha.local:8123/config/devices/device/dev-unifi-side) (unifi)"
+        ) in out
+
+    def test_aka_entry_falls_back_to_bold_without_ha_url(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device(name="Waschmaschinensteckdose")
+        device.also_known_as = (
+            AkaEntry(name="tasmota-178E10-3600", domain="unifi", device_id="dev-x"),
+        )
+        out = render_device_auto_block(device, fixed_now, strings_de)
+        assert "**tasmota-178E10-3600** (unifi)" in out
+        assert "](http" not in out
+
+    def test_multiple_aka_entries_all_listed(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device(name="Datenstation")
+        device.also_known_as = (
+            AkaEntry(name="DatenStation", domain="synology_dsm", device_id="dev-b"),
+            AkaEntry(name="Datenstation", domain="unifi", device_id="dev-c"),
+        )
+        out = render_device_auto_block(device, fixed_now, strings_de)
+        assert "DatenStation** (synology_dsm)" in out
+        assert "Datenstation** (unifi)" in out
+
+    def test_english_label(
+        self,
+        fixed_now: datetime,
+        strings_en: dict[str, str],
+    ) -> None:
+        device = _device(name="Washing machine outlet")
+        device.also_known_as = (
+            AkaEntry(name="tasmota-178E10-3600", domain="unifi", device_id="dev-x"),
+        )
+        out = render_device_auto_block(device, fixed_now, strings_en)
+        assert "## Also known as" in out
 
 
 class TestBundlePages:

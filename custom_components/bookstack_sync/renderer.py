@@ -446,6 +446,7 @@ def render_device_auto_block(
     )
     if device.network is not None:
         lines.extend(_network_section(device, strings))
+    lines.extend(_aka_section(device, strings, ha_url))
     lines.extend(["", f"## {strings['section_entities']}", ""])
     if device.entities:
         lines.extend(_entity_lines(device.entities, strings, ha_url))
@@ -454,6 +455,34 @@ def render_device_auto_block(
     if reverse_usage:
         lines.extend(_used_by_section(device, strings, reverse_usage))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _aka_section(
+    device: DeviceSnapshot,
+    strings: dict[str, str],
+    ha_url: str,
+) -> list[str]:
+    """
+    Render the ``Auch bekannt als`` block for a merged device page.
+
+    A device page can represent several device_registry entries folded
+    together because they're the same physical device seen by multiple
+    integrations (see ``extractor._compute_device_groups``). This lists
+    every entry that isn't the canonical one, each linking to its own
+    HA device-registry detail page — so a user who only recognises the
+    UniFi-side or Tasmota-side name can still find and jump to the
+    original entry. Returns ``[]`` for the majority of devices that
+    aren't duplicated (``also_known_as`` empty).
+    """
+    if not device.also_known_as:
+        return []
+    lines: list[str] = ["", f"## {strings['section_also_known_as']}", ""]
+    for aka in device.also_known_as:
+        name_md = _md_escape(aka.name)
+        url = _ha_url_for(ha_url, "device", aka.device_id)
+        label = f"[{name_md}]({url})" if url else f"**{name_md}**"
+        lines.append(f"- {label} ({_md_escape(aka.domain)})")
+    return lines
 
 
 def _used_by_section(
