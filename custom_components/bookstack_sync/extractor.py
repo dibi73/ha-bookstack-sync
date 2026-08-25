@@ -326,6 +326,18 @@ class HASnapshot:
     reverse_usage: dict[str, list[ReverseUsageEntry]] = field(default_factory=dict)
 
 
+# Tuya's cloud integration ("tuya") and the community Local-Tuya
+# integration ("tuya_local") each register their own device_registry
+# entry for the same physical device, using the same Tuya device id as
+# the identifier value but a different domain as the identifier's first
+# tuple element — so they never share an exact (domain, value) tuple and
+# the generic identifier/connection matching below misses them. This is
+# a narrow, explicitly-known integration pair, not a general fuzzy
+# match: matching on value alone across arbitrary domains would risk
+# merging unrelated devices that happen to reuse an id scheme.
+_TUYA_LINK_DOMAINS = frozenset({"tuya", "tuya_local"})
+
+
 def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]]:
     """
     Group device_registry entries that share a connection or identifier.
@@ -334,10 +346,11 @@ def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]
     ``DeviceRegistry.async_get_devices(identifiers=..., connections=...)``
     since the 2026.8 device-registry split (the same helper backs the
     ``config/device_registry/list_linked_devices`` websocket command).
-    This repo pins ``homeassistant==2026.5.3``, which predates that
-    method, so the matching is reimplemented here against the same
-    registry data — safe to replace with the HA helper once the pin
-    moves past 2026.8.
+    This repo pins ``homeassistant==2026.8.3``, but ``async_get_devices``
+    only matches identifiers/connections tuple-for-tuple — it wouldn't
+    catch the ``tuya``/``tuya_local`` case handled separately below
+    either, so the matching stays reimplemented here rather than
+    delegating to the HA helper.
 
     Returns ``canonical_device_id -> [member_device_id, ...]`` (members
     sorted, canonical key included). The canonical key is the
@@ -366,14 +379,22 @@ def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]
 
     by_identifier: dict[tuple[str, str], list[str]] = {}
     by_connection: dict[tuple[str, str], list[str]] = {}
+    by_tuya_value: dict[str, list[str]] = {}
     for device in device_reg.devices.values():
         find(device.id)  # ensure every device has a parent entry
         for identifier in device.identifiers:
             by_identifier.setdefault(identifier, []).append(device.id)
+            domain, value = identifier
+            if domain in _TUYA_LINK_DOMAINS:
+                by_tuya_value.setdefault(value, []).append(device.id)
         for connection in device.connections:
             by_connection.setdefault(connection, []).append(device.id)
 
-    for bucket in (*by_identifier.values(), *by_connection.values()):
+    for bucket in (
+        *by_identifier.values(),
+        *by_connection.values(),
+        *by_tuya_value.values(),
+    ):
         for other_id in bucket[1:]:
             union(bucket[0], other_id)
 

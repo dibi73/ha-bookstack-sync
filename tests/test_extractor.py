@@ -310,6 +310,57 @@ def test_compute_device_groups_unions_shared_connections_and_identifiers() -> No
     assert "z_tasmota" not in groups  # only reachable as a member, not a key
 
 
+def test_compute_device_groups_links_tuya_and_tuya_local_by_value() -> None:
+    """
+    ``tuya`` and ``tuya_local`` identifiers with the same value are the same device.
+
+    Real-world case (see Anforderungsdokument 9.1, "Elternsz" report,
+    2026-08-25): Tuya's cloud integration and the community Local-Tuya
+    integration each create their own device_registry entry for the
+    same physical device, both keyed by the same Tuya device id — but
+    under a different identifier domain (``tuya`` vs. ``tuya_local``),
+    so the exact (domain, value) tuple never matches and the generic
+    identifier bucketing above misses them.
+    """
+
+    class _FakeDevice:
+        def __init__(
+            self,
+            device_id: str,
+            identifiers: set[tuple[str, str]] | None = None,
+            connections: set[tuple[str, str]] | None = None,
+        ) -> None:
+            self.id = device_id
+            self.identifiers = identifiers or set()
+            self.connections = connections or set()
+
+    class _FakeRegistry:
+        def __init__(self, devices: list[_FakeDevice]) -> None:
+            self.devices = {d.id: d for d in devices}
+
+    tuya_cloud = _FakeDevice("b_tuya", identifiers={("tuya", "bf4bccffb1ce921856pwjh")})
+    tuya_local = _FakeDevice(
+        "a_tuya_local", identifiers={("tuya_local", "bf4bccffb1ce921856pwjh")}
+    )
+    other_tuya_pair = _FakeDevice(
+        "c_tuya", identifiers={("tuya", "different-device-id")}
+    )
+    unrelated_domain_same_value = _FakeDevice(
+        "d_unrelated", identifiers={("mqtt", "bf4bccffb1ce921856pwjh")}
+    )
+
+    groups = _compute_device_groups(
+        _FakeRegistry(
+            [tuya_cloud, tuya_local, other_tuya_pair, unrelated_domain_same_value]
+        )
+    )
+
+    assert groups["a_tuya_local"] == ["a_tuya_local", "b_tuya"]
+    assert groups["c_tuya"] == ["c_tuya"]
+    # Same value, but not a tuya/tuya_local pair -> no cross-domain match.
+    assert groups["d_unrelated"] == ["d_unrelated"]
+
+
 async def test_device_group_aggregation_unions_entities_and_network(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
