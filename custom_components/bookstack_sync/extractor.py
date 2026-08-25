@@ -326,6 +326,14 @@ class HASnapshot:
     reverse_usage: dict[str, list[ReverseUsageEntry]] = field(default_factory=dict)
 
 
+# Entity domains that already get their own dedicated per-area section
+# (see _extract_automations/_extract_scripts/_extract_scenes and the
+# `areas[...].automations/scripts/scenes` routing above) — an
+# entity in one of these domains without a device_id must NOT also be
+# added to the area's generic orphan-entity list, or it ends up listed
+# twice on the same area page.
+_AREA_SECTIONED_DOMAINS = frozenset({"automation", "script", "scene"})
+
 # Tuya's cloud integration ("tuya") and the community Local-Tuya
 # integration ("tuya_local") each register their own device_registry
 # entry for the same physical device, using the same Tuya device id as
@@ -544,7 +552,13 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         )
         if target_device_id:
             devices[target_device_id].entities.append(snapshot)
-        else:
+        elif entity.entity_id.split(".", 1)[0] not in _AREA_SECTIONED_DOMAINS:
+            # automation/script/scene entities without a device are
+            # already listed under their own per-area section (see
+            # _extract_automations/_extract_scripts/_extract_scenes
+            # below) — including them here too double-lists them on
+            # the area page (e.g. a scene under both "Entities ohne
+            # Geräte-Zuordnung" and "Szenen in <Area>").
             area_id = entity.area_id or ""
             orphan_entities_by_area.setdefault(area_id, []).append(snapshot)
 

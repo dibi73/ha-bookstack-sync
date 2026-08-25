@@ -198,6 +198,44 @@ async def test_automation_without_area_only_in_bundle(
     assert any(a.name == "Morning Routine" for a in snap.automations)
 
 
+async def test_area_scene_without_device_not_duplicated_in_orphan_entities(
+    hass: HomeAssistant,
+) -> None:
+    """
+    A scene with an area_id but no device_id must not be double-listed.
+
+    Real-world report (see Anforderungsdokument, "Esszimmer" -
+    scene.ez_tag, 2026-08-25): scenes/automations/scripts without a
+    device_id get their own "Szenen"/"Automatisierungen"/"Skripte"
+    section on the area page (via _extract_scenes et al.), but the
+    generic orphan-entity loop in extract_snapshot used to add them a
+    second time under "Entities ohne Geräte-Zuordnung" since it didn't
+    exclude those domains.
+    """
+    await _seed_minimal_registry(hass)
+    area_reg = ar.async_get(hass)
+    living = next(a for a in area_reg.areas.values() if a.name == "Living Room")
+
+    entity_reg = er.async_get(hass)
+    entry = entity_reg.async_get_or_create(
+        domain="scene",
+        platform="homeassistant",
+        unique_id="ez_tag_unique",
+        suggested_object_id="ez_tag",
+    )
+    entity_reg.async_update_entity(entry.entity_id, area_id=living.id)
+    hass.states.async_set(entry.entity_id, "on", {"friendly_name": "EZ Tag"})
+
+    snap = extract_snapshot(hass)
+    living_snap = next(a for a in snap.areas if a.name == "Living Room")
+
+    scene_names = [s.name for s in living_snap.scenes]
+    assert "EZ Tag" in scene_names
+
+    orphan_entity_ids = [e.entity_id for e in living_snap.orphan_entities]
+    assert entry.entity_id not in orphan_entity_ids
+
+
 async def test_device_network_from_tracker(hass: HomeAssistant) -> None:
     """A device with a linked device_tracker gets NetworkInfo populated."""
     entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi", title="UniFi")
