@@ -407,8 +407,14 @@ async def test_linked_device_unnamed_member_ignored(hass: HomeAssistant) -> None
     still be documented normally — and the stub must NOT show up as an
     "also known as" alias (it's filtered the same way an unlinked
     unnamed device always was).
+
+    Since HA 2026.8, ``DeviceEntry.name`` falls back to the owning
+    config entry's title whenever no explicit name is stored — so
+    ``name=None`` alone no longer produces a genuinely nameless device.
+    The entry itself needs an empty title too, or "unnamed" becomes
+    unreachable via the public registry API.
     """
-    entry_a = MockConfigEntry(domain="tasmota", entry_id="entry_a")
+    entry_a = MockConfigEntry(domain="tasmota", entry_id="entry_a", title="")
     entry_b = MockConfigEntry(domain="mqtt", entry_id="entry_b")
     entry_a.add_to_hass(hass)
     entry_b.add_to_hass(hass)
