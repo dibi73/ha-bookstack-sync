@@ -18,6 +18,9 @@ from homeassistant.helpers import (
 from homeassistant.helpers import (
     entity_registry as er,
 )
+from homeassistant.helpers import (
+    label_registry as lr,
+)
 
 from .const import LOGGER
 
@@ -198,6 +201,28 @@ class AreaSnapshot:
 
 
 @dataclass
+class LabelSnapshot:
+    """
+    One HA label (issue #22) with the devices that carry it.
+
+    Granularity is devices, not entities (maintainer decision on the
+    issue): a device's label set is the union of its own
+    ``device_registry`` ``labels`` field and every one of its entities'
+    ``labels`` — a device can be labelled directly (device page in the
+    HA UI) or only transitively through a labelled entity, and both
+    should make it show up here. A label with zero devices never
+    produces a ``LabelSnapshot`` at all (see ``_extract_labels``) — no
+    page, no mention anywhere, per the maintainer's "empty labels: no
+    page" decision.
+    """
+
+    label_id: str
+    name: str
+    icon: str | None
+    devices: list[DeviceSnapshot] = field(default_factory=list)
+
+
+@dataclass
 class IntegrationSnapshot:
     """One config entry / installed integration."""
 
@@ -324,6 +349,9 @@ class HASnapshot:
     # entity_id → list of (automation/script/scene) entries that reference it.
     # Populated from YAML config files (automations.yaml etc).
     reverse_usage: dict[str, list[ReverseUsageEntry]] = field(default_factory=dict)
+    # HA labels that carry at least one device (issue #22). Empty labels
+    # are filtered out by ``_extract_labels`` and never appear here.
+    labels: list[LabelSnapshot] = field(default_factory=list)
 
 
 # Entity domains that already get their own dedicated per-area section
@@ -628,6 +656,9 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     snapshot.energy = energy_config
     snapshot.helpers = _extract_helpers(hass, entity_reg)
     snapshot.reverse_usage = _extract_reverse_usage(hass)
+    snapshot.labels = _extract_labels(
+        hass, device_reg, entity_reg, devices, primary_to_members
+    )
     return snapshot
 
 
@@ -867,6 +898,81 @@ def _extract_addons(hass: HomeAssistant) -> list[AddonSnapshot]:
         )
     addons.sort(key=lambda a: (a.name.lower(), a.slug))
     return addons
+
+
+def _extract_labels(  # noqa: PLR0912 - device-group-aware label union, cohesive
+    hass: HomeAssistant,
+    device_reg: dr.DeviceRegistry,
+    entity_reg: er.EntityRegistry,
+    devices: dict[str, DeviceSnapshot],
+    primary_to_members: dict[str, list[str]] | None = None,
+) -> list[LabelSnapshot]:
+    """
+    Build one ``LabelSnapshot`` per HA label that has at least one device.
+
+    A device's label set is the union of two sources (see
+    ``LabelSnapshot`` docstring): its own ``device_registry`` entry's
+    ``labels`` field, and the ``labels`` field of every entity attached
+    to it. Labels used by neither source are skipped entirely — no
+    page, no mention on the overview (maintainer decision on issue #22).
+
+    ``devices`` is keyed by the CANONICAL device_id of each (possibly
+    merged) group — see ``extract_snapshot``'s device-group-dedup pass.
+    A label set only on a non-canonical group member's raw
+    device_registry entry (or on one of that member's entities) would
+    otherwise be invisible here, since only the canonical id is a key
+    in ``devices``. ``primary_to_members`` (canonical id -> every raw
+    member id, canonical included) widens both lookups to the whole
+    group; omit it (or pass an empty dict) to fall back to
+    canonical-only matching for callers that don't have merged groups.
+    """
+    label_reg = lr.async_get(hass)
+    if not label_reg.labels:
+        return []
+
+    member_to_primary: dict[str, str] = {}
+    for primary_id, members in (primary_to_members or {}).items():
+        for member_id in members:
+            member_to_primary[member_id] = primary_id
+
+    device_label_ids: dict[str, set[str]] = {}
+    for device_id in devices:
+        for member_id in (primary_to_members or {}).get(device_id, [device_id]):
+            registry_device = device_reg.async_get(member_id)
+            if registry_device and registry_device.labels:
+                device_label_ids.setdefault(device_id, set()).update(
+                    registry_device.labels,
+                )
+    for entity in entity_reg.entities.values():
+        if not entity.device_id or not entity.labels:
+            continue
+        target_device_id = member_to_primary.get(entity.device_id, entity.device_id)
+        if target_device_id in devices:
+            device_label_ids.setdefault(target_device_id, set()).update(
+                entity.labels,
+            )
+
+    label_to_devices: dict[str, list[DeviceSnapshot]] = {}
+    for device_id, label_ids in device_label_ids.items():
+        for label_id in label_ids:
+            label_to_devices.setdefault(label_id, []).append(devices[device_id])
+
+    labels: list[LabelSnapshot] = []
+    for label_id, label_devices in label_to_devices.items():
+        registry_label = label_reg.async_get_label(label_id)
+        if registry_label is None:
+            continue  # stale reference to a since-deleted label
+        label_devices.sort(key=lambda d: (d.name.lower(), d.device_id))
+        labels.append(
+            LabelSnapshot(
+                label_id=label_id,
+                name=registry_label.name,
+                icon=registry_label.icon,
+                devices=label_devices,
+            ),
+        )
+    labels.sort(key=lambda entry: (entry.name.lower(), entry.label_id))
+    return labels
 
 
 def _device_macs_from_connections(device: dr.DeviceEntry) -> list[str]:

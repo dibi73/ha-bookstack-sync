@@ -61,6 +61,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "title_helpers": "Helpers",
         "title_area_template": "Raum: {name}",
         "title_device_template": "Gerät: {name}",
+        "title_label_template": "Label: {name}",
         # Chapter titles + descriptions
         "chapter_areas_title": "Räume",
         "chapter_areas_description": (
@@ -70,9 +71,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "chapter_devices_description": (
             "Pro Gerät eine Page mit Stammdaten und allen zugehörigen Entities."
         ),
+        "chapter_labels_title": "Labels",
+        "chapter_labels_description": (
+            "Pro HA-Label eine Page mit den Geräten, die dieses Label tragen."
+        ),
         # Section headings
         "section_statistics": "Statistik",
         "section_areas": "Räume",
+        "section_labels": "Labels",
         "section_categories": "Weitere Seiten",
         "section_unassigned_devices": "Geräte ohne Raum-Zuordnung",
         "section_devices_in_area_template": "Geräte in {name}",
@@ -100,6 +106,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "section_automations_count_template": "Automatisierungen ({count})",
         "section_scripts_count_template": "Skripte ({count})",
         "section_scenes_count_template": "Szenen ({count})",
+        "section_label_devices_count_template": "Geräte mit diesem Label ({count})",
         "section_integrations_count_template": "Integrationen ({count})",
         "section_network_count_template": "Geräte mit Netzwerkdaten ({count})",
         "section_dhcp_export": "DHCP-Reservierungen (zum Übernehmen in Router)",
@@ -180,8 +187,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "field_hardware": "Hardware",
         "field_integrations": "Integrationen",
         "field_device_id": "Device-ID",
+        "field_area": "Bereich",
         "table_field_header": "Feld",
         "table_value_header": "Wert",
+        # Label table
+        "label_col_device": "Gerät",
         # Addon table
         "addon_col_name": "Add-on",
         "addon_col_slug": "Slug",
@@ -264,6 +274,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "title_helpers": "Helpers",
         "title_area_template": "Area: {name}",
         "title_device_template": "Device: {name}",
+        "title_label_template": "Label: {name}",
         "chapter_areas_title": "Areas",
         "chapter_areas_description": (
             "One page per area with all the devices and entities located there."
@@ -272,8 +283,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "chapter_devices_description": (
             "One page per device with master data and all its entities."
         ),
+        "chapter_labels_title": "Labels",
+        "chapter_labels_description": (
+            "One page per HA label with the devices that carry it."
+        ),
         "section_statistics": "Statistics",
         "section_areas": "Areas",
+        "section_labels": "Labels",
         "section_categories": "Other pages",
         "section_unassigned_devices": "Devices without area",
         "section_devices_in_area_template": "Devices in {name}",
@@ -300,6 +316,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "section_automations_count_template": "Automations ({count})",
         "section_scripts_count_template": "Scripts ({count})",
         "section_scenes_count_template": "Scenes ({count})",
+        "section_label_devices_count_template": "Devices with this label ({count})",
         "section_integrations_count_template": "Integrations ({count})",
         "section_network_count_template": "Devices with network data ({count})",
         "section_dhcp_export": "DHCP reservations (paste into your router)",
@@ -377,8 +394,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "field_hardware": "Hardware",
         "field_integrations": "Integrations",
         "field_device_id": "Device ID",
+        "field_area": "Area",
         "table_field_header": "Field",
         "table_value_header": "Value",
+        "label_col_device": "Device",
         "addon_col_name": "Add-on",
         "addon_col_slug": "Slug",
         "addon_col_version": "Version",

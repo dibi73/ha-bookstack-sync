@@ -19,6 +19,9 @@ from homeassistant.helpers import (
 from homeassistant.helpers import (
     entity_registry as er,
 )
+from homeassistant.helpers import (
+    label_registry as lr,
+)
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync.extractor import (
@@ -234,6 +237,77 @@ async def test_area_scene_without_device_not_duplicated_in_orphan_entities(
 
     orphan_entity_ids = [e.entity_id for e in living_snap.orphan_entities]
     assert entry.entity_id not in orphan_entity_ids
+
+
+async def test_label_with_device_level_label_appears_in_snapshot(
+    hass: HomeAssistant,
+) -> None:
+    """A device labelled directly (device_registry.labels) shows up (issue #22)."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("kritisch", icon="mdi:alarm")
+
+    device_reg = dr.async_get(hass)
+    sofa = next(d for d in device_reg.devices.values() if d.name == "Sofa Light")
+    device_reg.async_update_device(sofa.id, labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    kritisch = snap.labels[0]
+    assert kritisch.name == "kritisch"
+    assert kritisch.icon == "mdi:alarm"
+    assert [d.device_id for d in kritisch.devices] == [sofa.id]
+
+
+async def test_label_with_entity_level_label_appears_in_snapshot(
+    hass: HomeAssistant,
+) -> None:
+    """A device that only has a labelled ENTITY still shows up on the label."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("monitoring")
+
+    entity_reg = er.async_get(hass)
+    entity_reg.async_update_entity("light.sofa_light", labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    assert snap.labels[0].name == "monitoring"
+    device_names = [d.name for d in snap.labels[0].devices]
+    assert device_names == ["Sofa Light"]
+
+
+async def test_label_with_no_devices_is_skipped_entirely(hass: HomeAssistant) -> None:
+    """A label defined in HA but unused anywhere never reaches the snapshot."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label_reg.async_create("unused-label")
+
+    snap = extract_snapshot(hass)
+
+    assert snap.labels == []
+
+
+async def test_label_with_two_devices_lists_both_sorted(hass: HomeAssistant) -> None:
+    """Two devices under the same label both appear, sorted by name."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("urlaub_aus")
+
+    device_reg = dr.async_get(hass)
+    sofa = next(d for d in device_reg.devices.values() if d.name == "Sofa Light")
+    fridge = next(d for d in device_reg.devices.values() if d.name == "Fridge Door")
+    device_reg.async_update_device(sofa.id, labels={label.label_id})
+    device_reg.async_update_device(fridge.id, labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    device_names = [d.name for d in snap.labels[0].devices]
+    assert device_names == sorted(device_names, key=str.lower)
+    assert set(device_names) == {"Sofa Light", "Fridge Door"}
 
 
 async def test_device_network_from_tracker(hass: HomeAssistant) -> None:
@@ -524,6 +598,64 @@ async def test_device_group_aggregation_unions_entities_and_network(
     # the primary) — the MAC only lives on the UniFi-side entry.
     assert device.network is not None
     assert device.network.mac == "48:55:19:17:8e:10"
+
+
+async def test_label_on_non_canonical_group_member_still_surfaces(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A label set only on a merged-away group member must still appear.
+
+    Combines the device-group-dedup feature with the per-label pages
+    feature (issue #22): ``devices`` in ``extract_snapshot`` is keyed
+    by the group's CANONICAL device_id only. If a label is set on the
+    device_registry entry of a *non-canonical* member (real scenario:
+    the "WCEGLED" / "WCuLED" pair, label set on the UniFi-side entry
+    which is not the canonical Tasmota-side one), ``_extract_labels``
+    must still find it via ``primary_to_members`` — not silently drop
+    it because only the canonical id is a key in ``devices``.
+    """
+    tasmota_entry = MockConfigEntry(domain="tasmota", entry_id="entry_tasmota")
+    unifi_entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi")
+    tasmota_entry.add_to_hass(hass)
+    unifi_entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    tasmota_device = device_reg.async_get_or_create(
+        config_entry_id="entry_tasmota",
+        identifiers={("tasmota", "WCULED")},
+        name="WCuLED",
+    )
+    unifi_device = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "client-wcegled")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "98:cd:ac:1f:7d:3a")},
+        name="WCEGLED",
+    )
+    members = sorted([tasmota_device.id, unifi_device.id])
+    monkeypatch.setattr(
+        "custom_components.bookstack_sync.extractor._compute_device_groups",
+        lambda device_reg: {members[0]: members},
+    )
+
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("test")
+    # Label whichever member is NOT canonical (device_ids are random
+    # UUIDs, so which of the two sorts first isn't predictable) — the
+    # whole point of this test is exercising the non-canonical path.
+    non_canonical_id = members[1]
+    device_reg.async_update_device(non_canonical_id, labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    labelled = snap.labels[0]
+    assert labelled.name == "test"
+    assert len(labelled.devices) == 1
+    # The merged (canonical) device shows up, regardless of which raw
+    # member actually carried the label in the registry.
+    assert labelled.devices[0].device_id == members[0]
 
 
 async def test_linked_device_unnamed_member_ignored(hass: HomeAssistant) -> None:

@@ -14,11 +14,19 @@ import pytest
 from homeassistant.helpers import (
     area_registry as ar,
 )
+from homeassistant.helpers import (
+    device_registry as dr,
+)
+from homeassistant.helpers import (
+    label_registry as lr,
+)
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync._strings import get_strings
 from custom_components.bookstack_sync.const import (
     CHAPTER_KEY_AREAS,
     CHAPTER_KEY_DEVICES,
+    CHAPTER_KEY_LABELS,
 )
 from custom_components.bookstack_sync.store import BookStackSyncStore
 from custom_components.bookstack_sync.sync import run_sync
@@ -165,6 +173,54 @@ async def test_first_sync_tags_pages_as_managed(
         assert tags == [{"name": "bookstack_sync", "value": "managed"}], (
             f"expected managed tag on every create_page, got {tags!r}"
         )
+
+
+async def test_label_page_created_with_chapter_and_overview_link(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    End-to-end for issue #22: a labelled device gets a label page + chapter.
+
+    Covers the full pass structure: label pages are planned in pass 3
+    (after devices + areas so cross-links resolve) and the overview
+    (pass 4) links to the label page using its real BookStack URL.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+
+    area_reg = ar.async_get(hass)
+    living = area_reg.async_create("Living Room")
+    entry = MockConfigEntry(domain="mqtt", entry_id="entry1", title="MQTT")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    smoke = device_reg.async_get_or_create(
+        config_entry_id="entry1",
+        identifiers={("mqtt", "smoke")},
+        name="Rauchmelder",
+    )
+    device_reg.async_update_device(smoke.id, area_id=living.id)
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("kritisch", icon="mdi:alarm")
+    device_reg.async_update_device(smoke.id, labels={label.label_id})
+
+    report = await run_sync(hass, client, store, 1, strings)
+
+    assert report.errors == []
+    assert strings["chapter_labels_title"] in state["chapters"].values()
+    assert store.get_chapter(CHAPTER_KEY_LABELS) is not None
+
+    label_pages = [
+        p for p in state["pages"].values() if p["name"] == "Label: kritisch (mdi:alarm)"
+    ]
+    assert len(label_pages) == 1
+    assert "Rauchmelder" in label_pages[0]["markdown"]
+
+    overview_pages = [p for p in state["pages"].values() if p["name"] == "Übersicht"]
+    assert len(overview_pages) == 1
+    label_slug = label_pages[0]["slug"]
+    assert f"/page/{label_slug})" in overview_pages[0]["markdown"]
 
 
 async def test_second_sync_with_unchanged_data_makes_no_changes(
