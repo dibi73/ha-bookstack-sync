@@ -19,6 +19,9 @@ from homeassistant.helpers import (
 from homeassistant.helpers import (
     entity_registry as er,
 )
+from homeassistant.helpers import (
+    label_registry as lr,
+)
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync.extractor import (
@@ -194,6 +197,77 @@ async def test_automation_without_area_only_in_bundle(
         assert "Morning Routine" not in names
     # But the bundle has it.
     assert any(a.name == "Morning Routine" for a in snap.automations)
+
+
+async def test_label_with_device_level_label_appears_in_snapshot(
+    hass: HomeAssistant,
+) -> None:
+    """A device labelled directly (device_registry.labels) shows up (issue #22)."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("kritisch", icon="mdi:alarm")
+
+    device_reg = dr.async_get(hass)
+    sofa = next(d for d in device_reg.devices.values() if d.name == "Sofa Light")
+    device_reg.async_update_device(sofa.id, labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    kritisch = snap.labels[0]
+    assert kritisch.name == "kritisch"
+    assert kritisch.icon == "mdi:alarm"
+    assert [d.device_id for d in kritisch.devices] == [sofa.id]
+
+
+async def test_label_with_entity_level_label_appears_in_snapshot(
+    hass: HomeAssistant,
+) -> None:
+    """A device that only has a labelled ENTITY still shows up on the label."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("monitoring")
+
+    entity_reg = er.async_get(hass)
+    entity_reg.async_update_entity("light.sofa_light", labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    assert snap.labels[0].name == "monitoring"
+    device_names = [d.name for d in snap.labels[0].devices]
+    assert device_names == ["Sofa Light"]
+
+
+async def test_label_with_no_devices_is_skipped_entirely(hass: HomeAssistant) -> None:
+    """A label defined in HA but unused anywhere never reaches the snapshot."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label_reg.async_create("unused-label")
+
+    snap = extract_snapshot(hass)
+
+    assert snap.labels == []
+
+
+async def test_label_with_two_devices_lists_both_sorted(hass: HomeAssistant) -> None:
+    """Two devices under the same label both appear, sorted by name."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("urlaub_aus")
+
+    device_reg = dr.async_get(hass)
+    sofa = next(d for d in device_reg.devices.values() if d.name == "Sofa Light")
+    fridge = next(d for d in device_reg.devices.values() if d.name == "Fridge Door")
+    device_reg.async_update_device(sofa.id, labels={label.label_id})
+    device_reg.async_update_device(fridge.id, labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    device_names = [d.name for d in snap.labels[0].devices]
+    assert device_names == sorted(device_names, key=str.lower)
+    assert set(device_names) == {"Sofa Light", "Fridge Door"}
 
 
 async def test_device_network_from_tracker(hass: HomeAssistant) -> None:

@@ -56,12 +56,14 @@ PAGE_KIND_RECORDER = "recorder"
 PAGE_KIND_MQTT = "mqtt"
 PAGE_KIND_ENERGY = "energy"
 PAGE_KIND_HELPERS = "helpers"
+PAGE_KIND_LABEL = "label"
 
 # Chapters group the many area/device pages so the book stays readable.
 # Titles + descriptions come from `_strings.py` so they follow the user's
 # selected output language.
 CHAPTER_KEY_AREAS = "areas"
 CHAPTER_KEY_DEVICES = "devices"
+CHAPTER_KEY_LABELS = "labels"
 
 # BookStack page tags applied by the integration so users can filter
 # the book by tag in BookStack's UI ("Filter by tag" → bookstack_sync ...).

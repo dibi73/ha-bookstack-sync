@@ -2,13 +2,17 @@
 Sync orchestrator: snapshot HA -> render -> merge -> push to BookStack.
 
 Flow per run:
-1. ``ensure_chapters`` makes sure ``Räume`` + ``Geräte`` chapters exist
-   (titles + descriptions come from the active output language).
-2. Pass 1 syncs all area / device / bundle pages and collects their page IDs.
-3. Pass 2 renders the overview with markdown links to the IDs from pass 1
-   and writes it.
-4. Pages whose HA object has vanished get a one-time tombstone block.
-5. Mapping store is persisted and a persistent notification is posted.
+1. ``ensure_chapters`` makes sure ``Räume`` / ``Geräte`` / ``Labels``
+   chapters exist (titles + descriptions come from the active output
+   language).
+2. Pass 1 syncs all device / bundle pages and collects their page IDs.
+3. Pass 2 renders area pages (device URLs now known) and syncs them.
+4. Pass 3 renders label pages (device + area URLs now known, issue #22)
+   and syncs them.
+5. Pass 4 renders the overview with markdown links to the IDs from the
+   earlier passes and writes it.
+6. Pages whose HA object has vanished get a one-time tombstone block.
+7. Mapping store is persisted and a persistent notification is posted.
 
 The active output language is passed in via ``strings`` — see
 ``_strings.get_strings``. Default in coordinator is ``hass.config.language``.
@@ -33,6 +37,7 @@ from .api import (
 from .const import (
     CHAPTER_KEY_AREAS,
     CHAPTER_KEY_DEVICES,
+    CHAPTER_KEY_LABELS,
     LOGGER,
     PAGE_KIND_ADDONS,
     PAGE_KIND_AREA,
@@ -42,6 +47,7 @@ from .const import (
     PAGE_KIND_ENERGY,
     PAGE_KIND_HELPERS,
     PAGE_KIND_INTEGRATIONS,
+    PAGE_KIND_LABEL,
     PAGE_KIND_MQTT,
     PAGE_KIND_NETWORK,
     PAGE_KIND_OVERVIEW,
@@ -69,6 +75,7 @@ from .renderer import (
     render_energy_auto_block,
     render_helpers_auto_block,
     render_integrations_auto_block,
+    render_label_auto_block,
     render_mqtt_auto_block,
     render_network_auto_block,
     render_overview_auto_block,
@@ -120,7 +127,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .api import BookStackApiClient
-    from .extractor import DeviceSnapshot, HASnapshot
+    from .extractor import DeviceSnapshot, HASnapshot, LabelSnapshot
     from .store import BookStackSyncStore
 
 
@@ -409,13 +416,63 @@ def _plan_area_pages(
     ]
 
 
+def _label_page(  # noqa: PLR0913 - cohesive planner, mirrors _device_page's params + area_names
+    label: LabelSnapshot,
+    now: datetime,
+    strings: dict[str, str],
+    page_links: dict[str, str],
+    area_names: dict[str, str],
+    ha_url: str = "",
+) -> _PlannedPage:
+    """
+    Plan one label page (issue #22).
+
+    Title carries the label's MDI icon name in parentheses when set
+    (maintainer decision on the issue — color is ignored, not worth the
+    complexity). Needs ``page_links``/``area_names`` from a pass after
+    devices AND areas have been synced, same reason area pages do
+    (cross-page Markdown links to device/area pages).
+    """
+    title = strings["title_label_template"].format(name=label.name)
+    if label.icon:
+        title = f"{title} ({label.icon})"
+    return _PlannedPage(
+        key=f"{PAGE_KIND_LABEL}:{label.label_id}",
+        title=title,
+        auto_body=render_label_auto_block(
+            label,
+            now,
+            strings,
+            page_links=page_links,
+            area_names=area_names,
+            ha_url=ha_url,
+        ),
+        chapter_key=CHAPTER_KEY_LABELS,
+    )
+
+
+def _plan_label_pages(
+    snapshot: HASnapshot,
+    now: datetime,
+    strings: dict[str, str],
+    page_links: dict[str, str],
+    ha_url: str = "",
+) -> list[_PlannedPage]:
+    """Plan every label page. Empty when no label has a device (issue #22)."""
+    area_names = {area.area_id: area.name for area in snapshot.areas}
+    return [
+        _label_page(label, now, strings, page_links, area_names, ha_url=ha_url)
+        for label in snapshot.labels
+    ]
+
+
 async def _ensure_chapters(
     client: BookStackApiClient,
     store: BookStackSyncStore,
     book_id: int,
     strings: dict[str, str],
 ) -> dict[str, int]:
-    """Make sure the area + device chapters exist; return their IDs."""
+    """Make sure the area + device + labels chapters exist; return their IDs."""
     desired = (
         (
             CHAPTER_KEY_AREAS,
@@ -426,6 +483,11 @@ async def _ensure_chapters(
             CHAPTER_KEY_DEVICES,
             strings["chapter_devices_title"],
             strings["chapter_devices_description"],
+        ),
+        (
+            CHAPTER_KEY_LABELS,
+            strings["chapter_labels_title"],
+            strings["chapter_labels_description"],
         ),
     )
     existing_chapters = await client.list_chapters(book_id)
@@ -521,7 +583,10 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
                 page_links[page_key] = url
 
     area_planned = _plan_area_pages(snapshot, now, strings, page_links, ha_url=ha_url)
-    total_steps = len(planned) + len(area_planned) + 1  # +1 for the overview
+    label_planned = _plan_label_pages(snapshot, now, strings, page_links, ha_url=ha_url)
+    total_steps = (
+        len(planned) + len(area_planned) + len(label_planned) + 1
+    )  # +1 for the overview
     step = 0
 
     def _emit_progress() -> None:
@@ -594,7 +659,40 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         if not dry_run:
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
-    # Pass 3: render overview with the full URL map + sync it.
+    # Pass 3: render label pages (now that device + area URLs exist) and
+    # sync them. Same re-plan-with-populated-links reasoning as pass 2.
+    label_planned = _plan_label_pages(snapshot, now, strings, page_links, ha_url=ha_url)
+    for page in label_planned:
+        step += 1
+        try:
+            page_id = await _sync_one(
+                client,
+                store,
+                book_id,
+                page,
+                chapters,
+                report,
+                strings,
+                index=step,
+                total=total_steps,
+                dry_run=dry_run,
+                force=force,
+            )
+            if page_id is not None:
+                _refresh_url(page.key)
+        except BookStackApiAuthError:
+            raise
+        except BookStackApiError as err:
+            LOGGER.exception("BookStack sync failed for %s", page.key)
+            report.errors.append(f"{page.key}: {err}")
+        except Exception as err:  # noqa: BLE001 - report and continue
+            LOGGER.exception("Unexpected error syncing %s", page.key)
+            report.errors.append(f"{page.key}: {err}")
+        _emit_progress()
+        if not dry_run:
+            await asyncio.sleep(WRITE_PAUSE_SECONDS)
+
+    # Pass 4: render overview with the full URL map + sync it.
     overview = _PlannedPage(
         key=f"{PAGE_KIND_OVERVIEW}:_",
         title=strings["title_overview"],
@@ -627,7 +725,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         report.errors.append(f"{overview.key}: {err}")
     _emit_progress()
 
-    all_planned = [overview, *area_planned, *planned]
+    all_planned = [overview, *area_planned, *label_planned, *planned]
     await _tombstone_orphans(
         client,
         store,

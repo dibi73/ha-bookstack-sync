@@ -23,6 +23,7 @@ from custom_components.bookstack_sync.extractor import (
     HelperEntry,
     HelperGroup,
     IntegrationSnapshot,
+    LabelSnapshot,
     NetworkInfo,
     SceneSnapshot,
     ScriptSnapshot,
@@ -35,6 +36,7 @@ from custom_components.bookstack_sync.renderer import (
     render_device_auto_block,
     render_helpers_auto_block,
     render_integrations_auto_block,
+    render_label_auto_block,
     render_network_auto_block,
     render_overview_auto_block,
     render_scenes_auto_block,
@@ -326,6 +328,33 @@ class TestOverviewLinks:
         assert "**Living Room**" in out
         assert "{{@" not in out
         assert "](http" not in out  # no link rendered without URL in map
+
+    def test_labels_section_links_to_label_pages(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        url = "http://bookstack.local/books/book/page/kritisch"
+        snap = _empty_snapshot()
+        snap.labels.append(
+            LabelSnapshot(label_id="kritisch", name="kritisch", icon=None, devices=[]),
+        )
+        out = render_overview_auto_block(
+            snap,
+            fixed_now,
+            strings_de,
+            page_links={"label:kritisch": url},
+        )
+        assert f"[kritisch]({url})" in out
+        assert "## Labels" in out
+
+    def test_labels_section_omitted_when_no_labels(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_overview_auto_block(_empty_snapshot(), fixed_now, strings_de)
+        assert "## Labels" not in out
 
     def test_bundle_links_rendered_as_markdown(
         self,
@@ -1265,3 +1294,98 @@ class TestHaLinksHelpers:
         out = render_helpers_auto_block([], fixed_now, strings_de)
         assert "Helper-Konfiguration" not in out
         assert "/config/helpers" not in out
+
+
+class TestRenderLabel:
+    """Label page (issue #22) — one table row per device carrying the label."""
+
+    def test_device_row_with_manufacturer_model_area(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device_url = "http://bookstack.local/books/book/page/dev1"
+        area_url = "http://bookstack.local/books/book/page/living"
+        label = LabelSnapshot(
+            label_id="kritisch",
+            name="kritisch",
+            icon=None,
+            devices=[_device("dev1", name="Rauchmelder")],
+        )
+        label.devices[0].area_id = "living"
+        out = render_label_auto_block(
+            label,
+            fixed_now,
+            strings_de,
+            page_links={"device:dev1": device_url, "area:living": area_url},
+            area_names={"living": "Wohnzimmer"},
+        )
+        assert f"[Rauchmelder]({device_url})" in out
+        assert f"[Wohnzimmer]({area_url})" in out
+        assert "Acme" in out  # manufacturer from _device()
+        assert "Model X" in out  # model from _device()
+        assert "Geräte mit diesem Label (1)" in out
+
+    def test_device_row_falls_back_to_bold_without_links(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        label = LabelSnapshot(
+            label_id="kritisch",
+            name="kritisch",
+            icon=None,
+            devices=[_device("dev1", name="Rauchmelder")],
+        )
+        out = render_label_auto_block(label, fixed_now, strings_de)
+        assert "**Rauchmelder**" in out
+        assert "](http" not in out
+
+    def test_device_without_area_shows_dash(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        label = LabelSnapshot(
+            label_id="kritisch",
+            name="kritisch",
+            icon=None,
+            devices=[_device("dev1", name="Rauchmelder")],
+        )
+        out = render_label_auto_block(label, fixed_now, strings_de)
+        rows = [
+            line
+            for line in out.splitlines()
+            if line.startswith(("| [Rauch", "| **Rauch"))
+        ]
+        assert len(rows) == 1
+        assert rows[0].endswith("| — |")
+
+    def test_ha_open_line_uses_config_labels(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        label = LabelSnapshot(
+            label_id="kritisch",
+            name="kritisch",
+            icon=None,
+            devices=[_device("dev1")],
+        )
+        out = render_label_auto_block(label, fixed_now, strings_de, ha_url=_HA_URL)
+        assert f"[In Home Assistant öffnen]({_HA_URL}/config/labels)" in out
+
+    def test_english_strings(
+        self,
+        fixed_now: datetime,
+        strings_en: dict[str, str],
+    ) -> None:
+        label = LabelSnapshot(
+            label_id="critical",
+            name="critical",
+            icon=None,
+            devices=[_device("dev1", name="Smoke Detector")],
+        )
+        out = render_label_auto_block(label, fixed_now, strings_en)
+        assert "Devices with this label (1)" in out
+        assert "**Smoke Detector**" in out
