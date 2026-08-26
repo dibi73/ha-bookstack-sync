@@ -399,6 +399,44 @@ def test_compute_device_groups_links_tuya_and_tuya_local_by_value() -> None:
     assert groups["d_unrelated"] == ["d_unrelated"]
 
 
+def test_compute_device_groups_handles_non_2_tuple_identifiers() -> None:
+    """
+    Identifiers aren't always a strict (domain, value) 2-tuple.
+
+    Production incident (2026-08-26): rfxtrx registers 4-part
+    identifiers like ``("rfxtrx", "1a", "0", "000001:1")`` for its Rfy
+    (Somfy) shutter devices. The tuya-linking code unconditionally
+    unpacked every identifier as exactly ``domain, value = identifier``,
+    which raised ``ValueError: too many values to unpack`` for any
+    identifier with more than 2 parts and broke every sync on the real
+    instance. Must not crash regardless of identifier tuple length, and
+    must not treat rfxtrx's extra parts as a tuya match.
+    """
+
+    class _FakeDevice:
+        def __init__(
+            self,
+            device_id: str,
+            identifiers: set[tuple[str, ...]] | None = None,
+            connections: set[tuple[str, str]] | None = None,
+        ) -> None:
+            self.id = device_id
+            self.identifiers = identifiers or set()
+            self.connections = connections or set()
+
+    class _FakeRegistry:
+        def __init__(self, devices: list[_FakeDevice]) -> None:
+            self.devices = {d.id: d for d in devices}
+
+    rfy1 = _FakeDevice("a_rfy1", identifiers={("rfxtrx", "1a", "0", "000001:1")})
+    rfy2 = _FakeDevice("b_rfy2", identifiers={("rfxtrx", "1a", "0", "000002:1")})
+
+    groups = _compute_device_groups(_FakeRegistry([rfy1, rfy2]))
+
+    assert groups["a_rfy1"] == ["a_rfy1"]
+    assert groups["b_rfy2"] == ["b_rfy2"]
+
+
 async def test_device_group_aggregation_unions_entities_and_network(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,

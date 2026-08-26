@@ -392,9 +392,15 @@ def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]
         find(device.id)  # ensure every device has a parent entry
         for identifier in device.identifiers:
             by_identifier.setdefault(identifier, []).append(device.id)
-            domain, value = identifier
-            if domain in _TUYA_LINK_DOMAINS:
-                by_tuya_value.setdefault(value, []).append(device.id)
+            # Identifiers are domain + one-or-more value parts, not always
+            # a strict 2-tuple: rfxtrx devices use 4 parts, e.g.
+            # ("rfxtrx", "1a", "0", "000001:1"). Tuya/tuya_local always use
+            # exactly 2, so take the first part as domain and treat
+            # anything after it as "the value" without assuming a fixed
+            # tuple length.
+            domain, *value_parts = identifier
+            if domain in _TUYA_LINK_DOMAINS and value_parts:
+                by_tuya_value.setdefault(value_parts[0], []).append(device.id)
         for connection in device.connections:
             by_connection.setdefault(connection, []).append(device.id)
 
