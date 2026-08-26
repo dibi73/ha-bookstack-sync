@@ -18,6 +18,9 @@ from homeassistant.helpers import (
 from homeassistant.helpers import (
     entity_registry as er,
 )
+from homeassistant.helpers import (
+    label_registry as lr,
+)
 
 from .const import LOGGER
 
@@ -100,6 +103,32 @@ class DeviceIntegrationRef:
     domain: str
 
 
+@dataclass(frozen=True)
+class AkaEntry:
+    """
+    One non-canonical device_registry entry folded into a merged DeviceSnapshot.
+
+    Since HA 2026.8, the same physical device is often represented by
+    several device_registry entries — one per integration that discovered
+    it (e.g. a Tasmota plug that also shows up as a UniFi Network client).
+    HA used to merge these automatically; 2026.8 replaced that with a
+    strict one-device-per-config-entry rule and split all previously
+    merged devices, keeping only a one-time migration breadcrumb
+    (``composite_device_id``). See ``_compute_device_groups``.
+
+    Rather than pick one integration as "the" device and demote the rest
+    to stub pages (losing whatever data only the demoted integration
+    carried — e.g. UniFi's network info vs. Tasmota's entities), the
+    device page aggregates all linked entries and lists the non-primary
+    ones here as "Auch bekannt als" / "Also known as", each linking back
+    to its own HA device-registry entry.
+    """
+
+    name: str
+    domain: str
+    device_id: str
+
+
 @dataclass
 class DeviceSnapshot:
     """One Home Assistant device with its entity list."""
@@ -118,6 +147,10 @@ class DeviceSnapshot:
     # ethernet and WiFi). Sorted by ``last_seen`` desc, primary first.
     network: NetworkInfo | None = None
     network_extra: list[NetworkInfo] = field(default_factory=list)
+    # Other device_registry entries representing the same physical
+    # device, folded into this one (see ``AkaEntry``). Empty for the
+    # ~80% of devices that aren't duplicated across integrations.
+    also_known_as: tuple[AkaEntry, ...] = field(default_factory=tuple)
 
 
 @dataclass
@@ -165,6 +198,28 @@ class AreaSnapshot:
     automations: list[AutomationSnapshot] = field(default_factory=list)
     scripts: list[ScriptSnapshot] = field(default_factory=list)
     scenes: list[SceneSnapshot] = field(default_factory=list)
+
+
+@dataclass
+class LabelSnapshot:
+    """
+    One HA label (issue #22) with the devices that carry it.
+
+    Granularity is devices, not entities (maintainer decision on the
+    issue): a device's label set is the union of its own
+    ``device_registry`` ``labels`` field and every one of its entities'
+    ``labels`` — a device can be labelled directly (device page in the
+    HA UI) or only transitively through a labelled entity, and both
+    should make it show up here. A label with zero devices never
+    produces a ``LabelSnapshot`` at all (see ``_extract_labels``) — no
+    page, no mention anywhere, per the maintainer's "empty labels: no
+    page" decision.
+    """
+
+    label_id: str
+    name: str
+    icon: str | None
+    devices: list[DeviceSnapshot] = field(default_factory=list)
 
 
 @dataclass
@@ -294,6 +349,106 @@ class HASnapshot:
     # entity_id → list of (automation/script/scene) entries that reference it.
     # Populated from YAML config files (automations.yaml etc).
     reverse_usage: dict[str, list[ReverseUsageEntry]] = field(default_factory=dict)
+    # HA labels that carry at least one device (issue #22). Empty labels
+    # are filtered out by ``_extract_labels`` and never appear here.
+    labels: list[LabelSnapshot] = field(default_factory=list)
+
+
+# Entity domains that already get their own dedicated per-area section
+# (see _extract_automations/_extract_scripts/_extract_scenes and the
+# `areas[...].automations/scripts/scenes` routing above) — an
+# entity in one of these domains without a device_id must NOT also be
+# added to the area's generic orphan-entity list, or it ends up listed
+# twice on the same area page.
+_AREA_SECTIONED_DOMAINS = frozenset({"automation", "script", "scene"})
+
+# Tuya's cloud integration ("tuya") and the community Local-Tuya
+# integration ("tuya_local") each register their own device_registry
+# entry for the same physical device, using the same Tuya device id as
+# the identifier value but a different domain as the identifier's first
+# tuple element — so they never share an exact (domain, value) tuple and
+# the generic identifier/connection matching below misses them. This is
+# a narrow, explicitly-known integration pair, not a general fuzzy
+# match: matching on value alone across arbitrary domains would risk
+# merging unrelated devices that happen to reuse an id scheme.
+_TUYA_LINK_DOMAINS = frozenset({"tuya", "tuya_local"})
+
+
+def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]]:
+    """
+    Group device_registry entries that share a connection or identifier.
+
+    HA computes exactly this relation live via
+    ``DeviceRegistry.async_get_devices(identifiers=..., connections=...)``
+    since the 2026.8 device-registry split (the same helper backs the
+    ``config/device_registry/list_linked_devices`` websocket command).
+    This repo pins ``homeassistant==2026.8.3``, but ``async_get_devices``
+    only matches identifiers/connections tuple-for-tuple — it wouldn't
+    catch the ``tuya``/``tuya_local`` case handled separately below
+    either, so the matching stays reimplemented here rather than
+    delegating to the HA helper.
+
+    Returns ``canonical_device_id -> [member_device_id, ...]`` (members
+    sorted, canonical key included). The canonical key is the
+    lexicographically smallest device_id in the connected component —
+    deterministic and stable across syncs since ``list_linked_devices``-
+    style matching is computed live, not persisted, so nothing else
+    about group membership can be relied on to stay put.
+
+    Devices sharing nothing with any other device form a group of one
+    (the vast majority) — behaviour for those is unchanged from before
+    this feature existed.
+    """
+    parent: dict[str, str] = {}
+
+    def find(device_id: str) -> str:
+        parent.setdefault(device_id, device_id)
+        while parent[device_id] != device_id:
+            parent[device_id] = parent[parent[device_id]]
+            device_id = parent[device_id]
+        return device_id
+
+    def union(a: str, b: str) -> None:
+        root_a, root_b = find(a), find(b)
+        if root_a != root_b:
+            parent[root_a] = root_b
+
+    by_identifier: dict[tuple[str, str], list[str]] = {}
+    by_connection: dict[tuple[str, str], list[str]] = {}
+    by_tuya_value: dict[str, list[str]] = {}
+    for device in device_reg.devices.values():
+        find(device.id)  # ensure every device has a parent entry
+        for identifier in device.identifiers:
+            by_identifier.setdefault(identifier, []).append(device.id)
+            # Identifiers are domain + one-or-more value parts, not always
+            # a strict 2-tuple: rfxtrx devices use 4 parts, e.g.
+            # ("rfxtrx", "1a", "0", "000001:1"). Tuya/tuya_local always use
+            # exactly 2, so take the first part as domain and treat
+            # anything after it as "the value" without assuming a fixed
+            # tuple length.
+            domain, *value_parts = identifier
+            if domain in _TUYA_LINK_DOMAINS and value_parts:
+                by_tuya_value.setdefault(value_parts[0], []).append(device.id)
+        for connection in device.connections:
+            by_connection.setdefault(connection, []).append(device.id)
+
+    for bucket in (
+        *by_identifier.values(),
+        *by_connection.values(),
+        *by_tuya_value.values(),
+    ):
+        for other_id in bucket[1:]:
+            union(bucket[0], other_id)
+
+    members_by_root: dict[str, list[str]] = {}
+    for device_id in parent:
+        members_by_root.setdefault(find(device_id), []).append(device_id)
+
+    groups: dict[str, list[str]] = {}
+    for members in members_by_root.values():
+        members.sort()
+        groups[members[0]] = members
+    return groups
 
 
 def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
@@ -332,39 +487,89 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         entry.entry_id: entry.domain for entry in hass.config_entries.async_entries()
     }
 
+    def _domain_ref(eid: str) -> DeviceIntegrationRef:
+        # Fallback to entry_id for the rare orphan case where a device
+        # still references an entry that's already gone from
+        # hass.config_entries — better than crashing.
+        return DeviceIntegrationRef(entry_id=eid, domain=entry_domains.get(eid, eid))
+
+    device_groups = _compute_device_groups(device_reg)
+
     devices: dict[str, DeviceSnapshot] = {}
-    for device in device_reg.devices.values():
+    # Raw member device_id -> the DeviceSnapshot.device_id it was folded
+    # into. Used below to route entities and network connections from
+    # every group member onto the one merged snapshot.
+    member_to_primary: dict[str, str] = {}
+    primary_to_members: dict[str, list[str]] = {}
+
+    for members in device_groups.values():
         # Skip stub devices that some integrations leave behind: no name AND
         # no user-given name. We later filter again on entity-emptiness so
-        # only useful devices land in the wiki.
-        display_name = device.name_by_user or device.name
-        if not display_name:
-            continue
-        device_refs = tuple(
-            DeviceIntegrationRef(
-                entry_id=eid,
-                # Fallback to entry_id for the rare orphan case where a
-                # device still references an entry that's already gone
-                # from hass.config_entries — better than crashing.
-                domain=entry_domains.get(eid, eid),
+        # only useful devices land in the wiki. A group counts as named as
+        # long as at least one member has a name — an unnamed sibling
+        # doesn't hide an otherwise-documented physical device.
+        named_members = [
+            (member_id, device_reg.devices[member_id], name)
+            for member_id in members
+            if (
+                name := (
+                    device_reg.devices[member_id].name_by_user
+                    or device_reg.devices[member_id].name
+                )
             )
-            for eid in sorted(device.config_entries)
+        ]
+        if not named_members:
+            continue
+
+        # Canonical member (smallest device_id, from ``_compute_device_groups``)
+        # provides the registry fields (manufacturer/model/etc.) when it
+        # has a name; otherwise the smallest NAMED member takes over so
+        # the merged page doesn't inherit facts from a stub entry. This
+        # is a "canonical wins" simplification — if two named members
+        # genuinely disagree on e.g. manufacturer, the non-chosen value
+        # is silently dropped rather than reconciled.
+        primary_id, primary_device, primary_name = named_members[0]
+
+        device_refs = tuple(
+            _domain_ref(eid) for eid in sorted(primary_device.config_entries)
         )
-        devices[device.id] = DeviceSnapshot(
-            device_id=device.id,
-            name=display_name,
-            manufacturer=device.manufacturer,
-            model=device.model,
-            sw_version=device.sw_version,
-            hw_version=device.hw_version,
-            area_id=device.area_id,
+        also_known_as = tuple(
+            AkaEntry(
+                name=name,
+                domain=", ".join(
+                    sorted(
+                        {entry_domains.get(eid, eid) for eid in dev.config_entries},
+                    ),
+                )
+                or "?",
+                device_id=member_id,
+            )
+            for member_id, dev, name in named_members[1:]
+        )
+
+        devices[primary_id] = DeviceSnapshot(
+            device_id=primary_id,
+            name=primary_name,
+            manufacturer=primary_device.manufacturer,
+            model=primary_device.model,
+            sw_version=primary_device.sw_version,
+            hw_version=primary_device.hw_version,
+            area_id=primary_device.area_id,
             config_entries=device_refs,
+            also_known_as=also_known_as,
         )
+        primary_to_members[primary_id] = members
+        for member_id in members:
+            member_to_primary[member_id] = primary_id
 
     orphan_entities_by_area: dict[str, list[EntitySnapshot]] = {}
     for entity in entity_reg.entities.values():
-        if entity.device_id and entity.device_id not in devices:
-            # Device was filtered out -> skip its entities too.
+        target_device_id = (
+            member_to_primary.get(entity.device_id) if entity.device_id else None
+        )
+        if entity.device_id and target_device_id is None:
+            # Device was filtered out (whole group unnamed) -> skip its
+            # entities too.
             continue
         state_obj = hass.states.get(entity.entity_id)
         attrs = dict(state_obj.attributes) if state_obj else {}
@@ -379,16 +584,26 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
             disabled=entity.disabled,
             mqtt_topic=_mqtt_topic_from(attrs),
         )
-        if entity.device_id:
-            devices[entity.device_id].entities.append(snapshot)
-        else:
+        if target_device_id:
+            devices[target_device_id].entities.append(snapshot)
+        elif entity.entity_id.split(".", 1)[0] not in _AREA_SECTIONED_DOMAINS:
+            # automation/script/scene entities without a device are
+            # already listed under their own per-area section (see
+            # _extract_automations/_extract_scripts/_extract_scenes
+            # below) — including them here too double-lists them on
+            # the area page (e.g. a scene under both "Entities ohne
+            # Geräte-Zuordnung" and "Szenen in <Area>").
             area_id = entity.area_id or ""
             orphan_entities_by_area.setdefault(area_id, []).append(snapshot)
 
     unassigned: list[DeviceSnapshot] = []
     for device in devices.values():
         device.entities.sort(key=lambda e: e.entity_id)
-        _populate_network_info(device, device_reg)
+        _populate_network_info(
+            device,
+            device_reg,
+            member_ids=primary_to_members.get(device.device_id),
+        )
         if device.area_id and device.area_id in areas:
             areas[device.area_id].devices.append(device)
         else:
@@ -441,6 +656,9 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     snapshot.energy = energy_config
     snapshot.helpers = _extract_helpers(hass, entity_reg)
     snapshot.reverse_usage = _extract_reverse_usage(hass)
+    snapshot.labels = _extract_labels(
+        hass, device_reg, entity_reg, devices, primary_to_members
+    )
     return snapshot
 
 
@@ -682,6 +900,81 @@ def _extract_addons(hass: HomeAssistant) -> list[AddonSnapshot]:
     return addons
 
 
+def _extract_labels(  # noqa: PLR0912 - device-group-aware label union, cohesive
+    hass: HomeAssistant,
+    device_reg: dr.DeviceRegistry,
+    entity_reg: er.EntityRegistry,
+    devices: dict[str, DeviceSnapshot],
+    primary_to_members: dict[str, list[str]] | None = None,
+) -> list[LabelSnapshot]:
+    """
+    Build one ``LabelSnapshot`` per HA label that has at least one device.
+
+    A device's label set is the union of two sources (see
+    ``LabelSnapshot`` docstring): its own ``device_registry`` entry's
+    ``labels`` field, and the ``labels`` field of every entity attached
+    to it. Labels used by neither source are skipped entirely — no
+    page, no mention on the overview (maintainer decision on issue #22).
+
+    ``devices`` is keyed by the CANONICAL device_id of each (possibly
+    merged) group — see ``extract_snapshot``'s device-group-dedup pass.
+    A label set only on a non-canonical group member's raw
+    device_registry entry (or on one of that member's entities) would
+    otherwise be invisible here, since only the canonical id is a key
+    in ``devices``. ``primary_to_members`` (canonical id -> every raw
+    member id, canonical included) widens both lookups to the whole
+    group; omit it (or pass an empty dict) to fall back to
+    canonical-only matching for callers that don't have merged groups.
+    """
+    label_reg = lr.async_get(hass)
+    if not label_reg.labels:
+        return []
+
+    member_to_primary: dict[str, str] = {}
+    for primary_id, members in (primary_to_members or {}).items():
+        for member_id in members:
+            member_to_primary[member_id] = primary_id
+
+    device_label_ids: dict[str, set[str]] = {}
+    for device_id in devices:
+        for member_id in (primary_to_members or {}).get(device_id, [device_id]):
+            registry_device = device_reg.async_get(member_id)
+            if registry_device and registry_device.labels:
+                device_label_ids.setdefault(device_id, set()).update(
+                    registry_device.labels,
+                )
+    for entity in entity_reg.entities.values():
+        if not entity.device_id or not entity.labels:
+            continue
+        target_device_id = member_to_primary.get(entity.device_id, entity.device_id)
+        if target_device_id in devices:
+            device_label_ids.setdefault(target_device_id, set()).update(
+                entity.labels,
+            )
+
+    label_to_devices: dict[str, list[DeviceSnapshot]] = {}
+    for device_id, label_ids in device_label_ids.items():
+        for label_id in label_ids:
+            label_to_devices.setdefault(label_id, []).append(devices[device_id])
+
+    labels: list[LabelSnapshot] = []
+    for label_id, label_devices in label_to_devices.items():
+        registry_label = label_reg.async_get_label(label_id)
+        if registry_label is None:
+            continue  # stale reference to a since-deleted label
+        label_devices.sort(key=lambda d: (d.name.lower(), d.device_id))
+        labels.append(
+            LabelSnapshot(
+                label_id=label_id,
+                name=registry_label.name,
+                icon=registry_label.icon,
+                devices=label_devices,
+            ),
+        )
+    labels.sort(key=lambda entry: (entry.name.lower(), entry.label_id))
+    return labels
+
+
 def _device_macs_from_connections(device: dr.DeviceEntry) -> list[str]:
     """Pull MAC addresses out of ``device.connections`` (set of tuples)."""
     macs: list[str] = []
@@ -786,6 +1079,7 @@ def _is_private_ip(ip: str | None) -> bool:
 def _populate_network_info(
     device_snap: DeviceSnapshot,
     device_reg: dr.DeviceRegistry,
+    member_ids: list[str] | None = None,
 ) -> None:
     """
     Fill ``device_snap.network`` and ``.network_extra`` from trackers + connections.
@@ -800,9 +1094,18 @@ def _populate_network_info(
     3. If no tracker carried useful data, fall back to a MAC-only NetworkInfo
        sourced from the device-registry's ``connections`` set (Zigbee /
        Matter devices often have a MAC there but no live tracker).
+
+    ``member_ids`` (device-group merge) widens step 3 to the union of
+    connections across every linked device_registry entry, not just the
+    canonical one — e.g. UniFi's entry carries the MAC that Tasmota's
+    entry for the same physical device doesn't.
     """
-    device = device_reg.async_get(device_snap.device_id)
-    fallback_macs = _device_macs_from_connections(device) if device else []
+    fallback_macs: list[str] = []
+    for did in member_ids or (device_snap.device_id,):
+        member_device = device_reg.async_get(did)
+        if member_device:
+            fallback_macs.extend(_device_macs_from_connections(member_device))
+    fallback_macs = sorted(set(fallback_macs))
 
     trackers = [
         e for e in device_snap.entities if e.entity_id.startswith("device_tracker.")

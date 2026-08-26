@@ -17,7 +17,7 @@ import re
 import unicodedata
 from typing import TYPE_CHECKING
 
-from .const import ATTRIBUTION, PAGE_KIND_DEVICE
+from .const import ATTRIBUTION, PAGE_KIND_DEVICE, PAGE_KIND_LABEL
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
         HASnapshot,
         HelperGroup,
         IntegrationSnapshot,
+        LabelSnapshot,
         MqttTopicNode,
         MqttTopicTree,
         NetworkInfo,
@@ -107,7 +108,7 @@ def _md_escape(value: str) -> str:
 # ``hass.config.external_url or hass.config.internal_url`` and threaded down.
 
 
-_HA_FIXED_PATHS = {"helpers": "/config/helpers"}
+_HA_FIXED_PATHS = {"helpers": "/config/helpers", "label": "/config/labels"}
 _HA_OBJECT_PATHS = {
     "area": "/config/areas/area/{id}",
     "device": "/config/devices/device/{id}",
@@ -135,6 +136,9 @@ def _ha_url_for(ha_url: str, kind: str, identifier: str) -> str:
     * ``entity``     → ``/developer-tools/state?entity_id=<entity_id>``
     * ``helpers``    → ``/config/helpers`` (no per-helper deep-link;
                        identifier is ignored)
+    * ``label``      → ``/config/labels`` (no per-label deep-link route
+                       exists in the HA frontend as of 2026.8; identifier
+                       is ignored, same pattern as ``helpers``)
 
     For automation / script / scene the identifier is the bare entity_id;
     we strip the domain prefix so callers can pass either form.
@@ -235,6 +239,8 @@ def render_overview_auto_block(
     Output structure:
 
     * Areas — one Markdown link per area
+    * Labels — one Markdown link per label that has at least one
+      device (issue #22); section omitted entirely when there are none
     * Bundle pages — one Markdown link per managed cross-cutting page
     * Unassigned devices — only present when there are any
     """
@@ -256,6 +262,13 @@ def render_overview_auto_block(
         )
     else:
         lines.append(strings["empty_areas"])
+
+    if snapshot.labels:
+        lines.extend(["", f"## {strings['section_labels']}", ""])
+        lines.extend(
+            f"- {link_or_bold(label.name, f'{PAGE_KIND_LABEL}:{label.label_id}')}"
+            for label in snapshot.labels
+        )
 
     lines.extend(["", f"## {strings['section_categories']}", ""])
     bundle_links = (
@@ -446,6 +459,7 @@ def render_device_auto_block(
     )
     if device.network is not None:
         lines.extend(_network_section(device, strings))
+    lines.extend(_aka_section(device, strings, ha_url))
     lines.extend(["", f"## {strings['section_entities']}", ""])
     if device.entities:
         lines.extend(_entity_lines(device.entities, strings, ha_url))
@@ -454,6 +468,34 @@ def render_device_auto_block(
     if reverse_usage:
         lines.extend(_used_by_section(device, strings, reverse_usage))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _aka_section(
+    device: DeviceSnapshot,
+    strings: dict[str, str],
+    ha_url: str,
+) -> list[str]:
+    """
+    Render the ``Auch bekannt als`` block for a merged device page.
+
+    A device page can represent several device_registry entries folded
+    together because they're the same physical device seen by multiple
+    integrations (see ``extractor._compute_device_groups``). This lists
+    every entry that isn't the canonical one, each linking to its own
+    HA device-registry detail page — so a user who only recognises the
+    UniFi-side or Tasmota-side name can still find and jump to the
+    original entry. Returns ``[]`` for the majority of devices that
+    aren't duplicated (``also_known_as`` empty).
+    """
+    if not device.also_known_as:
+        return []
+    lines: list[str] = ["", f"## {strings['section_also_known_as']}", ""]
+    for aka in device.also_known_as:
+        name_md = _md_escape(aka.name)
+        url = _ha_url_for(ha_url, "device", aka.device_id)
+        label = f"[{name_md}]({url})" if url else f"**{name_md}**"
+        lines.append(f"- {label} ({_md_escape(aka.domain)})")
+    return lines
 
 
 def _used_by_section(
@@ -586,6 +628,65 @@ def _network_section(
         lines.append(f"- {strings['field_last_seen']}: {primary.last_seen}")
 
     return lines
+
+
+def render_label_auto_block(  # noqa: PLR0913 - cohesive renderer, mirrors render_area_auto_block's params + area_names
+    label: LabelSnapshot,
+    now: datetime,
+    strings: dict[str, str],
+    page_links: dict[str, str] | None = None,
+    area_names: dict[str, str] | None = None,
+    ha_url: str = "",
+) -> str:
+    """
+    Render the AUTO block of one label page (issue #22).
+
+    One table row per device carrying the label (granularity is
+    devices, not entities — maintainer decision on the issue). Device
+    and area cells link to their own BookStack pages via ``page_links``
+    when known, falling back to a bold name — same convention as
+    ``_device_link_line`` on the area page. A label only ever reaches
+    this renderer with at least one device (see
+    ``extractor._extract_labels``), so no empty-state branch is needed.
+
+    ``area_names`` resolves ``DeviceSnapshot.area_id`` to a display
+    name — ``DeviceSnapshot`` itself only carries the id, not the name,
+    so the caller threads this through from ``HASnapshot.areas`` the
+    same way it already threads ``page_links``.
+    """
+    links = page_links or {}
+    names = area_names or {}
+    lines: list[str] = [_format_attribution(strings, now), ""]
+    lines.extend(_ha_open_line(ha_url, "label", label.label_id, strings))
+    lines.extend(
+        [
+            "## "
+            + strings["section_label_devices_count_template"].format(
+                count=len(label.devices),
+            ),
+            "",
+            f"| {strings['label_col_device']} | {strings['field_manufacturer']} "
+            f"| {strings['field_model']} | {strings['field_area']} |",
+            "| --- | --- | --- | --- |",
+        ],
+    )
+    for device in label.devices:
+        device_label = _md_escape(device.name)
+        device_url = links.get(f"{PAGE_KIND_DEVICE}:{device.device_id}")
+        device_cell = (
+            f"[{device_label}]({device_url})" if device_url else f"**{device_label}**"
+        )
+        manufacturer_cell = _md_escape(device.manufacturer or "—")
+        model_cell = _md_escape(device.model or "—")
+        area_cell = "—"
+        if device.area_id and device.area_id in names:
+            area_label = _md_escape(names[device.area_id])
+            area_url = links.get(f"area:{device.area_id}")
+            area_cell = f"[{area_label}]({area_url})" if area_url else area_label
+        lines.append(
+            f"| {device_cell} | {manufacturer_cell} | {model_cell} | {area_cell} |"
+        )
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def render_addons_auto_block(

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import functools
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import aiohttp
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -22,6 +24,33 @@ from custom_components.bookstack_sync.const import (
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+
+
+# aioresponses 0.7.9 (latest on PyPI) still constructs aiohttp.ClientResponse
+# without the ``stream_writer`` keyword that aiohttp made required in the
+# version HA 2026.8.3 pulls in (aiohttp>=3.14) — upstream hasn't caught up
+# yet. ClientResponse.__init__ also reads ``stream_writer.output_size`` when
+# ``writer`` (the real request-writer task) is None, which is always the
+# case for a mocked response, so a plain ``None`` default isn't enough — a
+# minimal stand-in with that one attribute is. The mocked responses in this
+# test suite never touch real streaming beyond that.
+# Safe to remove once aioresponses ships a fix for this.
+class _FakeStreamWriter:
+    output_size = 0
+
+
+_orig_client_response_init = aiohttp.ClientResponse.__init__
+
+
+@functools.wraps(_orig_client_response_init)
+def _client_response_init_with_stream_writer_default(
+    self: aiohttp.ClientResponse, *args: object, **kwargs: object
+) -> None:
+    kwargs.setdefault("stream_writer", _FakeStreamWriter())
+    _orig_client_response_init(self, *args, **kwargs)
+
+
+aiohttp.ClientResponse.__init__ = _client_response_init_with_stream_writer_default
 
 
 @pytest.fixture

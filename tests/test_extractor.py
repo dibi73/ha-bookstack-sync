@@ -19,15 +19,20 @@ from homeassistant.helpers import (
 from homeassistant.helpers import (
     entity_registry as er,
 )
+from homeassistant.helpers import (
+    label_registry as lr,
+)
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync.extractor import (
+    _compute_device_groups,
     _parse_energy_payload,
     async_extract_energy_config,
     extract_snapshot,
 )
 
 if TYPE_CHECKING:
+    import pytest
     from homeassistant.core import HomeAssistant
 
 
@@ -196,6 +201,115 @@ async def test_automation_without_area_only_in_bundle(
     assert any(a.name == "Morning Routine" for a in snap.automations)
 
 
+async def test_area_scene_without_device_not_duplicated_in_orphan_entities(
+    hass: HomeAssistant,
+) -> None:
+    """
+    A scene with an area_id but no device_id must not be double-listed.
+
+    Real-world report (see Anforderungsdokument, "Esszimmer" -
+    scene.ez_tag, 2026-08-25): scenes/automations/scripts without a
+    device_id get their own "Szenen"/"Automatisierungen"/"Skripte"
+    section on the area page (via _extract_scenes et al.), but the
+    generic orphan-entity loop in extract_snapshot used to add them a
+    second time under "Entities ohne Geräte-Zuordnung" since it didn't
+    exclude those domains.
+    """
+    await _seed_minimal_registry(hass)
+    area_reg = ar.async_get(hass)
+    living = next(a for a in area_reg.areas.values() if a.name == "Living Room")
+
+    entity_reg = er.async_get(hass)
+    entry = entity_reg.async_get_or_create(
+        domain="scene",
+        platform="homeassistant",
+        unique_id="ez_tag_unique",
+        suggested_object_id="ez_tag",
+    )
+    entity_reg.async_update_entity(entry.entity_id, area_id=living.id)
+    hass.states.async_set(entry.entity_id, "on", {"friendly_name": "EZ Tag"})
+
+    snap = extract_snapshot(hass)
+    living_snap = next(a for a in snap.areas if a.name == "Living Room")
+
+    scene_names = [s.name for s in living_snap.scenes]
+    assert "EZ Tag" in scene_names
+
+    orphan_entity_ids = [e.entity_id for e in living_snap.orphan_entities]
+    assert entry.entity_id not in orphan_entity_ids
+
+
+async def test_label_with_device_level_label_appears_in_snapshot(
+    hass: HomeAssistant,
+) -> None:
+    """A device labelled directly (device_registry.labels) shows up (issue #22)."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("kritisch", icon="mdi:alarm")
+
+    device_reg = dr.async_get(hass)
+    sofa = next(d for d in device_reg.devices.values() if d.name == "Sofa Light")
+    device_reg.async_update_device(sofa.id, labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    kritisch = snap.labels[0]
+    assert kritisch.name == "kritisch"
+    assert kritisch.icon == "mdi:alarm"
+    assert [d.device_id for d in kritisch.devices] == [sofa.id]
+
+
+async def test_label_with_entity_level_label_appears_in_snapshot(
+    hass: HomeAssistant,
+) -> None:
+    """A device that only has a labelled ENTITY still shows up on the label."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("monitoring")
+
+    entity_reg = er.async_get(hass)
+    entity_reg.async_update_entity("light.sofa_light", labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    assert snap.labels[0].name == "monitoring"
+    device_names = [d.name for d in snap.labels[0].devices]
+    assert device_names == ["Sofa Light"]
+
+
+async def test_label_with_no_devices_is_skipped_entirely(hass: HomeAssistant) -> None:
+    """A label defined in HA but unused anywhere never reaches the snapshot."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label_reg.async_create("unused-label")
+
+    snap = extract_snapshot(hass)
+
+    assert snap.labels == []
+
+
+async def test_label_with_two_devices_lists_both_sorted(hass: HomeAssistant) -> None:
+    """Two devices under the same label both appear, sorted by name."""
+    await _seed_minimal_registry(hass)
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("urlaub_aus")
+
+    device_reg = dr.async_get(hass)
+    sofa = next(d for d in device_reg.devices.values() if d.name == "Sofa Light")
+    fridge = next(d for d in device_reg.devices.values() if d.name == "Fridge Door")
+    device_reg.async_update_device(sofa.id, labels={label.label_id})
+    device_reg.async_update_device(fridge.id, labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    device_names = [d.name for d in snap.labels[0].devices]
+    assert device_names == sorted(device_names, key=str.lower)
+    assert set(device_names) == {"Sofa Light", "Fridge Door"}
+
+
 async def test_device_network_from_tracker(hass: HomeAssistant) -> None:
     """A device with a linked device_tracker gets NetworkInfo populated."""
     entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi", title="UniFi")
@@ -261,6 +375,352 @@ async def test_device_network_mac_only_fallback(hass: HomeAssistant) -> None:
     assert sensor_snap.network.mac == "00:11:22:33:44:55"
     assert sensor_snap.network.ip is None
     assert sensor_snap.network.source_platform == "registry"
+
+
+def test_compute_device_groups_unions_shared_connections_and_identifiers() -> None:
+    """
+    Unit test for the union-find grouping itself, isolated from the registry.
+
+    This repo's pinned ``homeassistant==2026.5.3`` still auto-merges two
+    ``async_get_or_create`` calls that share a connection into a SINGLE
+    device_registry entry (the old pre-2026.8 behaviour) — so the
+    "two separate entries linked by a shared MAC" scenario this feature
+    targets can't be reproduced through the public registry API on this
+    HA version. It's exactly the scenario HA 2026.8 introduces (see
+    Anforderungsdokument 9.1: the split removes that auto-merge). This
+    test exercises the grouping algorithm directly against minimal
+    stand-ins for ``dr.DeviceEntry`` (only the 3 attributes
+    ``_compute_device_groups`` reads), independent of which HA version
+    is actually installed.
+    """
+
+    class _FakeDevice:
+        def __init__(
+            self,
+            device_id: str,
+            identifiers: set[tuple[str, str]] | None = None,
+            connections: set[tuple[str, str]] | None = None,
+        ) -> None:
+            self.id = device_id
+            self.identifiers = identifiers or set()
+            self.connections = connections or set()
+
+    class _FakeRegistry:
+        def __init__(self, devices: list[_FakeDevice]) -> None:
+            self.devices = {d.id: d for d in devices}
+
+    shared_mac = ("mac", "48:55:19:17:8e:10")
+    tasmota = _FakeDevice("z_tasmota", connections={shared_mac})
+    unifi = _FakeDevice("a_unifi", connections={shared_mac})
+    solo = _FakeDevice("solo", identifiers={("mqtt", "solo")})
+
+    groups = _compute_device_groups(_FakeRegistry([tasmota, unifi, solo]))
+
+    # Canonical key = lexicographically smallest member id.
+    assert groups["a_unifi"] == ["a_unifi", "z_tasmota"]
+    assert groups["solo"] == ["solo"]
+    assert "z_tasmota" not in groups  # only reachable as a member, not a key
+
+
+def test_compute_device_groups_links_tuya_and_tuya_local_by_value() -> None:
+    """
+    ``tuya`` and ``tuya_local`` identifiers with the same value are the same device.
+
+    Real-world case (see Anforderungsdokument 9.1, "Elternsz" report,
+    2026-08-25): Tuya's cloud integration and the community Local-Tuya
+    integration each create their own device_registry entry for the
+    same physical device, both keyed by the same Tuya device id — but
+    under a different identifier domain (``tuya`` vs. ``tuya_local``),
+    so the exact (domain, value) tuple never matches and the generic
+    identifier bucketing above misses them.
+    """
+
+    class _FakeDevice:
+        def __init__(
+            self,
+            device_id: str,
+            identifiers: set[tuple[str, str]] | None = None,
+            connections: set[tuple[str, str]] | None = None,
+        ) -> None:
+            self.id = device_id
+            self.identifiers = identifiers or set()
+            self.connections = connections or set()
+
+    class _FakeRegistry:
+        def __init__(self, devices: list[_FakeDevice]) -> None:
+            self.devices = {d.id: d for d in devices}
+
+    tuya_cloud = _FakeDevice("b_tuya", identifiers={("tuya", "bf4bccffb1ce921856pwjh")})
+    tuya_local = _FakeDevice(
+        "a_tuya_local", identifiers={("tuya_local", "bf4bccffb1ce921856pwjh")}
+    )
+    other_tuya_pair = _FakeDevice(
+        "c_tuya", identifiers={("tuya", "different-device-id")}
+    )
+    unrelated_domain_same_value = _FakeDevice(
+        "d_unrelated", identifiers={("mqtt", "bf4bccffb1ce921856pwjh")}
+    )
+
+    groups = _compute_device_groups(
+        _FakeRegistry(
+            [tuya_cloud, tuya_local, other_tuya_pair, unrelated_domain_same_value]
+        )
+    )
+
+    assert groups["a_tuya_local"] == ["a_tuya_local", "b_tuya"]
+    assert groups["c_tuya"] == ["c_tuya"]
+    # Same value, but not a tuya/tuya_local pair -> no cross-domain match.
+    assert groups["d_unrelated"] == ["d_unrelated"]
+
+
+def test_compute_device_groups_handles_non_2_tuple_identifiers() -> None:
+    """
+    Identifiers aren't always a strict (domain, value) 2-tuple.
+
+    Production incident (2026-08-26): rfxtrx registers 4-part
+    identifiers like ``("rfxtrx", "1a", "0", "000001:1")`` for its Rfy
+    (Somfy) shutter devices. The tuya-linking code unconditionally
+    unpacked every identifier as exactly ``domain, value = identifier``,
+    which raised ``ValueError: too many values to unpack`` for any
+    identifier with more than 2 parts and broke every sync on the real
+    instance. Must not crash regardless of identifier tuple length, and
+    must not treat rfxtrx's extra parts as a tuya match.
+    """
+
+    class _FakeDevice:
+        def __init__(
+            self,
+            device_id: str,
+            identifiers: set[tuple[str, ...]] | None = None,
+            connections: set[tuple[str, str]] | None = None,
+        ) -> None:
+            self.id = device_id
+            self.identifiers = identifiers or set()
+            self.connections = connections or set()
+
+    class _FakeRegistry:
+        def __init__(self, devices: list[_FakeDevice]) -> None:
+            self.devices = {d.id: d for d in devices}
+
+    rfy1 = _FakeDevice("a_rfy1", identifiers={("rfxtrx", "1a", "0", "000001:1")})
+    rfy2 = _FakeDevice("b_rfy2", identifiers={("rfxtrx", "1a", "0", "000002:1")})
+
+    groups = _compute_device_groups(_FakeRegistry([rfy1, rfy2]))
+
+    assert groups["a_rfy1"] == ["a_rfy1"]
+    assert groups["b_rfy2"] == ["b_rfy2"]
+
+
+async def test_device_group_aggregation_unions_entities_and_network(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Two devices forced into one group get merged into a single DeviceSnapshot.
+
+    Grouping itself is covered separately (see the unit test above) since
+    the registry-level auto-merge on this HA pin prevents constructing
+    two genuinely separate linked entries. Here ``_compute_device_groups``
+    is monkeypatched to isolate and cover the AGGREGATION logic in
+    ``extract_snapshot`` (also_known_as, entity union, network-connection
+    union across group members) — the part that actually changed.
+    """
+    tasmota_entry = MockConfigEntry(domain="tasmota", entry_id="entry_tasmota")
+    unifi_entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi")
+    tasmota_entry.add_to_hass(hass)
+    unifi_entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    # No shared connection here — kept genuinely separate so this HA
+    # version's registry doesn't auto-merge them before our code runs.
+    tasmota_device = device_reg.async_get_or_create(
+        config_entry_id="entry_tasmota",
+        identifiers={("tasmota", "48558E10")},
+        name="Waschmaschinensteckdose",
+    )
+    unifi_device = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "client-48558e10")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "48:55:19:17:8e:10")},
+        name="tasmota-178E10-3600",
+    )
+    members = sorted([tasmota_device.id, unifi_device.id])
+    monkeypatch.setattr(
+        "custom_components.bookstack_sync.extractor._compute_device_groups",
+        lambda device_reg: {members[0]: members},
+    )
+
+    tasmota_switch = entity_reg.async_get_or_create(
+        domain="switch",
+        platform="tasmota",
+        unique_id="tasmota_switch",
+        device_id=tasmota_device.id,
+        suggested_object_id="waschmaschinensteckdose",
+    )
+    unifi_tracker = entity_reg.async_get_or_create(
+        domain="device_tracker",
+        platform="unifi",
+        unique_id="unifi_tracker",
+        device_id=unifi_device.id,
+        suggested_object_id="tasmota_178e10_3600",
+    )
+    hass.states.async_set(
+        unifi_tracker.entity_id,
+        "home",
+        {"ip": "192.168.1.42", "mac": "48:55:19:17:8e:10"},
+    )
+
+    snap = extract_snapshot(hass)
+    names = {"Waschmaschinensteckdose", "tasmota-178E10-3600"}
+
+    merged = [d for d in snap.unassigned_devices if d.name in names]
+    assert len(merged) == 1, "grouped devices must fold into a single page"
+    device = merged[0]
+    assert device.device_id == members[0]
+
+    # Whichever entry became canonical, the other shows up as an alias.
+    assert len(device.also_known_as) == 1
+    aka = device.also_known_as[0]
+    assert aka.name in names
+    assert aka.name != device.name
+    assert aka.domain in {"tasmota", "unifi"}
+    assert aka.device_id in {tasmota_device.id, unifi_device.id}
+    assert aka.device_id != device.device_id
+
+    # Entities from BOTH source integrations are unioned onto the one page.
+    entity_ids = {e.entity_id for e in device.entities}
+    assert tasmota_switch.entity_id in entity_ids
+    assert unifi_tracker.entity_id in entity_ids
+
+    # Network info survives even if the canonical member itself carries
+    # no connection of its own (union across group members, not just
+    # the primary) — the MAC only lives on the UniFi-side entry.
+    assert device.network is not None
+    assert device.network.mac == "48:55:19:17:8e:10"
+
+
+async def test_label_on_non_canonical_group_member_still_surfaces(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A label set only on a merged-away group member must still appear.
+
+    Combines the device-group-dedup feature with the per-label pages
+    feature (issue #22): ``devices`` in ``extract_snapshot`` is keyed
+    by the group's CANONICAL device_id only. If a label is set on the
+    device_registry entry of a *non-canonical* member (real scenario:
+    the "WCEGLED" / "WCuLED" pair, label set on the UniFi-side entry
+    which is not the canonical Tasmota-side one), ``_extract_labels``
+    must still find it via ``primary_to_members`` — not silently drop
+    it because only the canonical id is a key in ``devices``.
+    """
+    tasmota_entry = MockConfigEntry(domain="tasmota", entry_id="entry_tasmota")
+    unifi_entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi")
+    tasmota_entry.add_to_hass(hass)
+    unifi_entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    tasmota_device = device_reg.async_get_or_create(
+        config_entry_id="entry_tasmota",
+        identifiers={("tasmota", "WCULED")},
+        name="WCuLED",
+    )
+    unifi_device = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "client-wcegled")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "98:cd:ac:1f:7d:3a")},
+        name="WCEGLED",
+    )
+    members = sorted([tasmota_device.id, unifi_device.id])
+    monkeypatch.setattr(
+        "custom_components.bookstack_sync.extractor._compute_device_groups",
+        lambda device_reg: {members[0]: members},
+    )
+
+    label_reg = lr.async_get(hass)
+    label = label_reg.async_create("test")
+    # Label whichever member is NOT canonical (device_ids are random
+    # UUIDs, so which of the two sorts first isn't predictable) — the
+    # whole point of this test is exercising the non-canonical path.
+    non_canonical_id = members[1]
+    device_reg.async_update_device(non_canonical_id, labels={label.label_id})
+
+    snap = extract_snapshot(hass)
+
+    assert len(snap.labels) == 1
+    labelled = snap.labels[0]
+    assert labelled.name == "test"
+    assert len(labelled.devices) == 1
+    # The merged (canonical) device shows up, regardless of which raw
+    # member actually carried the label in the registry.
+    assert labelled.devices[0].device_id == members[0]
+
+
+async def test_linked_device_unnamed_member_ignored(hass: HomeAssistant) -> None:
+    """An unnamed sibling in a linked group doesn't hide the named device.
+
+    HA sometimes leaves nameless stub devices behind. If one happens to
+    share a connection with a real, named device, the named one must
+    still be documented normally — and the stub must NOT show up as an
+    "also known as" alias (it's filtered the same way an unlinked
+    unnamed device always was).
+
+    Since HA 2026.8, ``DeviceEntry.name`` falls back to the owning
+    config entry's title whenever no explicit name is stored — so
+    ``name=None`` alone no longer produces a genuinely nameless device.
+    The entry itself needs an empty title too, or "unnamed" becomes
+    unreachable via the public registry API.
+    """
+    entry_a = MockConfigEntry(domain="tasmota", entry_id="entry_a", title="")
+    entry_b = MockConfigEntry(domain="mqtt", entry_id="entry_b")
+    entry_a.add_to_hass(hass)
+    entry_b.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    shared_mac = (dr.CONNECTION_NETWORK_MAC, "aa:11:22:33:44:55")
+    device_reg.async_get_or_create(
+        config_entry_id="entry_a",
+        identifiers={("tasmota", "stub")},
+        connections={shared_mac},
+        name=None,
+    )
+    device_reg.async_get_or_create(
+        config_entry_id="entry_b",
+        identifiers={("mqtt", "named")},
+        connections={shared_mac},
+        name="Named Plug",
+    )
+
+    snap = extract_snapshot(hass)
+    named = [d for d in snap.unassigned_devices if d.name == "Named Plug"]
+    assert len(named) == 1
+    assert named[0].also_known_as == ()
+
+
+async def test_unlinked_devices_stay_separate(hass: HomeAssistant) -> None:
+    """Two devices with no shared connection/identifier are NOT merged."""
+    entry = MockConfigEntry(domain="mqtt", entry_id="entry_solo")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    device_reg.async_get_or_create(
+        config_entry_id="entry_solo",
+        identifiers={("mqtt", "solo_a")},
+        name="Solo Device A",
+    )
+    device_reg.async_get_or_create(
+        config_entry_id="entry_solo",
+        identifiers={("mqtt", "solo_b")},
+        name="Solo Device B",
+    )
+
+    snap = extract_snapshot(hass)
+    solo_a = next(d for d in snap.unassigned_devices if d.name == "Solo Device A")
+    solo_b = next(d for d in snap.unassigned_devices if d.name == "Solo Device B")
+    assert solo_a.also_known_as == ()
+    assert solo_b.also_known_as == ()
 
 
 async def test_device_with_multiple_trackers_primary_first(
