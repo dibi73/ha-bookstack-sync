@@ -29,7 +29,7 @@ from custom_components.bookstack_sync.const import (
     CHAPTER_KEY_LABELS,
 )
 from custom_components.bookstack_sync.store import BookStackSyncStore
-from custom_components.bookstack_sync.sync import run_sync
+from custom_components.bookstack_sync.sync import _build_page_url, run_sync
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -127,6 +127,30 @@ def strings() -> dict[str, str]:
     return get_strings("de")
 
 
+def test_build_page_url_is_root_relative_not_absolute() -> None:
+    """
+    Cross-links are ``/books/<book>/page/<page>``, no scheme/host (#134).
+
+    ``base_url`` (bookstack-sync's own API address, e.g. a LAN-only
+    ``http://192.168.0.16:2665``) has nothing to do with how a person
+    views BookStack in their browser — could be a different LAN address,
+    a reverse-proxy hostname, or a public domain. A root-relative href
+    resolves against whatever origin the browser is already on, so the
+    same link works everywhere without needing a second "external
+    BookStack URL" setting.
+    """
+    assert (
+        _build_page_url("hausdoku", "gerat-wculed")
+        == "/books/hausdoku/page/gerat-wculed"
+    )
+
+
+def test_build_page_url_returns_none_on_missing_slug() -> None:
+    """No book_slug or no page_slug -> None, caller falls back to bold text."""
+    assert _build_page_url("", "gerat-wculed") is None
+    assert _build_page_url("hausdoku", "") is None
+
+
 async def test_first_sync_creates_chapters_and_pages(
     hass: HomeAssistant,
     store: BookStackSyncStore,
@@ -221,6 +245,13 @@ async def test_label_page_created_with_chapter_and_overview_link(
     assert len(overview_pages) == 1
     label_slug = label_pages[0]["slug"]
     assert f"/page/{label_slug})" in overview_pages[0]["markdown"]
+    # v0.15.1 (#134): cross-links are root-relative, not
+    # {base_url}/books/... — the reader's browser resolves them against
+    # whatever origin they're actually viewing BookStack from, which
+    # doesn't have to match the LAN-only address the integration itself
+    # uses to reach the BookStack API.
+    assert f"](/books/book/page/{label_slug})" in overview_pages[0]["markdown"]
+    assert client.base_url not in overview_pages[0]["markdown"]
 
 
 async def test_second_sync_with_unchanged_data_makes_no_changes(

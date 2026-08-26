@@ -107,15 +107,18 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         except BookStackApiAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except BookStackApiError as err:
-            self._note_failure()
+            # Failure-streak bookkeeping (-> repair issue) now happens
+            # inside ``async_run_sync`` itself (v0.15.0, issue #133), so
+            # it also covers the manual ``run_now``/``preview`` service
+            # path — not just this scheduled-refresh path. Don't call
+            # ``_note_failure()`` again here, it already ran.
             raise UpdateFailed(str(err)) from err
         else:
-            self._note_success()
-            # Tamper-issue reconciliation now runs from inside
-            # ``async_run_sync`` (v0.14.1) so the manual
+            # Same for ``_note_success()`` — already ran inside
+            # ``async_run_sync``. Tamper-issue reconciliation likewise
+            # runs from inside ``async_run_sync`` (v0.14.1) so the manual
             # ``bookstack_sync.run_now`` service path also cleans up
-            # stale issues. We keep the call here harmless / no-op
-            # because the registry already reflects the current state.
+            # stale issues. We keep this branch only to return the report.
             return report
 
     def _reconcile_tamper_issues(self, report: SyncReport) -> None:
@@ -317,17 +320,35 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 # then fall back to data so both layouts work.
                 book_id = int(options.get(CONF_BOOK_ID) or data[CONF_BOOK_ID])
                 strings = get_strings(self._resolve_output_language())
-                report = await run_sync(
-                    self.hass,
-                    runtime.client,
-                    runtime.store,
-                    book_id,
-                    strings,
-                    dry_run=dry_run,
-                    force=force,
-                    progress_callback=self._on_sync_progress,
-                )
+                try:
+                    report = await run_sync(
+                        self.hass,
+                        runtime.client,
+                        runtime.store,
+                        book_id,
+                        strings,
+                        dry_run=dry_run,
+                        force=force,
+                        progress_callback=self._on_sync_progress,
+                    )
+                except BookStackApiAuthError:
+                    # Auth failures get their own reauth-flow handling
+                    # (see ``_async_update_data``) — don't feed the
+                    # "unreachable" failure-streak/repair-issue for those.
+                    raise
+                except BookStackApiError:
+                    # Failure-streak bookkeeping lives here (not only in
+                    # ``_async_update_data``, v0.15.0/#133) so the manual
+                    # ``run_now``/``preview`` service path — which can
+                    # call this for several config entries in one loop —
+                    # also feeds the same repair-issue mechanism, and a
+                    # single unreachable entry no longer needs a full 3x
+                    # scheduled-refresh cycle before it's surfaced.
+                    if not dry_run:
+                        self._note_failure()
+                    raise
                 if not dry_run:
+                    self._note_success()
                     self.last_run = datetime.now(tz=UTC)
                     self.last_report = report
                     # Reconcile tamper repair-issues inside the lock so

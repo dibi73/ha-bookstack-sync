@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.exceptions import HomeAssistantError, Unauthorized
 
+from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     CONF_EXPORT_ENABLED,
     CONF_EXPORT_PATH,
@@ -90,6 +91,79 @@ class ExportDisabledError(HomeAssistantError):
     translation_key = "export_disabled"
 
 
+class BookStackUnreachableError(HomeAssistantError):
+    """
+    Raised after ``run_now``/``preview`` if ≥1 configured entry couldn't be reached.
+
+    Wires up the "bookstack_unreachable" exception-translation entry that
+    was part of the Gold-quality-scale "exception-translations skeleton"
+    (strings.json) but, before v0.15.0/#133, was never actually raised by
+    any code path — only used as a Repair-Issue translation key. Per-entry
+    detail goes to the log (``LOGGER.exception``); the translated message
+    points the user there rather than repeating it.
+    """
+
+    translation_domain = DOMAIN
+    translation_key = "bookstack_unreachable"
+
+
+class BookStackSyncAuthFailedError(HomeAssistantError):
+    """
+    Raised after ``run_now``/``preview`` if ≥1 configured entry's token was rejected.
+
+    Same skeleton-wiring story as ``BookStackUnreachableError``, for the
+    pre-existing "bookstack_auth_failed" translation entry. Takes priority
+    over ``BookStackUnreachableError`` when a run mixes both failure kinds
+    across entries — an auth rejection needs the user to act (reauth-flow
+    / renew the token), which is more actionable than "check the log".
+    """
+
+    translation_domain = DOMAIN
+    translation_key = "bookstack_auth_failed"
+
+
+async def _run_all_entries(
+    hass: HomeAssistant,
+    *,
+    dry_run: bool,
+    force: bool,
+    log_prefix: str,
+) -> None:
+    """
+    Run ``async_run_sync`` for every configured entry, isolating failures (#133).
+
+    Before v0.15.0, a single unreachable/rejected BookStack instance made
+    the whole ``run_now``/``preview`` service call raise immediately (HTTP
+    500 to the caller) — so if the entry sorted first happened to be
+    broken, every OTHER configured, perfectly healthy instance silently
+    never got synced in that call. Every entry now gets a chance
+    regardless of earlier failures; failures are logged per-entry via
+    ``LOGGER.exception`` (full traceback, entry title for context), and a
+    single aggregated error is raised at the end so the caller still sees
+    that something failed instead of a silent partial success.
+    """
+    had_auth_failure = False
+    had_other_failure = False
+    for coordinator in _coordinators(hass):
+        title = coordinator.config_entry.title
+        LOGGER.info("%s (entry=%s, force=%s)", log_prefix, title, force)
+        try:
+            report = await coordinator.async_run_sync(dry_run=dry_run, force=force)
+        except BookStackApiAuthError:
+            LOGGER.exception("BookStack sync failed for %s (auth rejected)", title)
+            had_auth_failure = True
+        except BookStackApiError:
+            LOGGER.exception("BookStack sync failed for %s", title)
+            had_other_failure = True
+        else:
+            if dry_run:
+                LOGGER.info("Preview result (%s): %s", title, report.as_dict())
+    if had_auth_failure:
+        raise BookStackSyncAuthFailedError
+    if had_other_failure:
+        raise BookStackUnreachableError
+
+
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register run_now, preview, and export_markdown."""
     if hass.services.has_service(DOMAIN, SERVICE_RUN_NOW):
@@ -98,20 +172,22 @@ async def async_register_services(hass: HomeAssistant) -> None:
     async def _handle_run_now(call: ServiceCall) -> None:
         await _require_admin(hass, call)
         force = bool(call.data.get("force", False))
-        for coordinator in _coordinators(hass):
-            LOGGER.info("Running BookStack sync (run_now, force=%s)", force)
-            await coordinator.async_run_sync(dry_run=False, force=force)
+        await _run_all_entries(
+            hass,
+            dry_run=False,
+            force=force,
+            log_prefix="Running BookStack sync (run_now)",
+        )
 
     async def _handle_preview(call: ServiceCall) -> None:
         await _require_admin(hass, call)
         force = bool(call.data.get("force", False))
-        for coordinator in _coordinators(hass):
-            LOGGER.info(
-                "Running BookStack sync preview (dry-run, force=%s)",
-                force,
-            )
-            report = await coordinator.async_run_sync(dry_run=True, force=force)
-            LOGGER.info("Preview result: %s", report.as_dict())
+        await _run_all_entries(
+            hass,
+            dry_run=True,
+            force=force,
+            log_prefix="Running BookStack sync preview (dry-run)",
+        )
 
     async def _handle_export(call: ServiceCall) -> None:
         await _require_admin(hass, call)

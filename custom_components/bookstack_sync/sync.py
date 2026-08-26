@@ -375,9 +375,22 @@ def _plan_pages(
     return planned
 
 
-def _build_page_url(base_url: str, book_slug: str, page_slug: str) -> str | None:
+def _build_page_url(book_slug: str, page_slug: str) -> str | None:
     """
-    Construct a full BookStack URL for a page.
+    Construct a BookStack cross-link for a page, relative to BookStack's own origin.
+
+    Deliberately root-relative (``/books/<book>/page/<page>``), NOT
+    ``{base_url}/books/...`` (pre-v0.15.1 behaviour). ``base_url`` is the
+    address bookstack-sync itself uses to reach BookStack's API — often a
+    LAN-only address (e.g. ``http://192.168.0.16:2665``) that has nothing
+    to do with how a *person* is viewing BookStack in their browser, which
+    could be a different LAN address, a reverse-proxy hostname, or a
+    public domain if BookStack is exposed externally. A root-relative
+    href resolves against whatever origin the browser is already on, so
+    the same link works no matter which of those the reader used to open
+    the page — unlike the HA-deep-link case (v0.14.5), there's no
+    external/internal choice to make here at all, relative just always
+    wins.
 
     Returns ``None`` when any component is missing — caller falls back
     to a bold-name label rather than rendering a broken link. Empty
@@ -386,9 +399,9 @@ def _build_page_url(base_url: str, book_slug: str, page_slug: str) -> str | None
     mapping was migrated from a pre-v0.14.4 store and we haven't
     re-fetched the page since.
     """
-    if not base_url or not book_slug or not page_slug:
+    if not book_slug or not page_slug:
         return None
-    return f"{base_url.rstrip('/')}/books/{book_slug}/page/{page_slug}"
+    return f"/books/{book_slug}/page/{page_slug}"
 
 
 def _plan_area_pages(
@@ -549,11 +562,11 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
 
     # v0.14.4: capture (and persist) the BookStack book slug so we can
     # build proper Markdown links of the form
-    # ``{base_url}/books/{book_slug}/page/{page_slug}`` instead of the
-    # ``{{@<id>}}`` syntax we used through v0.14.3 — which BookStack
-    # interprets as INCLUDE/transclusion (it inlines the linked page's
-    # whole content), not as a cross-link.
-    base_url = client.base_url
+    # ``/books/{book_slug}/page/{page_slug}`` (root-relative since
+    # v0.15.1, see ``_build_page_url``) instead of the ``{{@<id>}}``
+    # syntax we used through v0.14.3 — which BookStack interprets as
+    # INCLUDE/transclusion (it inlines the linked page's whole content),
+    # not as a cross-link.
     book_slug = store.get_book_slug()
     if not book_slug:
         try:
@@ -578,7 +591,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         """Look up the current slug in the store and add the URL to page_links."""
         m = store.get(page_key)
         if m and m.slug:
-            url = _build_page_url(base_url, book_slug, m.slug)
+            url = _build_page_url(book_slug, m.slug)
             if url:
                 page_links[page_key] = url
 
