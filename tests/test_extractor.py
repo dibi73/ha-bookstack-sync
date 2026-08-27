@@ -407,7 +407,8 @@ async def test_label_with_device_level_label_appears_in_snapshot(
     label = label_reg.async_create("kritisch", icon="mdi:alarm")
 
     device_reg = dr.async_get(hass)
-    sofa = next(d for d in device_reg.devices.values() if d.name == "Sofa Light")
+    sofa = device_reg.async_get_device(identifiers={("mqtt", "sofa")})
+    assert sofa is not None
     device_reg.async_update_device(sofa.id, labels={label.label_id})
 
     snap = extract_snapshot(hass)
@@ -456,8 +457,10 @@ async def test_label_with_two_devices_lists_both_sorted(hass: HomeAssistant) -> 
     label = label_reg.async_create("urlaub_aus")
 
     device_reg = dr.async_get(hass)
-    sofa = next(d for d in device_reg.devices.values() if d.name == "Sofa Light")
-    fridge = next(d for d in device_reg.devices.values() if d.name == "Fridge Door")
+    sofa = device_reg.async_get_device(identifiers={("mqtt", "sofa")})
+    fridge = device_reg.async_get_device(identifiers={("zigbee", "fridge")})
+    assert sofa is not None
+    assert fridge is not None
     device_reg.async_update_device(sofa.id, labels={label.label_id})
     device_reg.async_update_device(fridge.id, labels={label.label_id})
 
