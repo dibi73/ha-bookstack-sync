@@ -48,6 +48,16 @@ Pages are organised into chapters inside your target book:
 Output language follows your HA UI language by default (German and
 English supported); you can override it in the options flow.
 
+**The network topology tree is UniFi-specific.** The ASCII tree on the
+Network page (Gateway → Switch → Access Points → Clients) only works
+with Ubiquiti/UniFi hardware via HA's `unifi` integration — both the
+device-role detection and the Switch↔Gateway/AP↔Switch wiring come from
+UniFi-specific data fields that other vendor integrations (FritzBox,
+TP-Link Omada, MikroTik, Cisco Meraki, …) don't expose in the same
+shape. With other hardware, the Network page still shows the flat
+device table with IP/MAC/connection info — just without the topology
+tree.
+
 ## Why use it
 
 - **Self-documenting smart home**. Every device, area, automation
