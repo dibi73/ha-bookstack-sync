@@ -1291,11 +1291,25 @@ def _extract_unknown_unifi_clients(
 
 
 def _classify_unifi_role(model: str) -> str:
-    """Heuristically classify a UniFi device's role from its model string."""
+    """
+    Heuristically classify a UniFi device's role from its model string.
+
+    HA's UniFi integration reports the internal, unhyphenated model
+    shortname (e.g. a "UniFi Cloud Gateway Ultra" comes through as
+    ``"UDRULT"``, a "US 24 PoE 250W" switch as ``"US24P250"``) - real
+    device instances didn't match the original ``UDM``/``USW``/``US-``
+    substrings at all, so both silently fell into ``"other"`` and got
+    dropped from the topology tree entirely (along with every client
+    wired to that now-missing switch, issue #147). ``UDR`` covers the
+    UniFi Dream Router/Cloud Gateway family; the bare ``US`` prefix
+    check (checked after the gateway patterns, so an actual ``USG``
+    model is still classified as gateway first) catches switch model
+    codes regardless of whether they happen to contain a hyphen.
+    """
     upper = model.upper() if model else ""
-    if any(t in upper for t in ("USG", "UDM", "UCG", "GATEWAY")):
+    if any(t in upper for t in ("USG", "UDM", "UCG", "UDR", "GATEWAY")):
         return "gateway"
-    if any(t in upper for t in ("USW", "US-", "SWITCH")):
+    if any(t in upper for t in ("USW", "US-", "SWITCH")) or upper.startswith("US"):
         return "switch"
     if any(t in upper for t in ("UAP", "U6", "U7", "UB", "ACCESS POINT")):
         return "ap"

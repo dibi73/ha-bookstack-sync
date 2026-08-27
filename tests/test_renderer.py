@@ -31,6 +31,8 @@ from custom_components.bookstack_sync.extractor import (
     NetworkInfo,
     SceneSnapshot,
     ScriptSnapshot,
+    UnifiInfraNode,
+    UnifiTopology,
 )
 from custom_components.bookstack_sync.renderer import (
     _format_bytes,
@@ -1128,6 +1130,45 @@ class TestNetworkPage:
         assert "## Unbekannte Clients (1)" in out
         assert "12:34:56:78:9a:bc" in out
         assert "192.168.1.99" in out
+
+    def test_topology_renders_before_the_device_table(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        """
+        #147: topology sits right after the attribution line, above the
+        flat table - on a real setup the table can run to hundreds of
+        rows, which buried the at-a-glance topology tree at the very
+        bottom of the page.
+        """
+        gateway = UnifiInfraNode(
+            device_id="gw",
+            name="Cloud Gateway Ultra",
+            model="UDRULT",
+            role="gateway",
+            mac="0c:ea:14:35:2c:17",
+            ip=None,
+            parent_device_id=None,
+        )
+        topology = UnifiTopology(
+            nodes={"gw": gateway},
+            root_device_ids=["gw"],
+        )
+        device = _device(name="NUC")
+        device.network = NetworkInfo(mac="aa:bb:cc:dd:ee:ff", source_platform="unifi")
+
+        out = render_network_auto_block(
+            [device],
+            fixed_now,
+            strings_de,
+            topology=topology,
+            snapshot=_empty_snapshot(),
+        )
+
+        topology_pos = out.index("## Topologie")
+        table_pos = out.index("## Geräte mit Netzwerkdaten")
+        assert topology_pos < table_pos
 
 
 class TestAreaPageMinimal:

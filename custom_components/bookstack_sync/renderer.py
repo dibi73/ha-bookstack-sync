@@ -881,13 +881,24 @@ def render_network_auto_block(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive ren
     in the list has UniFi data — keeps the table lean for non-UniFi
     setups. ``unknown_clients`` (UniFi-only) get a dedicated section
     below the main table for cross-reference cleanup.
+
+    The topology tree renders right after the attribution line, ABOVE
+    the flat device table (issue #147 follow-up) — on a real setup the
+    table can run to hundreds of rows, which buried the at-a-glance
+    topology overview at the very bottom of the page, well below any
+    reasonable scroll depth.
     """
-    lines: list[str] = [
-        _format_attribution(strings, now),
-        "",
-        "## " + strings["section_network_count_template"].format(count=len(devices)),
-        "",
-    ]
+    lines: list[str] = [_format_attribution(strings, now)]
+    if topology and snapshot:
+        lines.extend(render_topology_section(topology, snapshot, strings))
+    lines.extend(
+        [
+            "",
+            "## "
+            + strings["section_network_count_template"].format(count=len(devices)),
+            "",
+        ],
+    )
     if not devices:
         lines.append(strings["empty_network"])
         # Don't return here — unknown_clients / DHCP block below may still
@@ -952,10 +963,6 @@ def render_network_auto_block(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive ren
                 f"| **{hostname}** | `{mac}` | {ip} | {conn} | {vlan_or_ssid} "
                 f"| {last_seen} |",
             )
-
-    # UniFi-Topologie ASCII-Baum (#29) — directly after the flat table.
-    if topology and snapshot:
-        lines.extend(render_topology_section(topology, snapshot, strings))
 
     # Unknown UniFi clients (#28 cross-reference)
     if unknown_clients:
