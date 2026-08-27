@@ -407,7 +407,7 @@ async def test_label_with_device_level_label_appears_in_snapshot(
     label = label_reg.async_create("kritisch", icon="mdi:alarm")
 
     device_reg = dr.async_get(hass)
-    sofa = device_reg.async_get_device(identifiers={("mqtt", "sofa")})
+    sofa = device_reg.async_get_device_by_identifier(("mqtt", "sofa"), "entry1")
     assert sofa is not None
     device_reg.async_update_device(sofa.id, labels={label.label_id})
 
@@ -457,8 +457,8 @@ async def test_label_with_two_devices_lists_both_sorted(hass: HomeAssistant) -> 
     label = label_reg.async_create("urlaub_aus")
 
     device_reg = dr.async_get(hass)
-    sofa = device_reg.async_get_device(identifiers={("mqtt", "sofa")})
-    fridge = device_reg.async_get_device(identifiers={("zigbee", "fridge")})
+    sofa = device_reg.async_get_device_by_identifier(("mqtt", "sofa"), "entry1")
+    fridge = device_reg.async_get_device_by_identifier(("zigbee", "fridge"), "entry2")
     assert sofa is not None
     assert fridge is not None
     device_reg.async_update_device(sofa.id, labels={label.label_id})
