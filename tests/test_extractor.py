@@ -27,6 +27,7 @@ from homeassistant.helpers import (
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync.extractor import (
+    _classify_unifi_role,
     _compute_device_groups,
     _parse_energy_payload,
     async_extract_addons,
@@ -1040,6 +1041,88 @@ async def test_router_prefers_private_ip_over_wan(hass: HomeAssistant) -> None:
     # Extra contains the WAN IP.
     assert len(udm.network_extra) == 1
     assert udm.network_extra[0].ip == "85.20.30.40"
+
+
+def test_classify_unifi_role_matches_real_device_model_codes() -> None:
+    """
+    #147: the raw model strings HA's UniFi integration actually reports.
+
+    ``UDM-Pro``/``USW-24-PoE`` (hyphenated, human-readable) match the
+    original patterns fine, but real-world "Cloud Gateway Ultra" /
+    "US 24 PoE 250W" hardware comes through as the unhyphenated
+    internal shortnames ``UDRULT`` / ``US24P250`` - neither matched the
+    original substring list, so both silently fell into "other" and
+    were dropped from the topology tree entirely (along with every
+    client wired to that now-missing switch).
+    """
+    assert _classify_unifi_role("UDM-Pro") == "gateway"
+    assert _classify_unifi_role("UDRULT") == "gateway"
+    assert _classify_unifi_role("USG-3P") == "gateway"
+    assert _classify_unifi_role("USW-24-PoE") == "switch"
+    assert _classify_unifi_role("US24P250") == "switch"
+    assert _classify_unifi_role("UAP-AC-Lite") == "ap"
+    assert _classify_unifi_role("U6-Pro") == "ap"
+    assert _classify_unifi_role("SomeOtherDevice") == "other"
+
+
+async def test_topology_includes_gateway_switch_and_wired_client(
+    hass: HomeAssistant,
+) -> None:
+    """
+    #147: gateway + switch (unhyphenated model codes) and a wired client
+    all show up in the topology tree, the client attached to the switch.
+    """
+    entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi", title="UniFi")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    gateway = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "gw")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "0c:ea:14:35:2c:17")},
+        name="Cloud Gateway Ultra",
+        model="UDRULT",
+        manufacturer="Ubiquiti Networks",
+    )
+    switch = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "sw")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "74:83:c2:6d:76:f2")},
+        name="US 24 PoE 250W",
+        model="US24P250",
+        manufacturer="Ubiquiti Networks",
+        via_device_id=gateway.id,
+    )
+    client = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "nas")},
+        name="Datenstation",
+    )
+    tracker = entity_reg.async_get_or_create(
+        domain="device_tracker",
+        platform="unifi",
+        unique_id="nas_tracker",
+        device_id=client.id,
+        suggested_object_id="datenstation",
+    )
+    hass.states.async_set(
+        tracker.entity_id,
+        "home",
+        {
+            "ip": "192.168.0.11",
+            "mac": "00:11:32:b4:ed:3d",
+            "switch_mac": "74:83:c2:6d:76:f2",
+        },
+    )
+
+    snap = extract_snapshot(hass)
+    topo = snap.unifi_topology
+    assert topo is not None
+    assert topo.nodes[gateway.id].role == "gateway"
+    assert topo.nodes[switch.id].role == "switch"
+    assert switch.id in topo.nodes[gateway.id].child_device_ids
+    assert topo.client_to_infra[client.id] == switch.id
 
 
 async def test_disabled_automation_still_extracted(hass: HomeAssistant) -> None:
