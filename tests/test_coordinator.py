@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
 
-from custom_components.bookstack_sync.api import BookStackApiAuthError
+from custom_components.bookstack_sync.api import (
+    BookStackApiAuthError,
+    BookStackApiCommunicationError,
+)
 from custom_components.bookstack_sync.coordinator import BookStackSyncCoordinator
 from custom_components.bookstack_sync.sync import SyncReport
 
@@ -115,6 +118,98 @@ async def test_last_run_recorded_after_successful_sync(
 
     assert coord.last_run is not None
     assert coord.last_report is report
+
+
+async def test_async_run_sync_notes_failure_on_communication_error(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    Failure-streak bookkeeping happens inside ``async_run_sync`` itself (#133).
+
+    Before v0.15.0, only ``_async_update_data`` (the scheduled-refresh
+    path) called ``_note_failure()`` — the manual ``run_now``/``preview``
+    service path (which calls ``async_run_sync`` directly, see
+    services.py) never fed the same failure-streak/repair-issue
+    mechanism. Moving the bookkeeping into ``async_run_sync`` covers both
+    call paths from one place.
+    """
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+    coord._note_failure = MagicMock()
+
+    with (
+        patch(
+            "custom_components.bookstack_sync.coordinator.run_sync",
+            new=AsyncMock(side_effect=BookStackApiCommunicationError("boom")),
+        ),
+        pytest.raises(BookStackApiCommunicationError),
+    ):
+        await coord.async_run_sync()
+
+    coord._note_failure.assert_called_once()
+
+
+async def test_async_run_sync_does_not_note_failure_on_auth_error(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    Auth failures must NOT feed the "unreachable" failure-streak.
+
+    They get their own reauth-flow handling (see
+    ``test_auth_failure_raises_config_entry_auth_failed``) — counting them
+    toward the connectivity repair-issue would be misleading (the
+    instance IS reachable, the token is just rejected).
+    """
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+    coord._note_failure = MagicMock()
+
+    with (
+        patch(
+            "custom_components.bookstack_sync.coordinator.run_sync",
+            new=AsyncMock(side_effect=BookStackApiAuthError("token rotated")),
+        ),
+        pytest.raises(BookStackApiAuthError),
+    ):
+        await coord.async_run_sync()
+
+    coord._note_failure.assert_not_called()
+
+
+async def test_async_run_sync_notes_success_on_clean_run(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """A clean (non-dry-run) sync resets the failure streak via ``_note_success``."""
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+    coord._note_success = MagicMock()
+    report = SyncReport()
+
+    with patch(
+        "custom_components.bookstack_sync.coordinator.run_sync",
+        new=AsyncMock(return_value=report),
+    ):
+        await coord.async_run_sync()
+
+    coord._note_success.assert_called_once()
 
 
 async def test_is_syncing_flag_set_during_run(
