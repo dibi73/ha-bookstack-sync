@@ -7,6 +7,7 @@ rendering, tombstoning, page mapping persistence.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -832,3 +833,52 @@ async def test_progress_callback_is_called_with_step_and_total(
     assert steps[-1] == total, (
         f"final tick must show step==total, got {steps[-1]}/{total}"
     )
+
+
+async def test_interrupted_sync_persists_already_written_pages(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    #127: an interrupted run must not lose pages already written this run.
+
+    Before the fix, ``store.async_save()`` ran exactly once, at the very
+    end of the whole multi-pass sync. If the run got interrupted partway
+    through (HA restart, BookStack outage), every page successfully
+    written up to that point was lost from the persisted mapping - the
+    next sync would then see a stale hash for those pages and flag them
+    as "edited outside of Home Assistant", even though nothing was
+    actually edited manually. ``asyncio.CancelledError`` mimics a real
+    interruption here: unlike ``BookStackApiError``, run_sync's per-page
+    ``except Exception`` does not swallow it, so it propagates straight
+    out - the same as HA cancelling the sync task on shutdown.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    real_create_page = client.create_page
+    created_count = 0
+
+    async def flaky_create_page(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal created_count
+        created_count += 1
+        if created_count == 2:  # second page is the interruption point
+            raise asyncio.CancelledError
+        return await real_create_page(*args, **kwargs)
+
+    client.create_page = AsyncMock(side_effect=flaky_create_page)
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_sync(hass, client, store, 1, strings)
+
+    # Reload from HA storage fresh, simulating the restart that
+    # interrupted the run - proves the first page's mapping was already
+    # persisted to disk, not just held in the in-memory store object.
+    reloaded = BookStackSyncStore(hass, entry_id="testentry")
+    await reloaded.async_load()
+    saved_pages = reloaded.all()
+    assert len(saved_pages) >= 1, (
+        "the page written before the interruption should already be "
+        "persisted, not lost until a final end-of-run save"
+    )
+    assert all(mapping.auto_block_hash for mapping in saved_pages.values())
