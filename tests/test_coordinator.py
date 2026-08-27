@@ -15,11 +15,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.bookstack_sync.api import (
     BookStackApiAuthError,
     BookStackApiCommunicationError,
 )
+from custom_components.bookstack_sync.const import DOMAIN
 from custom_components.bookstack_sync.coordinator import BookStackSyncCoordinator
 from custom_components.bookstack_sync.sync import SyncReport
 
@@ -95,6 +97,42 @@ async def test_auth_failure_raises_config_entry_auth_failed(
         pytest.raises(ConfigEntryAuthFailed),
     ):
         await coord._async_update_data()
+
+
+async def test_communication_failure_raises_translated_update_failed(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    UpdateFailed carries translation_domain/translation_key, not a raw string (#138).
+
+    Before this fix, ``_async_update_data`` raised ``UpdateFailed(str(err))``
+    — a plain, always-English string regardless of the user's chosen
+    output language. Reuses the same "bookstack_unreachable"
+    exceptions-skeleton entry that services.py's
+    ``BookStackUnreachableError`` already wires up for the manual
+    run_now/preview path (v0.15.1), so both surfaces are translated
+    the same way.
+    """
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+
+    with (
+        patch(
+            "custom_components.bookstack_sync.coordinator.run_sync",
+            new=AsyncMock(side_effect=BookStackApiCommunicationError("boom")),
+        ),
+        pytest.raises(UpdateFailed) as exc_info,
+    ):
+        await coord._async_update_data()
+
+    assert exc_info.value.translation_domain == DOMAIN
+    assert exc_info.value.translation_key == "bookstack_unreachable"
 
 
 async def test_last_run_recorded_after_successful_sync(

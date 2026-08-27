@@ -112,7 +112,21 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             # it also covers the manual ``run_now``/``preview`` service
             # path — not just this scheduled-refresh path. Don't call
             # ``_note_failure()`` again here, it already ran.
-            raise UpdateFailed(str(err)) from err
+            #
+            # translation_domain/translation_key (issue #138, last of
+            # the three gaps from the closed #34): reuses the same
+            # "bookstack_unreachable" exceptions-skeleton entry that
+            # services.py's BookStackUnreachableError wires up for the
+            # manual run_now/preview path (v0.15.1) — same failure
+            # class, same user-facing message, one translation entry
+            # instead of two near-duplicates. Previously this was a
+            # raw ``UpdateFailed(str(err))`` with no translation at
+            # all, landing in HA's UI/log untranslated regardless of
+            # the user's chosen language.
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="bookstack_unreachable",
+            ) from err
         else:
             # Same for ``_note_success()`` — already ran inside
             # ``async_run_sync``. Tamper-issue reconciliation likewise
