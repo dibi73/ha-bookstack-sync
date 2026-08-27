@@ -1125,6 +1125,76 @@ async def test_topology_includes_gateway_switch_and_wired_client(
     assert topo.client_to_infra[client.id] == switch.id
 
 
+async def test_topology_uses_uplink_mac_sensor_when_via_device_id_is_unset(
+    hass: HomeAssistant,
+) -> None:
+    """
+    #147 follow-up: infra hierarchy from the "Uplink MAC" diagnostic sensor.
+
+    Live-verified against real hardware: HA's UniFi integration leaves
+    ``via_device_id`` unset on infrastructure devices (both the Gateway
+    and Switch reported ``via=None``) - the actual switch↔gateway /
+    AP↔switch uplink is only exposed as a per-device diagnostic sensor
+    (unique_id prefixed ``device_uplink_mac-``) whose state is the MAC
+    of the device it's plugged into. Without reading that sensor, every
+    infra device renders as its own disconnected root instead of
+    nested under its real parent.
+    """
+    entry = MockConfigEntry(domain="unifi", entry_id="entry_unifi", title="UniFi")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    gateway = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "gw")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "0c:ea:14:35:2c:17")},
+        name="Cloud Gateway Ultra",
+        model="UDRULT",
+        manufacturer="Ubiquiti Networks",
+    )
+    # No via_device_id - matches what HA's UniFi integration actually does.
+    switch = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "sw")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "74:83:c2:6d:76:f2")},
+        name="US 24 PoE 250W",
+        model="US24P250",
+        manufacturer="Ubiquiti Networks",
+    )
+    ap = device_reg.async_get_or_create(
+        config_entry_id="entry_unifi",
+        identifiers={("unifi", "ap")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "e0:63:da:e6:7a:d8")},
+        name="EG AC LR",
+        model="U6-Pro",
+        manufacturer="Ubiquiti Networks",
+    )
+    switch_uplink = entity_reg.async_get_or_create(
+        domain="sensor",
+        platform="unifi",
+        unique_id="device_uplink_mac-switch1",
+        device_id=switch.id,
+        suggested_object_id="us_24_poe_250w_uplink_mac",
+    )
+    hass.states.async_set(switch_uplink.entity_id, "0c:ea:14:35:2c:17")
+    ap_uplink = entity_reg.async_get_or_create(
+        domain="sensor",
+        platform="unifi",
+        unique_id="device_uplink_mac-ap1",
+        device_id=ap.id,
+        suggested_object_id="eg_ac_lr_uplink_mac",
+    )
+    hass.states.async_set(ap_uplink.entity_id, "74:83:c2:6d:76:f2")
+
+    snap = extract_snapshot(hass)
+    topo = snap.unifi_topology
+    assert topo is not None
+    assert topo.root_device_ids == [gateway.id]
+    assert switch.id in topo.nodes[gateway.id].child_device_ids
+    assert ap.id in topo.nodes[switch.id].child_device_ids
+
+
 async def test_disabled_automation_still_extracted(hass: HomeAssistant) -> None:
     """Regression for #39: an automation with no state object still appears.
 
