@@ -660,6 +660,11 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
             report.errors.append(f"{page.key}: {err}")
         _emit_progress()
         if not dry_run:
+            # #127: persist after every page, not just once at the end of
+            # the whole multi-pass run - an interrupted run (HA restart,
+            # BookStack outage) then only loses the one in-flight page's
+            # state instead of every page already written this run.
+            await store.async_save()
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
     # Pass 2: render area pages (now that device URLs exist) and sync them.
@@ -694,6 +699,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
             report.errors.append(f"{page.key}: {err}")
         _emit_progress()
         if not dry_run:
+            await store.async_save()  # #127: incremental persistence
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
     # Pass 3: render label pages (now that device + area URLs exist) and
@@ -727,6 +733,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
             report.errors.append(f"{page.key}: {err}")
         _emit_progress()
         if not dry_run:
+            await store.async_save()  # #127: incremental persistence
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
     # Pass 4: render overview with the full URL map + sync it.
@@ -761,6 +768,8 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         LOGGER.exception("BookStack sync failed for overview")
         report.errors.append(f"{overview.key}: {err}")
     _emit_progress()
+    if not dry_run:
+        await store.async_save()  # #127: incremental persistence
 
     all_planned = [overview, *area_planned, *label_planned, *planned]
     await _tombstone_orphans(
@@ -1129,6 +1138,7 @@ async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
             LOGGER.exception("Unexpected error tombstoning %s", key)
             report.errors.append(f"{key} (tombstone): {err}")
         if not dry_run:
+            await store.async_save()  # #127: incremental persistence
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
 
