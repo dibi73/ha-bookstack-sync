@@ -19,15 +19,30 @@ rewrites the auto block — your notes, quirks, password references and
 
 Pages are organised into chapters inside your target book:
 
-- **Overview** — statistics + links to every other page
+- **Overview** — pure navigation, links to every other page (no
+  stats/aggregates — those live on the pages they describe)
 - **Areas** chapter — one page per area listing all devices and
   entities it contains
-- **Devices** chapter — one page per device with manufacturer, model,
-  firmware version, configured integrations, and a list of all entities
-  including current state and (for MQTT devices) the topic
+- **Devices** chapter — one page per physical device with manufacturer,
+  model, firmware version, configured integrations, network info, and
+  every entity including current state and (for MQTT devices) the
+  topic. Devices split across multiple integrations by Home Assistant
+  (since HA 2026.8) are automatically merged into a single page — see
+  "Also known as" on the device page for the individual registry
+  entries that got folded together
+- **Labels** chapter — one page per HA label, listing every device
+  that carries it (directly or via one of its entities)
 - **Integrations**, **Automations**, **Scripts**, **Scenes** — one
   bundled page each, listing every entry with description, mode, last
   triggered etc.
+- **Network** — table of every device with network data, plus a UniFi
+  topology tree and a DHCP-reservation export block, when applicable
+- **Bluetooth** — tree of every BT scanner (local + ESPHome proxies)
+  and the devices they hear
+- **Recorder**, **Energy**, **MQTT topics**, **Helpers** — one page
+  each, when the corresponding HA feature is configured
+- **Backup** — last successful/attempted backup, plus a table of every
+  stored backup with its target(s) and size per target
 - **Add-ons** — Supervisor add-on listing (only on HassOS / Supervised)
 
 Output language follows your HA UI language by default (German and
@@ -51,20 +66,44 @@ English supported); you can override it in the options flow.
 
 ## Status
 
-Production-ready for personal use. **V0.5** as of this README — first
-release tracking the HA Quality Scale **Gold** tier:
+Production-ready for personal use. **V0.16** as of this README,
+targeting the HA Quality Scale **Gold** tier:
 
 - Full HA-data extraction (areas, devices, entities, automations,
-  scripts, scenes, integrations, add-ons)
+  scripts, scenes, integrations, add-ons, network, Bluetooth, recorder,
+  energy, MQTT, helpers, backups, labels)
+- Device-group deduplication for devices split across multiple
+  integrations (HA 2026.8+)
 - Marker-block merge with hash-based tampering detection
-- Two-pass overview render with internal page links
+- Multi-pass overview render with internal page links
 - Status sensor, persistent notifications, structured services
 - Reauth flow + user-initiated reconfigure flow (URL / token / TLS)
 - Diagnostics endpoint (redacted dump for bug reports)
-- Area filter, TLS-verify toggle, MQTT-topic display, i18n (DE + EN)
-- Admin-only services (`run_now`, `preview`)
-- 80+ tests covering merge logic, renderer determinism, API client,
+- TLS-verify toggle, MQTT-topic display, UI localised in 28 languages
+- Admin-only services (`run_now`, `preview`, `export_markdown`)
+- 260+ tests covering merge logic, renderer determinism, API client,
   config flow, coordinator, sync orchestrator
+
+### Quality Scale
+
+Self-declared (`manifest.json`), since Hassfest doesn't formally
+validate Gold/Platinum rules for custom integrations:
+
+- ✅ **Bronze / Silver**: config flow, unique IDs, runtime-data storage,
+  reauth flow, integration owner, log-when-unavailable, test coverage
+- ✅ **Gold**: diagnostics, reconfigure flow, entity categories, dynamic
+  devices, repair issues (tampering / marker loss / unreachable target,
+  each with a `translation_key`), translated runtime exceptions, full
+  docs sections, UI in 28 locales
+- ⚪ **`stale-devices`**: intentionally not applicable — this
+  integration owns one synthetic HA device per config entry (never
+  stale); the actual tracked "source devices" live as BookStack pages,
+  which already get soft-deleted (tombstoned) when their HA object
+  disappears. That's the rule's intent, just not what it literally
+  checks.
+- 🔜 **Platinum**: `py.typed` and zero runtime dependencies already
+  satisfy part of it; a `mypy --strict` CI gate is the remaining piece,
+  not yet added.
 
 ## Installation
 

@@ -11,18 +11,59 @@ zuverlässig erhalten.
 
 ## Status
 
-V0 – funktionales Grundgerüst. Sync von Areas, Devices und Entities funktioniert,
-inklusive Marker-Block-Merge mit Hash-Verifikation. Automationen, Skripte und
-Add-on-Inhalte folgen in einer späteren Version (siehe `anforderungsdokument.md`).
+Produktionsreif für den persönlichen Gebrauch. **V0.16** zum Stand dieser
+README, mit Zielrichtung HA Quality Scale **Gold**:
+
+- Vollständige HA-Datenextraktion (Areas, Devices, Entities, Automationen,
+  Skripte, Szenen, Integrationen, Add-ons, Netzwerk, Bluetooth, Recorder,
+  Energie, MQTT, Helpers, Backups, Labels)
+- Geräte-Deduplizierung für Geräte, die von mehreren Integrationen parallel
+  angelegt werden (HA 2026.8+)
+- Marker-Block-Merge mit Hash-basierter Tampering-Erkennung
+- Mehrstufiges Overview-Rendering mit internen Cross-Links
+- Status-Sensor, Persistent Notifications, strukturierte Services
+- Reauth-Flow + User-initiierter Reconfigure-Flow (URL / Token / TLS)
+- Diagnostics-Endpoint (redaktierter Dump für Bug-Reports)
+- TLS-Verify-Toggle, MQTT-Topic-Anzeige, UI in 28 Sprachen lokalisiert
+- Admin-only Services (`run_now`, `preview`, `export_markdown`)
+- 260+ Tests für Merge-Logik, Renderer-Determinismus, API-Client,
+  Config-Flow, Coordinator, Sync-Orchestrator
+
+### Quality Scale
+
+Selbst-deklariert (`manifest.json`), da Hassfest Gold/Platinum-Regeln für
+Custom-Integrationen nicht formal validiert:
+
+- ✅ **Bronze / Silver**: Config-Flow, Unique-IDs, Runtime-Data-Storage,
+  Reauth-Flow, Integration-Owner, Log-when-unavailable, Test-Coverage
+- ✅ **Gold**: Diagnostics, Reconfigure-Flow, Entity-Categories, Dynamic
+  Devices, Repair-Issues (Tampering / Marker-Verlust / Unreachable-Ziel,
+  jeweils mit `translation_key`), übersetzte Laufzeit-Exceptions,
+  vollständige Doku-Abschnitte, UI in 28 Locales
+- ⚪ **`stale-devices`**: bewusst nicht anwendbar — die Integration besitzt
+  ein synthetisches HA-Device pro Config-Entry (wird nie stale); die
+  eigentlich getrackten "Quell-Devices" leben als BookStack-Pages und
+  werden bereits weich gelöscht (tombstoned), sobald ihr HA-Objekt
+  verschwindet. Das ist der Sinn der Regel, nur nicht was sie wörtlich prüft.
+- 🔜 **Platinum**: `py.typed` und keine externen Laufzeit-Deps erfüllen
+  bereits einen Teil davon; ein `mypy --strict`-CI-Gate ist der fehlende
+  Rest, noch nicht umgesetzt.
 
 ## Funktionsumfang
 
-- **Daten aus HA**: Areas, Devices (mit Hersteller / Modell / Firmware) und
-  Entities (mit aktuellem State) werden über die HA-Registries gelesen.
+- **Daten aus HA**: Areas, Devices, Entities, Automationen, Skripte, Szenen,
+  Integrationen, Add-ons, Netzwerk-/Bluetooth-Topologie, Recorder- und
+  Energie-Konfiguration, MQTT-Topics, Helpers und Backups werden über die
+  HA-Registries und HAs eigene Manager-APIs gelesen.
 - **Pages in BookStack**:
-  - eine Übersichtsseite mit Statistik
+  - eine reine Navigations-Übersichtsseite
   - eine Page pro Area
-  - eine Page pro Device
+  - eine Page pro physischem Device (über mehrere Integrationen gemergt,
+    falls HA dasselbe Gerät mehrfach anlegt — siehe "Auch bekannt als"
+    auf der Device-Page)
+  - eine Page pro HA-Label
+  - Bundle-Pages für Automationen, Skripte, Szenen, Integrationen, Add-ons,
+    Netzwerk, Bluetooth, Recorder, Energie, MQTT, Helpers, Backup
 - **Schutz manueller Inhalte**: jede Page hat zwei Marker-Blöcke –
   `<!-- BEGIN AUTO-GENERATED -->` und `<!-- BEGIN MANUAL -->`. Nur der
   Auto-Block wird vom Sync angefasst. Wenn der Auto-Block manuell editiert
