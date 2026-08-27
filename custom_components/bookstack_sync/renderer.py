@@ -47,10 +47,30 @@ if TYPE_CHECKING:
 
 
 def _format_attribution(strings: dict[str, str], now: datetime) -> str:
-    return strings["attribution_template"].format(
+    """
+    First line(s) of every page's AUTO block: heading + attribution.
+
+    The ``# {heading_auto_generated}`` line (issue #129) is prepended
+    here rather than in each ``render_*_auto_block`` function — every
+    one of them already calls this as its very first line, so this is
+    the single place that reaches all page types uniformly (device,
+    area, label, overview, every bundle page, ...) without touching 16
+    call sites individually. Answers the issue's open question ("same
+    heading everywhere, or only where no top heading exists yet?") by
+    making it deliberately uniform — simplest, and consistent with how
+    the attribution line itself already works.
+
+    Note for maintainers: this changes what every existing page's AUTO
+    block renders to, so the first sync after upgrading needs
+    ``force: true`` (same drift-vs-tampering situation as v0.14.4/
+    v0.14.5 — see merge.py's ``manual_block_tampered`` handling and the
+    Lessons Learned entries for those releases).
+    """
+    attribution = strings["attribution_template"].format(
         attribution=ATTRIBUTION,
         timestamp=now.strftime("%Y-%m-%d %H:%M"),
     )
+    return f"# {strings['heading_auto_generated']}\n\n{attribution}"
 
 
 def _slugify(text: str) -> str:

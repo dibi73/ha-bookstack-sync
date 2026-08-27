@@ -900,6 +900,53 @@ def test_all_renderers_include_attribution(
     assert "2026-04-28 12:00 UTC" in out
 
 
+@pytest.mark.parametrize(
+    "render_fn",
+    [
+        render_overview_auto_block,
+        render_area_auto_block,
+        render_device_auto_block,
+    ],
+)
+def test_all_renderers_start_with_auto_generated_heading(
+    render_fn: object,
+    fixed_now: datetime,
+    strings_de: dict[str, str],
+) -> None:
+    """
+    Every page's AUTO block opens with a visible heading (issue #129).
+
+    The ``<!-- BEGIN AUTO-GENERATED -->`` marker itself is an invisible
+    HTML comment in rendered BookStack output — a reader can't tell
+    where the auto-generated part begins, or that it's auto-generated
+    at all, without a visible heading. Injected centrally via
+    ``_format_attribution`` (every renderer's first line), so this one
+    parametrized test covering three representative page types stands
+    in for all 16 call sites.
+    """
+    if render_fn is render_overview_auto_block:
+        out = render_overview_auto_block(_empty_snapshot(), fixed_now, strings_de)
+    elif render_fn is render_area_auto_block:
+        out = render_area_auto_block(
+            AreaSnapshot(area_id="x", name="X"),
+            fixed_now,
+            strings_de,
+        )
+    else:
+        out = render_device_auto_block(_device(), fixed_now, strings_de)
+    assert out.startswith("# Automatische Dokumentation\n")
+
+
+def test_auto_generated_heading_is_localised(
+    fixed_now: datetime,
+    strings_en: dict[str, str],
+) -> None:
+    """The heading follows the active output language, not hardcoded German."""
+    out = render_device_auto_block(_device(), fixed_now, strings_en)
+    assert out.startswith("# Automatic Documentation\n")
+    assert "Automatische Dokumentation" not in out
+
+
 class TestNetworkPage:
     """Network overview page rendering (#27 + #28)."""
 
