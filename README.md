@@ -67,7 +67,7 @@ English supported); you can override it in the options flow.
 ## Status
 
 Production-ready for personal use. **V0.16** as of this README,
-targeting the HA Quality Scale **Gold** tier:
+targeting the HA Quality Scale **Platinum** tier:
 
 - Full HA-data extraction (areas, devices, entities, automations,
   scripts, scenes, integrations, add-ons, network, Bluetooth, recorder,
@@ -101,9 +101,11 @@ validate Gold/Platinum rules for custom integrations:
   which already get soft-deleted (tombstoned) when their HA object
   disappears. That's the rule's intent, just not what it literally
   checks.
-- 🔜 **Platinum**: `py.typed` and zero runtime dependencies already
-  satisfy part of it; a `mypy --strict` CI gate is the remaining piece,
-  not yet added.
+- ✅ **Platinum**: `strict-typing` (`py.typed` + a `mypy --strict` CI
+  gate, since v0.16.2), `inject-websession` (always uses HA's own
+  `async_get_clientsession`/`async_create_clientsession`, never a
+  self-rolled session), `async-dependency` (N/A — `requirements: []`,
+  no external PyPI dependency to check)
 
 ## Installation
 
