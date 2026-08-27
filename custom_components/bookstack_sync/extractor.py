@@ -665,7 +665,9 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         addons=addons or [],
         unknown_unifi_clients=_extract_unknown_unifi_clients(hass, entity_reg),
     )
-    snapshot.unifi_topology = _extract_unifi_topology(device_reg, snapshot)
+    snapshot.unifi_topology = _extract_unifi_topology(
+        hass, device_reg, entity_reg, snapshot
+    )
     snapshot.bluetooth = _extract_bluetooth_network(device_reg)
     snapshot.notify_services = _extract_services(hass, "notify")
     snapshot.tts_services = _extract_services(hass, "tts")
@@ -1333,8 +1335,54 @@ _UNIFI_MANUFACTURERS = frozenset(
 )
 
 
+_UPLINK_MAC_UNIQUE_ID_PREFIX = "device_uplink_mac-"
+
+
+def _resolve_infra_uplinks(
+    entity_reg: er.EntityRegistry,
+    hass: HomeAssistant,
+    nodes: dict[str, UnifiInfraNode],
+    mac_to_infra_id: dict[str, str],
+) -> None:
+    """
+    Fill in infra→infra parent links from each device's "Uplink MAC" sensor.
+
+    HA's UniFi integration usually leaves ``via_device_id`` unset for
+    infrastructure hardware (verified live: both a Cloud Gateway Ultra
+    and its switch reported ``via=None``) — the actual uplink is only
+    exposed as a diagnostic sensor instead (``unique_id`` prefixed
+    ``"device_uplink_mac-"``, HA core's ``unifi/sensor.py``). Without
+    this, a Switch's or AP's uplink is undiscoverable and it renders as
+    its own disconnected root instead of nested under its actual parent
+    (issue #147 follow-up). Only fills in a parent when ``via_device_id``
+    didn't already give one that's part of this topology.
+    """
+    for node in nodes.values():
+        if node.parent_device_id in nodes:
+            continue
+        uplink_entity = next(
+            (
+                e
+                for e in entity_reg.entities.get_entries_for_device_id(node.device_id)
+                if e.platform == "unifi"
+                and e.unique_id.startswith(_UPLINK_MAC_UNIQUE_ID_PREFIX)
+            ),
+            None,
+        )
+        if uplink_entity is None:
+            continue
+        state = hass.states.get(uplink_entity.entity_id)
+        if state is None or not state.state:
+            continue
+        parent_id = mac_to_infra_id.get(state.state.lower())
+        if parent_id and parent_id != node.device_id:
+            node.parent_device_id = parent_id
+
+
 def _extract_unifi_topology(
+    hass: HomeAssistant,
     device_reg: dr.DeviceRegistry,
+    entity_reg: er.EntityRegistry,
     snapshot: HASnapshot,
 ) -> UnifiTopology | None:
     """
@@ -1365,6 +1413,11 @@ def _extract_unifi_topology(
     if not nodes:
         return None
 
+    # Build the MAC lookup before resolving parents - the uplink-sensor
+    # fallback needs it to turn a peer's MAC back into its device_id.
+    mac_to_infra_id = {n.mac.lower(): n.device_id for n in nodes.values() if n.mac}
+    _resolve_infra_uplinks(entity_reg, hass, nodes, mac_to_infra_id)
+
     # Resolve children + roots.
     for node in nodes.values():
         if node.parent_device_id and node.parent_device_id in nodes:
@@ -1384,7 +1437,6 @@ def _extract_unifi_topology(
 
     # Build client → infra map: walk every device in the snapshot, look
     # at switch_mac (wired) or ap_mac (wireless), match against infra MAC.
-    mac_to_infra_id = {n.mac.lower(): n.device_id for n in nodes.values() if n.mac}
     client_to_infra: dict[str, str] = {}
 
     def visit_device(device_snap: DeviceSnapshot) -> None:
