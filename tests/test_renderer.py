@@ -17,6 +17,9 @@ from custom_components.bookstack_sync.extractor import (
     AkaEntry,
     AreaSnapshot,
     AutomationSnapshot,
+    BackupAgentEntry,
+    BackupEntry,
+    BackupStatusSnapshot,
     DeviceIntegrationRef,
     DeviceSnapshot,
     EntitySnapshot,
@@ -30,10 +33,12 @@ from custom_components.bookstack_sync.extractor import (
     ScriptSnapshot,
 )
 from custom_components.bookstack_sync.renderer import (
+    _format_bytes,
     _md_escape,
     render_addons_auto_block,
     render_area_auto_block,
     render_automations_auto_block,
+    render_backup_auto_block,
     render_device_auto_block,
     render_helpers_auto_block,
     render_integrations_auto_block,
@@ -945,6 +950,102 @@ def test_auto_generated_heading_is_localised(
     out = render_device_auto_block(_device(), fixed_now, strings_en)
     assert out.startswith("# Automatic Documentation\n")
     assert "Automatische Dokumentation" not in out
+
+
+class TestBackupPage:
+    """Backup status page rendering (#47)."""
+
+    def test_lists_backup_with_target_and_size(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        status = BackupStatusSnapshot(
+            last_completed="2026-08-26T03:00:00+00:00",
+            last_attempted="2026-08-27T03:00:00+00:00",
+            backups=[
+                BackupEntry(
+                    name="Automatic backup 2026-08-26",
+                    date="2026-08-26T03:00:00+00:00",
+                    ha_version="2026.8.3",
+                    agents=[
+                        BackupAgentEntry(
+                            agent_name="Local",
+                            size_bytes=1_288_490_188,  # ~1.2 GB
+                            protected=True,
+                        ),
+                    ],
+                ),
+            ],
+        )
+        out = render_backup_auto_block(status, fixed_now, strings_de)
+        assert "2026-08-26T03:00:00+00:00" in out  # last_completed line
+        assert "Automatic backup 2026-08-26" in out
+        assert "2026.8.3" in out
+        assert "Local (1.2 GB)" in out
+
+    def test_failed_agent_shown_distinctly(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        status = BackupStatusSnapshot(
+            backups=[
+                BackupEntry(
+                    name="Automatic backup",
+                    date="2026-08-26T03:00:00+00:00",
+                    failed_agent_ids=["gdrive.abc123"],
+                ),
+            ],
+        )
+        out = render_backup_auto_block(status, fixed_now, strings_de)
+        assert "gdrive.abc123 (fehlgeschlagen)" in out
+
+    def test_agent_list_errors_surfaced_not_hidden(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        """
+        A failed agent-list query is called out, per the #128 lesson.
+
+        Missing/erroring data must be surfaced with a note, never make
+        the whole section silently vanish.
+        """
+        status = BackupStatusSnapshot(agent_errors=["gdrive.abc123"])
+        out = render_backup_auto_block(status, fixed_now, strings_de)
+        assert "gdrive.abc123" in out
+        assert "nicht abfragbar" in out
+
+    def test_empty_state_when_no_backups(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_backup_auto_block(BackupStatusSnapshot(), fixed_now, strings_de)
+        assert "Keine Backups gefunden" in out
+
+    def test_localised_to_english(
+        self,
+        fixed_now,
+        strings_en: dict[str, str],
+    ) -> None:
+        out = render_backup_auto_block(BackupStatusSnapshot(), fixed_now, strings_en)
+        assert "No backups found" in out
+        assert "Backup status" in out
+
+
+class TestFormatBytes:
+    """Byte-size formatting helper backing the Backup page's size column."""
+
+    def test_bytes_stay_whole_numbers(self) -> None:
+        assert _format_bytes(500) == "500 B"
+
+    def test_kilobytes(self) -> None:
+        assert _format_bytes(1536) == "1.5 KB"
+
+    def test_gigabytes(self) -> None:
+        assert _format_bytes(1_288_490_188) == "1.2 GB"
 
 
 class TestNetworkPage:

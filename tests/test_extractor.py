@@ -8,7 +8,9 @@ produces the expected sorted, filtered structure.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.helpers import (
     area_registry as ar,
@@ -27,6 +29,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.bookstack_sync.extractor import (
     _compute_device_groups,
     _parse_energy_payload,
+    async_extract_backup_status,
     async_extract_energy_config,
     extract_snapshot,
 )
@@ -148,6 +151,78 @@ async def test_extract_addons_returns_empty_without_supervisor(
     # should be an empty list (not raise).
     snap = extract_snapshot(hass)
     assert snap.addons == []
+
+
+async def test_async_extract_backup_status_none_without_backup_integration(
+    hass: HomeAssistant,
+) -> None:
+    """
+    No backup component set up in the test hass -> None, not a crash (#47).
+
+    Same "silently produce nothing" contract as ``_extract_addons`` above:
+    ``async_get_manager`` raises when the ``backup`` integration isn't
+    set up on this hass instance, which is the case in the plain test
+    fixture (no full HA default_config bootstrap).
+    """
+    status = await async_extract_backup_status(hass)
+    assert status is None
+
+
+async def test_async_extract_backup_status_parses_manager_data(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Combines the sync config tier with the async backups tier correctly (#47).
+
+    ``manager.config.data`` (sync, no I/O) drives last_completed/attempted;
+    ``manager.async_get_backups()`` (async, real I/O against every agent)
+    drives the per-backup, per-agent size/target list, including a
+    failed agent on one backup and an agent-level list error — both
+    must be surfaced, not silently dropped (lesson from #128).
+    """
+    completed = datetime(2026, 8, 26, 3, 0, tzinfo=UTC)
+    attempted = datetime(2026, 8, 27, 3, 0, tzinfo=UTC)
+
+    local_agent = MagicMock()
+    local_agent.name = "Local"
+
+    backup = MagicMock()
+    backup.name = "Automatic backup 2026-08-26"
+    backup.date = "2026-08-26T03:00:00+00:00"
+    backup.homeassistant_version = "2026.8.3"
+    backup.failed_agent_ids = ["gdrive.abc123"]
+    backup.agents = {"local.local": MagicMock(size=123456, protected=True)}
+
+    manager = MagicMock()
+    manager.config.data.last_completed_automatic_backup = completed
+    manager.config.data.last_attempted_automatic_backup = attempted
+    manager.backup_agents = {"local.local": local_agent}
+    manager.async_get_backups = AsyncMock(
+        return_value=(
+            {"backup1": backup},
+            {"gdrive.abc123": Exception("token expired")},
+        ),
+    )
+
+    with patch(
+        "homeassistant.components.backup.async_get_manager",
+        return_value=manager,
+    ):
+        status = await async_extract_backup_status(hass)
+
+    assert status is not None
+    assert status.last_completed == completed.isoformat()
+    assert status.last_attempted == attempted.isoformat()
+    assert status.agent_errors == ["gdrive.abc123"]
+    assert len(status.backups) == 1
+    entry = status.backups[0]
+    assert entry.name == "Automatic backup 2026-08-26"
+    assert entry.ha_version == "2026.8.3"
+    assert entry.failed_agent_ids == ["gdrive.abc123"]
+    assert len(entry.agents) == 1
+    assert entry.agents[0].agent_name == "Local"
+    assert entry.agents[0].size_bytes == 123456
+    assert entry.agents[0].protected is True
 
 
 async def test_automation_with_area_id_routed_to_area(
