@@ -1057,11 +1057,35 @@ def _extract_labels(  # noqa: PLR0912 - device-group-aware label union, cohesive
     return labels
 
 
+_MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
+
+
+def _looks_like_mac(value: str) -> bool:
+    """
+    Return True if ``value`` has the shape of a real MAC address.
+
+    Some integrations (observed: an rtl_433-style RF-sensor bridge)
+    misuse the device registry's ``connections`` set, tagging a
+    device's own non-MAC unique-id string (e.g. ``"Acurite-609TXC-0"``)
+    with ``CONNECTION_NETWORK_MAC``. Trusting that blindly produced a
+    garbage "MAC address" identical to the device's own name and, worse,
+    made a pure RF-only sensor with no network presence at all look
+    like it had network data — landing it on the Network overview page
+    next to genuinely networked devices, with everything dashed out
+    (issue #143).
+    """
+    return bool(_MAC_RE.match(value))
+
+
 def _device_macs_from_connections(device: dr.DeviceEntry) -> list[str]:
     """Pull MAC addresses out of ``device.connections`` (set of tuples)."""
     macs: list[str] = []
     for conn_type, value in device.connections:
-        if conn_type == dr.CONNECTION_NETWORK_MAC and isinstance(value, str):
+        if (
+            conn_type == dr.CONNECTION_NETWORK_MAC
+            and isinstance(value, str)
+            and _looks_like_mac(value)
+        ):
             macs.append(value)
     return sorted(macs)
 
@@ -1096,9 +1120,10 @@ def _build_network_info(
     """
     attrs = entity.attributes
     ip = _first_str(attrs, _TRACKER_IP_KEYS)
-    mac = _first_str(attrs, _TRACKER_MAC_KEYS) or (
-        fallback_macs[0] if fallback_macs else None
-    )
+    tracker_mac = _first_str(attrs, _TRACKER_MAC_KEYS)
+    if tracker_mac and not _looks_like_mac(tracker_mac):
+        tracker_mac = None
+    mac = tracker_mac or (fallback_macs[0] if fallback_macs else None)
     if not (ip or mac):
         return None
 
@@ -1280,7 +1305,11 @@ def _classify_unifi_role(model: str) -> str:
 def _device_first_mac(device: dr.DeviceEntry) -> str | None:
     """Return the first MAC address on a device, or None."""
     for conn_type, value in device.connections:
-        if conn_type == dr.CONNECTION_NETWORK_MAC and isinstance(value, str):
+        if (
+            conn_type == dr.CONNECTION_NETWORK_MAC
+            and isinstance(value, str)
+            and _looks_like_mac(value)
+        ):
             return value
     return None
 
