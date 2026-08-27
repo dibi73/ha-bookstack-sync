@@ -28,6 +28,11 @@ from custom_components.bookstack_sync.const import (
     CHAPTER_KEY_DEVICES,
     CHAPTER_KEY_LABELS,
 )
+from custom_components.bookstack_sync.extractor import (
+    BackupAgentEntry,
+    BackupEntry,
+    BackupStatusSnapshot,
+)
 from custom_components.bookstack_sync.store import BookStackSyncStore
 from custom_components.bookstack_sync.sync import _build_page_url, run_sync
 
@@ -252,6 +257,58 @@ async def test_label_page_created_with_chapter_and_overview_link(
     # uses to reach the BookStack API.
     assert f"](/books/book/page/{label_slug})" in overview_pages[0]["markdown"]
     assert client.base_url not in overview_pages[0]["markdown"]
+
+
+async def test_backup_page_created_and_linked_from_overview(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    End-to-end for issue #47: backup status becomes its own bundle page.
+
+    The test hass fixture has no real ``backup`` integration set up, so
+    ``async_extract_backup_status`` is patched to return a canned
+    snapshot — this test is about the sync-orchestrator wiring (page
+    gets created, overview links to it), not about the HA backup API
+    itself (covered separately in test_extractor.py).
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+
+    backup_status = BackupStatusSnapshot(
+        last_completed="2026-08-26T03:00:00+00:00",
+        backups=[
+            BackupEntry(
+                name="Automatic backup 2026-08-26",
+                date="2026-08-26T03:00:00+00:00",
+                agents=[
+                    BackupAgentEntry(
+                        agent_name="Local",
+                        size_bytes=1000,
+                        protected=True,
+                    ),
+                ],
+            ),
+        ],
+    )
+
+    with patch(
+        "custom_components.bookstack_sync.sync.async_extract_backup_status",
+        AsyncMock(return_value=backup_status),
+    ):
+        report = await run_sync(hass, client, store, 1, strings)
+
+    assert report.errors == []
+    backup_pages = [p for p in state["pages"].values() if p["name"] == "Backup"]
+    assert len(backup_pages) == 1
+    assert "Automatic backup 2026-08-26" in backup_pages[0]["markdown"]
+    assert "Local" in backup_pages[0]["markdown"]
+
+    overview_pages = [p for p in state["pages"].values() if p["name"] == "Übersicht"]
+    assert len(overview_pages) == 1
+    backup_slug = backup_pages[0]["slug"]
+    assert f"/page/{backup_slug})" in overview_pages[0]["markdown"]
 
 
 async def test_second_sync_with_unchanged_data_makes_no_changes(

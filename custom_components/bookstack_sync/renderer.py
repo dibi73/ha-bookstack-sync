@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         AddonSnapshot,
         AreaSnapshot,
         AutomationSnapshot,
+        BackupStatusSnapshot,
         BluetoothNetwork,
         DeviceSnapshot,
         EnergyConfig,
@@ -304,6 +305,7 @@ def render_overview_auto_block(
         ("recorder:_", strings["bundle_recorder"]),
         ("mqtt:_", strings["bundle_mqtt"]),
         ("energy:_", strings["bundle_energy"]),
+        ("backup:_", strings["bundle_backup"]),
     )
     for key, label in bundle_links:
         url = links.get(key)
@@ -1439,6 +1441,72 @@ def render_energy_auto_block(
             ],
         )
         lines.extend(f"- `{entity_id}`" for entity_id in config.individual_devices)
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# ----- #47 Backup status -------------------------------------------------------
+
+
+def _format_bytes(size: int) -> str:
+    """Human-readable byte size, e.g. ``1.2 GB``."""
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1024 or unit == "TB":  # noqa: PLR2004 - 1024 is the unit itself
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} {unit}"
+        value /= 1024
+    return f"{value:.1f} TB"  # unreachable, satisfies type checkers
+
+
+def render_backup_auto_block(
+    status: BackupStatusSnapshot,
+    now: datetime,
+    strings: dict[str, str],
+) -> str:
+    """Render the AUTO block of the Backup page (#47)."""
+    lines: list[str] = [_format_attribution(strings, now), ""]
+    lines.append(f"## {strings['section_backup_status']}")
+    lines.append("")
+    lines.append(
+        f"- {strings['backup_field_last_completed']}: {status.last_completed or '—'}",
+    )
+    lines.append(
+        f"- {strings['backup_field_last_attempted']}: {status.last_attempted or '—'}",
+    )
+    lines.append("")
+
+    if status.agent_errors:
+        lines.append(
+            strings["backup_agent_errors_template"].format(
+                agents=", ".join(_md_escape(a) for a in status.agent_errors),
+            ),
+        )
+        lines.append("")
+
+    if not status.backups:
+        lines.append(strings["empty_backups"])
+        return "\n".join(lines).rstrip() + "\n"
+
+    lines.extend(
+        [
+            f"| {strings['backup_col_name']} | {strings['backup_col_date']} "
+            f"| {strings['backup_col_version']} | {strings['backup_col_targets']} |",
+            "| --- | --- | --- | --- |",
+        ],
+    )
+    for backup in status.backups:
+        target_parts = [
+            f"{_md_escape(a.agent_name)} ({_format_bytes(a.size_bytes)})"
+            for a in backup.agents
+        ]
+        target_parts.extend(
+            f"{_md_escape(agent_id)} ({strings['backup_target_failed_suffix']})"
+            for agent_id in backup.failed_agent_ids
+        )
+        targets = ", ".join(target_parts) if target_parts else "—"
+        lines.append(
+            f"| {_md_escape(backup.name)} | {backup.date} "
+            f"| {_md_escape(backup.ha_version or '—')} | {targets} |",
+        )
     return "\n".join(lines).rstrip() + "\n"
 
 

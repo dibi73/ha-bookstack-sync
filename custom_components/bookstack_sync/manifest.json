@@ -1,7 +1,7 @@
 {
   "domain": "bookstack_sync",
   "name": "BookStack Sync",
-  "after_dependencies": ["hassio"],
+  "after_dependencies": ["backup", "hassio"],
   "codeowners": ["@dibi73"],
   "config_flow": true,
   "documentation": "https://github.com/dibi73/ha-bookstack-sync",
@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/dibi73/ha-bookstack-sync/issues",
   "quality_scale": "gold",
   "requirements": [],
-  "version": "0.15.2"
+  "version": "0.16.0"
 }

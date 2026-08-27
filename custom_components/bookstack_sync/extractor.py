@@ -352,6 +352,8 @@ class HASnapshot:
     # HA labels that carry at least one device (issue #22). Empty labels
     # are filtered out by ``_extract_labels`` and never appear here.
     labels: list[LabelSnapshot] = field(default_factory=list)
+    # Backup status from HA's backup integration (issue #47), when available.
+    backup_status: BackupStatusSnapshot | None = None
 
 
 # Entity domains that already get their own dedicated per-area section
@@ -455,6 +457,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     hass: HomeAssistant,
     *,
     energy_config: EnergyConfig | None = None,
+    backup_status: BackupStatusSnapshot | None = None,
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
@@ -468,6 +471,12 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     (since v0.14.10) because it needs blocking file I/O — callers fetch
     it on the executor and pass it through here. ``None`` is fine when
     no Energy dashboard is configured.
+
+    ``backup_status`` is likewise read separately by
+    ``async_extract_backup_status`` (issue #47) — this function itself
+    is synchronous, but listing stored backups needs a genuinely async
+    HA API call (queries every configured backup agent). ``None`` when
+    the ``backup`` integration isn't installed/set up.
     """
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
@@ -654,6 +663,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     snapshot.recorder = _extract_recorder_config(hass)
     snapshot.mqtt_tree = _build_mqtt_topic_tree(snapshot)
     snapshot.energy = energy_config
+    snapshot.backup_status = backup_status
     snapshot.helpers = _extract_helpers(hass, entity_reg)
     snapshot.reverse_usage = _extract_reverse_usage(hass)
     snapshot.labels = _extract_labels(
@@ -1580,6 +1590,128 @@ async def async_extract_energy_config(hass: HomeAssistant) -> EnergyConfig | Non
         storage_path,
     )
     return _parse_energy_payload(payload)
+
+
+# ----- #47 Backup status -------------------------------------------------------
+
+
+@dataclass
+class BackupAgentEntry:
+    """One stored backup's presence on one configured agent/target."""
+
+    agent_name: str
+    size_bytes: int
+    protected: bool
+
+
+@dataclass
+class BackupEntry:
+    """One stored backup, possibly present on more than one target."""
+
+    name: str
+    date: str
+    ha_version: str | None = None
+    agents: list[BackupAgentEntry] = field(default_factory=list)
+    failed_agent_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
+class BackupStatusSnapshot:
+    """Backup status from HA's ``backup`` integration (issue #47)."""
+
+    last_completed: str | None = None
+    last_attempted: str | None = None
+    backups: list[BackupEntry] = field(default_factory=list)
+    # agent_ids that errored out while being asked for their backup list
+    # (e.g. an expired Google Drive token) - surfaced, not hidden (#128
+    # taught us a missing-data section should say so, not vanish).
+    agent_errors: list[str] = field(default_factory=list)
+
+
+async def async_extract_backup_status(
+    hass: HomeAssistant,
+) -> BackupStatusSnapshot | None:
+    """
+    Read backup status from HA's ``backup`` integration.
+
+    Two tiers, deliberately kept separate:
+
+    1. ``manager.config.data`` is a synchronous, in-memory read (no
+       I/O) - already gives us ``last_completed_automatic_backup`` /
+       ``last_attempted_automatic_backup``, which covers "when was the
+       last successful backup" on its own.
+    2. ``await manager.async_get_backups()`` is genuinely async and
+       queries every configured agent (local, Google Drive, S3, ...)
+       live to list what's actually stored - the expensive part, and
+       the only part that can partially fail per-agent.
+
+    Returns ``None`` if the ``backup`` integration isn't installed on
+    this HA build or isn't set up (e.g. explicitly disabled) - same
+    "silently produce nothing, don't crash the sync" contract as the
+    other optional-data extractors (``_extract_addons``, energy).
+    """
+    try:
+        from homeassistant.components.backup import (  # noqa: PLC0415 - optional dep
+            async_get_manager,
+        )
+    except ImportError:
+        return None
+
+    try:
+        manager = async_get_manager(hass)
+    except Exception as err:  # noqa: BLE001 - optional integration, never fatal
+        LOGGER.debug("Backup integration not available: %s", err)
+        return None
+
+    cfg = manager.config.data
+    snapshot = BackupStatusSnapshot(
+        last_completed=(
+            cfg.last_completed_automatic_backup.isoformat()
+            if cfg.last_completed_automatic_backup
+            else None
+        ),
+        last_attempted=(
+            cfg.last_attempted_automatic_backup.isoformat()
+            if cfg.last_attempted_automatic_backup
+            else None
+        ),
+    )
+
+    try:
+        backups_by_id, agent_errors = await manager.async_get_backups()
+    except Exception as err:  # noqa: BLE001 - third-party call, never fatal
+        LOGGER.warning("Could not list stored backups: %s", err)
+        backups_by_id, agent_errors = {}, {}
+
+    snapshot.agent_errors = sorted(agent_errors)
+
+    for backup in backups_by_id.values():
+        entry = BackupEntry(
+            name=backup.name,
+            date=backup.date,
+            ha_version=backup.homeassistant_version,
+            failed_agent_ids=sorted(backup.failed_agent_ids),
+        )
+        for agent_id, status in backup.agents.items():
+            agent = manager.backup_agents.get(agent_id)
+            entry.agents.append(
+                BackupAgentEntry(
+                    agent_name=agent.name if agent else agent_id,
+                    size_bytes=status.size,
+                    protected=status.protected,
+                ),
+            )
+        entry.agents.sort(key=lambda a: a.agent_name.lower())
+        snapshot.backups.append(entry)
+    snapshot.backups.sort(key=lambda b: b.date, reverse=True)
+
+    if (
+        not snapshot.backups
+        and not snapshot.last_completed
+        and not snapshot.last_attempted
+    ):
+        return None
+    return snapshot
 
 
 # ----- #42 Helpers ------------------------------------------------------------

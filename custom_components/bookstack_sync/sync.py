@@ -42,6 +42,7 @@ from .const import (
     PAGE_KIND_ADDONS,
     PAGE_KIND_AREA,
     PAGE_KIND_AUTOMATIONS,
+    PAGE_KIND_BACKUP,
     PAGE_KIND_BLUETOOTH,
     PAGE_KIND_DEVICE,
     PAGE_KIND_ENERGY,
@@ -59,7 +60,11 @@ from .const import (
     TAG_VALUE_MANAGED,
     TAG_VALUE_ORPHANED,
 )
-from .extractor import async_extract_energy_config, extract_snapshot
+from .extractor import (
+    async_extract_backup_status,
+    async_extract_energy_config,
+    extract_snapshot,
+)
 from .merge import (
     build_page_body,
     extract_auto_block,
@@ -70,6 +75,7 @@ from .renderer import (
     render_addons_auto_block,
     render_area_auto_block,
     render_automations_auto_block,
+    render_backup_auto_block,
     render_bluetooth_auto_block,
     render_device_auto_block,
     render_energy_auto_block,
@@ -346,6 +352,18 @@ def _plan_pages(
                 ),
             ),
         )
+    if snapshot.backup_status is not None:
+        planned.append(
+            _PlannedPage(
+                key=f"{PAGE_KIND_BACKUP}:_",
+                title=strings["title_backup"],
+                auto_body=render_backup_auto_block(
+                    snapshot.backup_status,
+                    now,
+                    strings,
+                ),
+            ),
+        )
     if snapshot.helpers:
         planned.append(
             _PlannedPage(
@@ -545,7 +563,12 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     # so we fetch it here on the executor (v0.14.10) and inject it into
     # the otherwise-sync snapshot pipeline.
     energy_config = await async_extract_energy_config(hass)
-    snapshot = extract_snapshot(hass, energy_config=energy_config)
+    backup_status = await async_extract_backup_status(hass)
+    snapshot = extract_snapshot(
+        hass,
+        energy_config=energy_config,
+        backup_status=backup_status,
+    )
     # v0.14.5: HA-frontend deep-links use this base. ``external_url``
     # wins over ``internal_url`` because the same Markdown lands in
     # exported .md files that the optional RAG add-on serves to the
