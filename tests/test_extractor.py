@@ -29,6 +29,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.bookstack_sync.extractor import (
     _compute_device_groups,
     _parse_energy_payload,
+    async_extract_addons,
     async_extract_backup_status,
     async_extract_energy_config,
     extract_snapshot,
@@ -151,6 +152,89 @@ async def test_extract_addons_returns_empty_without_supervisor(
     # should be an empty list (not raise).
     snap = extract_snapshot(hass)
     assert snap.addons == []
+
+
+async def test_async_extract_addons_returns_empty_without_supervisor(
+    hass: HomeAssistant,
+) -> None:
+    """No hassio config entry in the test hass -> [] immediately, no retries."""
+    addons = await async_extract_addons(hass)
+    assert addons == []
+
+
+async def test_async_extract_addons_retries_until_coordinator_catches_up(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    #128: an empty Supervisor cache right after startup is retried, not
+    silently accepted as "this install genuinely has zero add-ons".
+
+    ``get_addons_info`` mirrors hassio's own ``ADDONS_COORDINATOR`` cache
+    not being refreshed yet - empty on the first two calls, populated on
+    the third. ``async_extract_addons`` must keep retrying instead of
+    giving up after the first empty read.
+    """
+    monkeypatch.setattr(
+        "custom_components.bookstack_sync.extractor._ADDONS_REFRESH_DELAY_SECONDS",
+        0,
+    )
+    call_count = 0
+
+    def fake_get_addons_info(hass: HomeAssistant) -> dict[str, dict[str, object]]:
+        nonlocal call_count
+        call_count += 1
+        if call_count < 3:  # third call is when it "catches up"
+            return {}
+        return {
+            "core_ssh": {
+                "name": "Terminal & SSH",
+                "version": "9.0.0",
+                "state": "started",
+                "update_available": False,
+            },
+        }
+
+    with (
+        patch("homeassistant.helpers.hassio.is_hassio", return_value=True),
+        patch(
+            "homeassistant.components.hassio.get_addons_info",
+            side_effect=fake_get_addons_info,
+        ),
+    ):
+        addons = await async_extract_addons(hass)
+
+    assert call_count == 3
+    assert [a.slug for a in addons] == ["core_ssh"]
+
+
+async def test_async_extract_addons_gives_up_after_max_attempts(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cache that never catches up returns [] instead of retrying forever."""
+    monkeypatch.setattr(
+        "custom_components.bookstack_sync.extractor._ADDONS_REFRESH_DELAY_SECONDS",
+        0,
+    )
+    call_count = 0
+
+    def fake_get_addons_info(hass: HomeAssistant) -> dict[str, dict[str, object]]:
+        nonlocal call_count
+        call_count += 1
+        return {}
+
+    with (
+        patch("homeassistant.helpers.hassio.is_hassio", return_value=True),
+        patch(
+            "homeassistant.components.hassio.get_addons_info",
+            side_effect=fake_get_addons_info,
+        ),
+    ):
+        addons = await async_extract_addons(hass)
+
+    assert addons == []
+    assert call_count == 3
 
 
 async def test_async_extract_backup_status_none_without_backup_integration(
