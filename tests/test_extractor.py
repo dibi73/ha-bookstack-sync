@@ -536,6 +536,38 @@ async def test_device_network_mac_only_fallback(hass: HomeAssistant) -> None:
     assert sensor_snap.network.source_platform == "registry"
 
 
+async def test_device_with_bogus_mac_connection_gets_no_network_info(
+    hass: HomeAssistant,
+) -> None:
+    """
+    #143: a non-MAC string tagged CONNECTION_NETWORK_MAC must not count.
+
+    Observed in the wild: an RF-sensor bridge (rtl_433-style) registers
+    its own device-unique-id string (e.g. "Acurite-609TXC-0") as a
+    CONNECTION_NETWORK_MAC connection instead of a real MAC. Blindly
+    trusting that made a pure RF-only sensor with no network presence
+    at all look like it had network data - landing it on the Network
+    overview page with everything else dashed out (real devices further
+    down the same table showed correct IPs, so this wasn't a general
+    extraction failure, just garbage-in-garbage-out for this one
+    connection value).
+    """
+    entry = MockConfigEntry(domain="rtl_433", entry_id="entry_rf", title="RF")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    device_reg.async_get_or_create(
+        config_entry_id="entry_rf",
+        identifiers={("rtl_433", "Acurite-609TXC-0")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "Acurite-609TXC-0")},
+        name="Acurite-609TXC-0",
+    )
+
+    snap = extract_snapshot(hass)
+    rf_snap = next(d for d in snap.unassigned_devices if d.name == "Acurite-609TXC-0")
+    assert rf_snap.network is None
+
+
 def test_compute_device_groups_unions_shared_connections_and_identifiers() -> None:
     """
     Unit test for the union-find grouping itself, isolated from the registry.
