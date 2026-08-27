@@ -248,8 +248,8 @@ async def export(  # noqa: PLR0912, PLR0915 — single linear orchestration is c
     _tick(0)
     for processed, (mapping_key, page, target_path, rel) in enumerate(plan, start=1):
         _tick(processed)
-        mapping_entry = sync_store.get(mapping_key)
-        if mapping_entry is None:
+        store_entry = sync_store.get(mapping_key)
+        if store_entry is None:
             continue
         auto, manual = split_blocks(str(page.get("markdown", "")))
         body = (auto.strip() + "\n\n---\n\n" + manual.strip()).strip() + "\n"
@@ -258,8 +258,8 @@ async def export(  # noqa: PLR0912, PLR0915 — single linear orchestration is c
             bookstack_page=page,
             book_id=book_id,
             chapter_lookup=chapter_lookup,
-            tombstoned=mapping_entry.tombstoned_at is not None,
-            last_synced=mapping_entry.last_seen or "",
+            tombstoned=store_entry.tombstoned_at is not None,
+            last_synced=store_entry.last_seen or "",
         )
         # Hash the body+frontmatter (without content_hash field) so the hash
         # is stable across runs that don't change anything.

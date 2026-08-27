@@ -6,8 +6,9 @@ import ipaddress
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers import (
     area_registry as ar,
@@ -53,7 +54,7 @@ class EntitySnapshot:
     device_id: str | None
     area_id: str | None
     state: str | None
-    attributes: dict
+    attributes: dict[str, Any]
     disabled: bool
     mqtt_topic: str | None = None
 
@@ -582,7 +583,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
             continue
         state_obj = hass.states.get(entity.entity_id)
         attrs = dict(state_obj.attributes) if state_obj else {}
-        snapshot = EntitySnapshot(
+        entity_snapshot = EntitySnapshot(
             entity_id=entity.entity_id,
             name=entity.name or entity.original_name or entity.entity_id,
             platform=entity.platform,
@@ -594,7 +595,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
             mqtt_topic=_mqtt_topic_from(attrs),
         )
         if target_device_id:
-            devices[target_device_id].entities.append(snapshot)
+            devices[target_device_id].entities.append(entity_snapshot)
         elif entity.entity_id.split(".", 1)[0] not in _AREA_SECTIONED_DOMAINS:
             # automation/script/scene entities without a device are
             # already listed under their own per-area section (see
@@ -603,7 +604,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
             # the area page (e.g. a scene under both "Entities ohne
             # Geräte-Zuordnung" and "Szenen in <Area>").
             area_id = entity.area_id or ""
-            orphan_entities_by_area.setdefault(area_id, []).append(snapshot)
+            orphan_entities_by_area.setdefault(area_id, []).append(entity_snapshot)
 
     unassigned: list[DeviceSnapshot] = []
     for device in devices.values():
@@ -672,7 +673,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     return snapshot
 
 
-def _mqtt_topic_from(attrs: dict) -> str | None:
+def _mqtt_topic_from(attrs: dict[str, Any]) -> str | None:
     """Return the most informative topic-like attribute, or None."""
     for key in _MQTT_TOPIC_KEYS:
         value = attrs.get(key)
@@ -735,7 +736,7 @@ def _extract_automations(
                 description=attrs.get("description") or None,
                 state=state_obj.state if state_obj else "disabled",
                 mode=attrs.get("mode"),
-                last_triggered=last.isoformat() if hasattr(last, "isoformat") else last,
+                last_triggered=last.isoformat() if isinstance(last, datetime) else last,
                 area_id=area_id,
             ),
         )
@@ -772,7 +773,7 @@ def _extract_scripts(
                 name=name,
                 description=attrs.get("description") or None,
                 state=state_obj.state if state_obj else "disabled",
-                last_triggered=last.isoformat() if hasattr(last, "isoformat") else last,
+                last_triggered=last.isoformat() if isinstance(last, datetime) else last,
                 area_id=area_id,
             ),
         )
@@ -878,7 +879,7 @@ def _documentation_url_for(hass: HomeAssistant, domain: str) -> str | None:
 def _extract_addons(hass: HomeAssistant) -> list[AddonSnapshot]:
     """Best-effort add-on listing - empty unless HA Supervisor is available."""
     try:
-        from homeassistant.components.hassio import (  # noqa: PLC0415 - optional dep
+        from homeassistant.components.hassio import (  # type: ignore[attr-defined]  # noqa: PLC0415
             get_addons_info,
             is_hassio,
         )
@@ -994,7 +995,7 @@ def _device_macs_from_connections(device: dr.DeviceEntry) -> list[str]:
     return sorted(macs)
 
 
-def _first_str(attrs: dict, keys: tuple[str, ...]) -> str | None:
+def _first_str(attrs: dict[str, Any], keys: tuple[str, ...]) -> str | None:
     """Return the first non-empty string-valued attribute among ``keys``."""
     for key in keys:
         value = attrs.get(key)
@@ -1003,7 +1004,7 @@ def _first_str(attrs: dict, keys: tuple[str, ...]) -> str | None:
     return None
 
 
-def _detect_connection_type(attrs: dict) -> str | None:
+def _detect_connection_type(attrs: dict[str, Any]) -> str | None:
     """Infer ``wired`` / ``wireless`` / ``None`` from a tracker's attributes."""
     if attrs.get("switch_mac") or attrs.get("switch_port") is not None:
         return "wired"
@@ -1034,7 +1035,7 @@ def _build_network_info(
     last_seen_value = attrs.get("last_seen") or attrs.get("last_time_reachable")
     last_seen = (
         last_seen_value.isoformat()
-        if hasattr(last_seen_value, "isoformat")
+        if isinstance(last_seen_value, datetime)
         else (last_seen_value if isinstance(last_seen_value, str) else None)
     )
     connection_type = _detect_connection_type(attrs)
@@ -1523,7 +1524,7 @@ class EnergyConfig:
     individual_devices: list[str] = field(default_factory=list)
 
 
-def _read_energy_storage_blocking(storage_path: Path) -> dict | None:
+def _read_energy_storage_blocking(storage_path: Path) -> dict[str, Any] | None:
     """
     Read ``.storage/energy`` synchronously (call via executor only).
 
@@ -1536,13 +1537,14 @@ def _read_energy_storage_blocking(storage_path: Path) -> dict | None:
         return None
     try:
         with storage_path.open(encoding="utf-8") as f:
-            return json.load(f)
+            payload: dict[str, Any] = json.load(f)
+            return payload
     except (OSError, ValueError) as err:
         LOGGER.debug("Could not read .storage/energy: %s", err)
         return None
 
 
-def _parse_energy_payload(payload: dict | None) -> EnergyConfig | None:
+def _parse_energy_payload(payload: dict[str, Any] | None) -> EnergyConfig | None:
     """Parse a ``.storage/energy`` payload into ``EnergyConfig`` (pure)."""
     if not payload:
         return None
@@ -1741,7 +1743,7 @@ class HelperEntry:
     name: str
     domain: str
     state: str | None
-    attributes: dict
+    attributes: dict[str, Any]
 
 
 @dataclass
@@ -1859,7 +1861,7 @@ def _build_ha_yaml_loader() -> type:
     class HALoader(_yaml.SafeLoader):
         pass
 
-    def _stub_constructor(loader, node) -> None:  # noqa: ANN001, ARG001
+    def _stub_constructor(loader: _yaml.Loader, node: _yaml.Node) -> None:  # noqa: ARG001
         return None
 
     for tag in _HA_YAML_TAGS:
@@ -1887,7 +1889,7 @@ def _extract_entity_ids_from_text(text: str) -> set[str]:
 def _read_yaml_entries(
     path: Path,
     loader_cls: type,
-) -> list:
+) -> list[dict[str, Any]]:
     """
     Load a YAML file and return its entries as a list of dicts.
 
@@ -1910,7 +1912,7 @@ def _read_yaml_entries(
     return []
 
 
-def _entry_label(item: dict, domain: str) -> str:
+def _entry_label(item: dict[str, Any], domain: str) -> str:
     """Pick the most human-readable name from an automation/script/scene entry."""
     return str(
         item.get("alias")
@@ -2038,12 +2040,12 @@ def _extract_reverse_usage(hass: HomeAssistant) -> dict[str, list[ReverseUsageEn
     for entity_id, entries in usage.items():
         seen: set[tuple[str, str, str | None]] = set()
         deduped: list[ReverseUsageEntry] = []
-        for entry in entries:
-            key = (entry.domain, entry.name, entry.via_group)
+        for usage_entry in entries:
+            key = (usage_entry.domain, usage_entry.name, usage_entry.via_group)
             if key in seen:
                 continue
             seen.add(key)
-            deduped.append(entry)
+            deduped.append(usage_entry)
         # Stable ordering for byte-identical sync output. Direct hits
         # (via_group=None) sort before group-mediated hits.
         deduped.sort(

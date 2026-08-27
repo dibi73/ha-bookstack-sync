@@ -124,9 +124,10 @@ def to_yaml(fm: ExportFrontmatter, content_hash: str) -> str:
     """
     payload = asdict(fm)
     payload["content_hash"] = content_hash
-    return yaml.safe_dump(
+    dumped: str = yaml.safe_dump(
         payload,
         allow_unicode=True,
         sort_keys=False,
         default_flow_style=False,
     )
+    return dumped

@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.const import EntityCategory
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
@@ -15,12 +15,14 @@ from .const import (
     DEFAULT_EXPORT_ENABLED,
     DOMAIN,
 )
+from .coordinator import BookStackSyncCoordinator
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-    from .coordinator import BookStackSyncCoordinator
     from .data import BookStackSyncConfigEntry
 
 
@@ -33,7 +35,10 @@ async def async_setup_entry(
     async_add_entities([BookStackSyncStatusSensor(entry.runtime_data.coordinator)])
 
 
-class BookStackSyncStatusSensor(CoordinatorEntity, SensorEntity):
+class BookStackSyncStatusSensor(
+    CoordinatorEntity[BookStackSyncCoordinator],
+    SensorEntity,
+):
     """
     Surfaces the result of the last sync run as a single sensor entity.
 
@@ -120,7 +125,7 @@ class BookStackSyncStatusSensor(CoordinatorEntity, SensorEntity):
             }
         # Markdown back-export attributes only appear when the user has
         # opted in. Until then we don't pollute the sensor with zeros.
-        options = self.coordinator.config_entry.options or {}
+        options: Mapping[str, Any] = self.coordinator.config_entry.options or {}
         if options.get(CONF_EXPORT_ENABLED, DEFAULT_EXPORT_ENABLED):
             export = self.coordinator.last_export_result
             if export is not None:

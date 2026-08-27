@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
@@ -36,6 +36,8 @@ from .export import export as export_run
 from .sync import SyncReport, run_sync
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from homeassistant.core import HomeAssistant
 
     from .data import BookStackSyncConfigEntry
@@ -405,7 +407,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         (English) so the user no longer has to wonder whether the post-sync
         export has actually finished writing the .md files.
         """
-        options = self.config_entry.options or {}
+        options: Mapping[str, Any] = self.config_entry.options or {}
         if not options.get(CONF_EXPORT_ENABLED, DEFAULT_EXPORT_ENABLED):
             return
         self.is_syncing = True
@@ -443,8 +445,8 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         ``auto`` (default) follows the user's HA UI language. An explicit
         choice in the options flow (e.g. ``en``, ``de``) overrides it.
         """
-        options = self.config_entry.options or {}
-        choice = options.get(CONF_OUTPUT_LANGUAGE, DEFAULT_OUTPUT_LANGUAGE)
+        options: Mapping[str, Any] = self.config_entry.options or {}
+        choice: str = options.get(CONF_OUTPUT_LANGUAGE, DEFAULT_OUTPUT_LANGUAGE)
         if choice == OUTPUT_LANGUAGE_AUTO:
             return self.hass.config.language or "en"
         return choice

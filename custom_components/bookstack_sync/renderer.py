@@ -1166,14 +1166,15 @@ def render_topology_section(  # noqa: PLR0915 - cohesive recursive walk
         infra_id: str,
         prefix: str,
     ) -> list[str]:
+        def _sort_key(did: str) -> tuple[str, str]:
+            d = snap_devices.get(did)
+            vlan = (d.network.vlan if d and d.network else None) or ""
+            name = d.name.lower() if d else did
+            return (vlan, name)
+
         client_ids = sorted(
             children_by_infra.get(infra_id, []),
-            key=lambda did: (
-                snap_devices[did].network.vlan or ""
-                if did in snap_devices and snap_devices[did].network
-                else "",
-                snap_devices[did].name.lower() if did in snap_devices else did,
-            ),
+            key=_sort_key,
         )
         out: list[str] = []
         if len(client_ids) >= _TOPOLOGY_GROUP_BY_VLAN_THRESHOLD:
