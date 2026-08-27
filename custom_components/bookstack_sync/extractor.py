@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
 import re
@@ -459,6 +460,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     *,
     energy_config: EnergyConfig | None = None,
     backup_status: BackupStatusSnapshot | None = None,
+    addons: list[AddonSnapshot] | None = None,
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
@@ -478,6 +480,12 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     is synchronous, but listing stored backups needs a genuinely async
     HA API call (queries every configured backup agent). ``None`` when
     the ``backup`` integration isn't installed/set up.
+
+    ``addons`` is likewise read separately by ``async_extract_addons``
+    (issue #128) — Supervisor's add-on cache is populated by hassio's
+    own coordinator on its own refresh cycle and isn't guaranteed ready
+    yet, so the async wrapper retries a few times before giving up.
+    ``None``/omitted defaults to an empty list.
     """
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
@@ -654,7 +662,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         scripts=scripts,
         scenes=scenes,
         integrations=_extract_integrations(hass, device_reg, entity_reg),
-        addons=_extract_addons(hass),
+        addons=addons or [],
         unknown_unifi_clients=_extract_unknown_unifi_clients(hass, entity_reg),
     )
     snapshot.unifi_topology = _extract_unifi_topology(device_reg, snapshot)
@@ -877,12 +885,22 @@ def _documentation_url_for(hass: HomeAssistant, domain: str) -> str | None:
 
 
 def _extract_addons(hass: HomeAssistant) -> list[AddonSnapshot]:
-    """Best-effort add-on listing - empty unless HA Supervisor is available."""
+    """
+    Best-effort add-on listing - empty unless HA Supervisor is available.
+
+    ``is_hassio`` lives in ``homeassistant.helpers.hassio``, NOT
+    ``homeassistant.components.hassio`` (issue #128 follow-up: importing
+    it from the components module silently raised ImportError on every
+    call, so this extractor always returned ``[]`` regardless of the
+    ADDONS_COORDINATOR timing race the issue was actually filed about -
+    a stricter mypy check would have caught this, see the [type: ignore]
+    that used to paper over the real problem here).
+    """
     try:
-        from homeassistant.components.hassio import (  # type: ignore[attr-defined]  # noqa: PLC0415
+        from homeassistant.components.hassio import (  # noqa: PLC0415 - optional dep
             get_addons_info,
-            is_hassio,
         )
+        from homeassistant.helpers.hassio import is_hassio  # noqa: PLC0415
     except ImportError:
         return []
 
@@ -909,6 +927,59 @@ def _extract_addons(hass: HomeAssistant) -> list[AddonSnapshot]:
         )
     addons.sort(key=lambda a: (a.name.lower(), a.slug))
     return addons
+
+
+_ADDONS_REFRESH_ATTEMPTS = 3
+_ADDONS_REFRESH_DELAY_SECONDS = 1.0
+
+
+async def async_extract_addons(hass: HomeAssistant) -> list[AddonSnapshot]:
+    """
+    Best-effort add-on listing, tolerant of a not-yet-refreshed Supervisor cache.
+
+    ``_extract_addons`` reads a cache (``get_addons_info``) populated by
+    hassio's own ``ADDONS_COORDINATOR`` on its own refresh cycle — not
+    guaranteed to be populated yet right after a HA restart, even
+    though this integration's manifest already lists ``hassio`` in
+    ``after_dependencies``. That ordering only affects component-level
+    setup, not whether hassio's own config entry has finished its
+    first coordinator refresh by the time our sync runs (issue #128).
+
+    A confirmed-Hassio install with a genuinely empty cache is retried
+    a few times with a short pause before giving up. Deliberately does
+    NOT reach into hassio's private ``ADDONS_COORDINATOR`` hass.data
+    key to force a refresh directly — that's not part of hassio's
+    public API (``get_addons_info`` is, per its ``__all__``;
+    ``is_hassio`` is a separate public helper in
+    ``homeassistant.helpers.hassio``) and could break silently on a
+    future HA release.
+    """
+    try:
+        from homeassistant.helpers.hassio import is_hassio  # noqa: PLC0415
+    except ImportError:
+        return []
+
+    try:
+        if not is_hassio(hass):
+            return []
+    except Exception as err:  # noqa: BLE001 - third-party call, never fatal
+        LOGGER.debug("Could not determine Supervisor availability: %s", err)
+        return []
+
+    for attempt in range(_ADDONS_REFRESH_ATTEMPTS):
+        addons = _extract_addons(hass)
+        if addons:
+            return addons
+        if attempt < _ADDONS_REFRESH_ATTEMPTS - 1:
+            await asyncio.sleep(_ADDONS_REFRESH_DELAY_SECONDS)
+
+    LOGGER.debug(
+        "Supervisor add-ons cache still empty after %d attempts - either a "
+        "genuinely add-on-free install, or hassio's own coordinator hasn't "
+        "finished its first refresh yet (issue #128)",
+        _ADDONS_REFRESH_ATTEMPTS,
+    )
+    return []
 
 
 def _extract_labels(  # noqa: PLR0912 - device-group-aware label union, cohesive
