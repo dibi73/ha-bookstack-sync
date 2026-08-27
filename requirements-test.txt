@@ -3,3 +3,5 @@ pytest-asyncio<2
 pytest-cov
 aioresponses
 pytest-homeassistant-custom-component
+mypy
+types-PyYAML

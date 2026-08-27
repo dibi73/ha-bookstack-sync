@@ -22,8 +22,10 @@ from .export import export as export_run
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant, ServiceCall
 
+    from .coordinator import BookStackSyncCoordinator
 
-def _coordinators(hass: HomeAssistant) -> list:
+
+def _coordinators(hass: HomeAssistant) -> list[BookStackSyncCoordinator]:
     """
     Return all loaded BookStack coordinators across config entries.
 

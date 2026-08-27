@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
@@ -61,6 +61,7 @@ from .const import (
     TAG_VALUE_ORPHANED,
 )
 from .extractor import (
+    ReverseUsageEntry,
     async_extract_backup_status,
     async_extract_energy_config,
     extract_snapshot,
@@ -105,7 +106,7 @@ def _orphaned_tags() -> list[dict[str, str]]:
 
 
 def _hash_from_response(
-    response: dict,
+    response: dict[str, Any],
     fallback_auto_body: str,
 ) -> tuple[str, str]:
     """
@@ -200,7 +201,7 @@ def _device_page(
     device: DeviceSnapshot,
     now: datetime,
     strings: dict[str, str],
-    reverse_usage: dict[str, list] | None = None,
+    reverse_usage: dict[str, list[ReverseUsageEntry]] | None = None,
     ha_url: str = "",
 ) -> _PlannedPage:
     return _PlannedPage(
@@ -1058,7 +1059,7 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
 
 
 def _needs_move(
-    existing: dict,
+    existing: dict[str, Any],
     expected_chapter_id: int | None,
     page_key: str,
 ) -> bool:

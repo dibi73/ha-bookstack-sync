@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.storage import Store
 
@@ -62,7 +62,7 @@ class BookStackSyncStore:
 
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
         """Initialise the per-entry storage handle."""
-        self._store: Store[dict] = Store(
+        self._store: Store[dict[str, Any]] = Store(
             hass,
             STORAGE_VERSION,
             STORAGE_KEY_FMT.format(entry_id=entry_id),

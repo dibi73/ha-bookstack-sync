@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.diagnostics import async_redact_data
+from homeassistant.const import __version__ as ha_core_version
 
 from .const import (
     CONF_BASE_URL,
@@ -59,9 +60,7 @@ async def async_get_config_entry_diagnostics(
         },
         "ha": {
             "language": hass.config.language,
-            "version": (
-                hass.config.api.version if getattr(hass.config, "api", None) else None
-            ),
+            "version": ha_core_version,
         },
         "coordinator": {
             "last_run": last_run,

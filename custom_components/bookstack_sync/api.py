@@ -22,6 +22,7 @@ RETRY_BACKOFF_BASE = 0.5
 # safe to retry: the request either never reached BookStack or BookStack
 # itself dropped the connection before responding.
 _TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
+    TimeoutError,
     aiohttp.ServerDisconnectedError,
     aiohttp.ClientConnectorError,
     aiohttp.ServerTimeoutError,
@@ -269,10 +270,11 @@ class BookStackApiClient:
                     # Don't gate on Content-Length: BookStack uses chunked
                     # transfer encoding, so content_length is None even when
                     # there is a JSON body to parse.
-                    return await response.json()
+                    payload: dict[str, Any] = await response.json()
+                    return payload
             except BookStackApiError:
                 raise
-            except (TimeoutError, *_TRANSIENT_ERRORS) as err:
+            except _TRANSIENT_ERRORS as err:
                 last_err = err
                 remaining = MAX_REQUEST_ATTEMPTS - attempt - 1
                 if remaining > 0:
