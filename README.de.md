@@ -66,6 +66,15 @@ Custom-Integrationen nicht formal validiert:
   - eine Page pro HA-Label
   - Bundle-Pages für Automationen, Skripte, Szenen, Integrationen, Add-ons,
     Netzwerk, Bluetooth, Recorder, Energie, MQTT, Helpers, Backup
+- **Netzwerk-Topologie-Baum ist UniFi-spezifisch**: der ASCII-Baum auf der
+  Netzwerk-Seite (Gateway → Switch → Access Points → Clients) funktioniert
+  nur mit Ubiquiti/UniFi-Hardware über HAs `unifi`-Integration — sowohl die
+  Geräterollen-Erkennung als auch die Switch↔Gateway-/AP↔Switch-Verkabelung
+  stammen aus UniFi-spezifischen Datenfeldern, die andere Hersteller-
+  Integrationen (FritzBox, TP-Link Omada, MikroTik, Cisco Meraki, …) nicht
+  in gleicher Form bereitstellen. Bei anderen Herstellern zeigt die
+  Netzwerk-Seite weiterhin die flache Geräte-Tabelle mit IP/MAC/Verbindung,
+  nur eben ohne Topologie-Baum.
 - **Schutz manueller Inhalte**: jede Page hat zwei Marker-Blöcke –
   `<!-- BEGIN AUTO-GENERATED -->` und `<!-- BEGIN MANUAL -->`. Nur der
   Auto-Block wird vom Sync angefasst. Wenn der Auto-Block manuell editiert
