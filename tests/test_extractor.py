@@ -1249,20 +1249,24 @@ async def test_bluetooth_proxy_radio_not_listed_as_tracked_device(
     network = _extract_bluetooth_network(hass, device_reg, entity_reg)
 
     assert network is not None
-    assert [d.name for d in network.seen] == ["LeosPflanzensenor"]
-    assert network.not_found == []
+    assert [d.name for d in network.devices] == ["LeosPflanzensenor"]
+    assert network.devices[0].is_available is True
 
 
-async def test_bluetooth_unavailable_device_lands_in_not_found(
+async def test_bluetooth_device_availability_and_last_seen(
     hass: HomeAssistant,
 ) -> None:
     """
-    #158: devices with only "unavailable" entities go into `not_found`.
+    #160: devices carry a per-device availability flag + last-seen timestamp.
 
-    Splits BT-tracked devices by current reachability instead of by
-    scanner (proxy attribution isn't derivable from HA's data model at
-    all, see #155's docstring) - a device counts as `not_found` when
-    every one of its entities currently reports `unavailable`.
+    A first design (#158) split devices into "seen"/"not found" by
+    current availability - but "unavailable right now" is the normal
+    state for a passive BLE sensor for a while after any HA restart,
+    not a reliable "this device is gone" signal on its own. Verified
+    live: a routine restart made every tracked device look missing.
+    Replaced with a flat, most-recent-first list carrying both an
+    availability flag and a `last_reported`-derived timestamp, so the
+    reader judges rather than the page asserting "gone".
     """
     entry = MockConfigEntry(domain="esphome", entry_id="entry_esphome", title="ESPHome")
     entry.add_to_hass(hass)
@@ -1302,9 +1306,17 @@ async def test_bluetooth_unavailable_device_lands_in_not_found(
     network = _extract_bluetooth_network(hass, device_reg, entity_reg)
 
     assert network is not None
-    assert [d.name for d in network.seen] == ["LeosPflanzensenor"]
-    assert [d.name for d in network.not_found] == ["XiaomiFuehlerKeller"]
-    assert network.not_found[0].last_seen is not None
+    by_name = {d.name: d for d in network.devices}
+    assert by_name["LeosPflanzensenor"].is_available is True
+    assert by_name["XiaomiFuehlerKeller"].is_available is False
+    # Most recently active first, regardless of current availability -
+    # "XiaomiFuehlerKeller"'s state was written last, so it sorts first
+    # even though it's currently unavailable.
+    assert [d.name for d in network.devices] == [
+        "XiaomiFuehlerKeller",
+        "LeosPflanzensenor",
+    ]
+    assert all(d.last_seen is not None for d in network.devices)
 
 
 async def test_disabled_automation_still_extracted(hass: HomeAssistant) -> None:

@@ -289,24 +289,30 @@ class BluetoothDeviceHeard:
 
     name: str
     address: str  # MAC
-    last_seen: str | None = None  # for `not_found`: since when unavailable
+    is_available: bool
+    last_seen: str | None = None  # most recent activity across its entities
 
 
 @dataclass
 class BluetoothNetwork:
     """
-    Snapshot of all BT-tracked devices, split by current availability.
+    Snapshot of all BT-tracked devices, sorted by most recent activity.
 
     Issue #158: proxy attribution (which ESPHome/BT proxy heard a given
     device) is not derivable from HA's data model at all - see the
     docstring on ``_extract_bluetooth_network`` - so devices are no
-    longer grouped by scanner. Instead this splits on whether the
-    device is currently reachable, which HA already tracks per-entity
-    via availability.
+    longer grouped by scanner. Issue #160: a binary seen/not-found split
+    also doesn't work - "unavailable right now" is the normal state for
+    a passive BLE sensor for anywhere from seconds to tens of minutes
+    after any HA restart (the proxy/integration needs to receive a
+    fresh advertisement again), so it isn't a reliable "this device is
+    actually gone" signal on its own. Presented as one flat list with a
+    per-device availability flag and a last-activity timestamp instead,
+    letting the reader judge - no "should be there but isn't" framing
+    that a routine restart can make look alarmingly wrong.
     """
 
-    seen: list[BluetoothDeviceHeard] = field(default_factory=list)
-    not_found: list[BluetoothDeviceHeard] = field(default_factory=list)
+    devices: list[BluetoothDeviceHeard] = field(default_factory=list)
 
 
 @dataclass
@@ -1470,31 +1476,33 @@ def _device_first_bt_address(device: dr.DeviceEntry) -> str | None:
     return None
 
 
-def _device_bt_availability(
+def _device_bt_status(
     device: dr.DeviceEntry,
     hass: HomeAssistant,
     entity_reg: er.EntityRegistry,
 ) -> tuple[bool, str | None]:
     """
-    Return ``(is_seen, last_changed_iso)`` for a BT-connected device.
+    Return ``(is_available, last_seen_iso)`` for a BT-connected device.
 
-    A device counts as currently seen if at least one of its entities
-    has a real (non-``unavailable``) state. ``last_changed_iso`` is the
-    most recent ``last_changed`` timestamp across its entities — for an
-    unseen device this approximates "since when unreachable", since all
-    its entities are unavailable at that point.
+    A device counts as currently available if at least one of its
+    entities has a real (non-``unavailable``) state. ``last_seen_iso``
+    is the most recent ``last_reported`` timestamp across ALL its
+    entities regardless of current state — ``last_reported`` bumps on
+    every state write, even a repeated value, so it tracks "when did we
+    last hear from this device at all" rather than "when did its value
+    last change".
     """
-    is_seen = False
-    latest_change: datetime | None = None
+    is_available = False
+    latest_report: datetime | None = None
     for entry in entity_reg.entities.get_entries_for_device_id(device.id):
         state = hass.states.get(entry.entity_id)
         if state is None:
             continue
         if state.state != STATE_UNAVAILABLE:
-            is_seen = True
-        if latest_change is None or state.last_changed > latest_change:
-            latest_change = state.last_changed
-    return is_seen, latest_change.isoformat() if latest_change else None
+            is_available = True
+        if latest_report is None or state.last_reported > latest_report:
+            latest_report = state.last_reported
+    return is_available, latest_report.isoformat() if latest_report else None
 
 
 def _extract_bluetooth_network(
@@ -1503,11 +1511,11 @@ def _extract_bluetooth_network(
     entity_reg: er.EntityRegistry,
 ) -> BluetoothNetwork | None:
     """
-    Split all BT-tracked HA devices into currently-seen vs. not-found.
+    List all BT-tracked HA devices, most recently active first.
 
     Returns ``None`` when no Bluetooth-connected device exists.
 
-    Note (issue #155/#158): a ``bt_device`` that itself carries a
+    Note (issue #155): a ``bt_device`` that itself carries a
     ``via_device_id`` is HA's link from a scanner/adapter device to the
     physical host it runs on (e.g. an ESPHome BT-proxy's own radio
     device -> the ESPHome node hosting it, wired up by
@@ -1518,11 +1526,23 @@ def _extract_bluetooth_network(
     peripheral (Xiaomi/Govee/etc. sensors) has ``via_device_id is
     None``. So a ``bt_device`` with ``via_device_id`` set is always a
     scanner's own radio artifact, not a genuine tracked device, and is
-    excluded here. Because no real peripheral is EVER attributable to a
-    specific proxy (a BLE device can be in range of several proxies at
-    once - HA has no single-parent concept for it, unlike WiFi/AP
-    association), this splits by current availability instead of by
-    scanner - see issue #158.
+    excluded here.
+
+    Note (issue #158/#160): proxy attribution (which ESPHome/BT proxy
+    heard a given device) isn't derivable from HA's data model at all
+    - a BLE device can be in range of several proxies at once, HA has
+    no single-parent concept for it, unlike WiFi/AP association. A
+    first redesign (#158) split devices into "seen"/"not found" by
+    current availability instead - but live-verified on production
+    data (#160) that "unavailable right now" is the NORMAL state for a
+    passive BLE sensor for anywhere from seconds to tens of minutes
+    after any HA restart, while the proxy/integration re-establishes
+    and waits for a fresh advertisement - not a reliable "this device
+    is actually gone" signal by itself. A routine restart made the
+    whole page look like every device had vanished. Presented as one
+    flat list instead, with a per-device availability flag and a
+    last-activity timestamp, sorted most-recent-first - lets the
+    reader judge without a binary "should be there but isn't" framing.
     """
     bt_devices: list[dr.DeviceEntry] = [
         d
@@ -1533,25 +1553,29 @@ def _extract_bluetooth_network(
     if not bt_devices:
         return None
 
-    seen: list[BluetoothDeviceHeard] = []
-    not_found: list[BluetoothDeviceHeard] = []
+    devices: list[BluetoothDeviceHeard] = []
     for d in bt_devices:
         display_name = d.name_by_user or d.name or d.id
         address = _device_first_bt_address(d) or "—"
-        is_seen, last_changed = _device_bt_availability(d, hass, entity_reg)
-        entry = BluetoothDeviceHeard(
-            name=display_name,
-            address=address,
-            last_seen=None if is_seen else last_changed,
+        is_available, last_seen = _device_bt_status(d, hass, entity_reg)
+        devices.append(
+            BluetoothDeviceHeard(
+                name=display_name,
+                address=address,
+                is_available=is_available,
+                last_seen=last_seen,
+            ),
         )
-        (seen if is_seen else not_found).append(entry)
 
-    seen.sort(key=lambda d: d.name.lower())
-    not_found.sort(key=lambda d: d.name.lower())
+    # Most recently active first; unknown last_seen (empty string) sorts
+    # last under `reverse=True`. Sort by name first so the reverse-stable
+    # sort breaks ties (equal/missing timestamps) alphabetically.
+    devices.sort(key=lambda d: d.name.lower())
+    devices.sort(key=lambda d: d.last_seen or "", reverse=True)
 
-    if not seen and not not_found:
+    if not devices:
         return None
-    return BluetoothNetwork(seen=seen, not_found=not_found)
+    return BluetoothNetwork(devices=devices)
 
 
 def _extract_services(hass: HomeAssistant, domain: str) -> list[ServiceInfo]:

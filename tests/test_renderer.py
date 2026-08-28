@@ -1241,51 +1241,49 @@ class TestNetworkPage:
 
 
 class TestBluetoothPage:
-    """#158: Bluetooth page splits devices by current availability."""
+    """#160: Bluetooth page is a flat table with availability + last-seen."""
 
-    def test_seen_and_not_found_sections(
+    def test_table_shows_status_and_last_seen(
         self,
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
         network = BluetoothNetwork(
-            seen=[
-                BluetoothDeviceHeard(
-                    name="LeosPflanzensenor", address="5c:85:7e:b0:d6:cb"
-                )
-            ],
-            not_found=[
+            devices=[
                 BluetoothDeviceHeard(
                     name="XiaomiFuehlerKeller",
                     address="aa:bb:cc:dd:ee:ff",
+                    is_available=False,
                     last_seen="2026-08-20T10:00:00+00:00",
+                ),
+                BluetoothDeviceHeard(
+                    name="LeosPflanzensenor",
+                    address="5c:85:7e:b0:d6:cb",
+                    is_available=True,
+                    last_seen="2026-08-28T11:01:09+00:00",
                 ),
             ],
         )
         out = render_bluetooth_auto_block(network, fixed_now, strings_de)
 
-        seen_pos = out.index("## Gesehen (1)")
-        not_found_pos = out.index("## Sollte da sein, aber nicht gefunden (1)")
-        assert seen_pos < not_found_pos
+        assert "## Bluetooth-Geräte (2)" in out
         assert "LeosPflanzensenor" in out
         assert "XiaomiFuehlerKeller" in out
+        assert "erreichbar" in out
+        assert "nicht erreichbar" in out
         assert "2026-08-20T10:00:00+00:00" in out
+        # No binary "should be there but isn't" section headers anymore.
+        assert "## Gesehen" not in out
+        assert "nicht gefunden" not in out
 
-    def test_empty_sections_show_fallback_text(
+    def test_empty_shows_fallback_text(
         self,
         fixed_now: datetime,
         strings_de: dict[str, str],
     ) -> None:
-        network = BluetoothNetwork(
-            seen=[],
-            not_found=[
-                BluetoothDeviceHeard(
-                    name="XiaomiFuehlerKeller", address="aa:bb:cc:dd:ee:ff"
-                ),
-            ],
-        )
+        network = BluetoothNetwork(devices=[])
         out = render_bluetooth_auto_block(network, fixed_now, strings_de)
-        assert "Aktuell keine Geräte erreichbar" in out
+        assert "Keine Bluetooth-Geräte gefunden" in out
 
 
 class TestAreaPageMinimal:

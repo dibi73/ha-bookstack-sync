@@ -37,9 +37,9 @@ Pages are organised into chapters inside your target book:
   triggered etc.
 - **Network** — table of every device with network data, plus a UniFi
   topology tree and a DHCP-reservation export block, when applicable
-- **Bluetooth** — every BT-tracked device split into "Seen" (currently
-  reachable) and "Should be there, but not found" (known devices that
-  have gone unavailable, with a since-when timestamp)
+- **Bluetooth** — table of every BT-tracked device with its current
+  status (reachable / unreachable) and when it was last active, sorted
+  most-recently-active first
 - **Recorder**, **Energy**, **MQTT topics**, **Helpers** — one page
   each, when the corresponding HA feature is configured
 - **Backup** — last successful/attempted backup, plus a table of every
@@ -76,13 +76,16 @@ a scanner/adapter to the physical host it runs on — it never links a
 discovered BLE peripheral to the proxy that heard it. This is
 architectural: a BLE device can be in range of several proxies at
 once, so there's no single-parent concept for it, unlike WiFi/AP
-association. Because of that, the Bluetooth page doesn't group by
-scanner at all — instead it splits every tracked device by current
-availability: **Seen** (at least one entity is reporting a real value
-right now) vs. **Should be there, but not found** (every entity is
-`unavailable`, with a timestamp for how long that's been the case).
-That answers "is device X still around?" even though "which proxy
-heard it?" isn't derivable from HA's data model.
+association. So the Bluetooth page doesn't group by scanner at all —
+just a status (reachable/unreachable) and a last-active timestamp per
+device. An early version of this page instead split devices into a
+binary "seen" vs. "should be there, but not found" — that turned out
+to be actively misleading: a passive BLE sensor is normally
+`unavailable` for anywhere from seconds to tens of minutes after any
+HA restart while its proxy reconnects, which isn't the same as the
+device actually being gone. A routine restart made the whole page
+look like every device had vanished. The plain status + timestamp
+avoids that false alarm and lets you judge for yourself.
 
 ## Why use it
 
