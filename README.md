@@ -71,6 +71,19 @@ still show up correctly everywhere else (their own device page, the
 flat Network table, DHCP export). Reported upstream:
 [home-assistant/core#180499](https://github.com/home-assistant/core/issues/180499).
 
+**UniFi "ghost" clients show up on the Network page with everything
+dashed out.** A UniFi controller remembers every MAC address it has
+ever seen associate — including a guest's phone that connected once, a
+neighbor's device briefly probing your WiFi, or an IoT gadget from
+years ago — and HA creates a device for each one. A client that's
+currently disconnected has no live IP to report (correct, not a bug),
+and many of these incidental entries never had a hostname either, so
+they land on the Network page as an anonymous MAC with nothing else
+filled in. This isn't something the integration can distinguish from
+a real, currently-relevant device — UniFi doesn't expose "this is
+stale network history" as a separate signal, so these rows stay
+visible rather than being silently hidden.
+
 **Bluetooth peripherals can't be attributed to a specific proxy.**
 HA's `via_device_id` for a Bluetooth-connected device only ever links
 a scanner/adapter to the physical host it runs on — it never links a

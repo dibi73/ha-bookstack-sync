@@ -84,6 +84,19 @@ Custom-Integrationen nicht formal validiert:
   lässt. Kabelgebundene Geräte tauchen trotzdem überall sonst korrekt auf
   (eigene Device-Page, flache Netzwerk-Tabelle, DHCP-Export). Upstream
   gemeldet: [home-assistant/core#180499](https://github.com/home-assistant/core/issues/180499).
+- **UniFi-"Karteileichen" tauchen auf der Netzwerk-Seite komplett leer
+  auf**: Ein UniFi-Controller merkt sich jede MAC-Adresse, die je eine
+  Verbindung aufgebaut hat — auch das Handy eines Gasts, das kurz mit
+  eurem WLAN verbunden war, ein Nachbargerät, das kurz reingeprobt hat,
+  oder ein IoT-Gadget von vor Jahren — und HA legt für jede davon ein
+  Gerät an. Ein aktuell getrenntes Gerät hat keine aktuelle IP zu
+  melden (korrekt, kein Bug), und viele dieser Karteileichen hatten nie
+  einen Hostnamen — sie landen deshalb als anonyme MAC-Adresse mit
+  überall leeren Feldern auf der Netzwerk-Seite. Die Integration kann
+  das nicht von einem echten, aktuell relevanten Gerät unterscheiden —
+  UniFi liefert kein Signal wie "das ist nur noch Netzwerk-Historie",
+  deshalb bleiben diese Zeilen sichtbar statt automatisch ausgeblendet
+  zu werden.
 - **Bluetooth-Peripheriegeräte lassen sich keinem bestimmten Proxy
   zuordnen**: HAs `via_device_id` bei einem Bluetooth-verbundenen Gerät
   verknüpft ausschließlich einen Scanner/Adapter mit seinem physischen
