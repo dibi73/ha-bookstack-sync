@@ -1278,17 +1278,36 @@ def render_bluetooth_auto_block(
     network: BluetoothNetwork,
     now: datetime,
     strings: dict[str, str],
+    ha_url: str = "",
 ) -> str:
-    """Render the AUTO block of the standalone Bluetooth page (#32/#160)."""
-    lines: list[str] = [
-        _format_attribution(strings, now),
-        "",
-        "## "
-        + strings["section_bluetooth_count_template"].format(
-            count=len(network.devices)
-        ),
-        "",
-    ]
+    """Render the AUTO block of the standalone Bluetooth page (#32/#162)."""
+    lines: list[str] = [_format_attribution(strings, now), ""]
+
+    if network.proxies:
+        lines.extend(
+            [
+                "## "
+                + strings["section_bluetooth_proxies_count_template"].format(
+                    count=len(network.proxies),
+                ),
+                "",
+            ],
+        )
+        for proxy in network.proxies:
+            url = _ha_url_for(ha_url, "device", proxy.device_id)
+            label = f"[{proxy.name}]({url})" if url else f"**{proxy.name}**"
+            lines.append(f"- {label}")
+        lines.append("")
+
+    lines.extend(
+        [
+            "## "
+            + strings["section_bluetooth_count_template"].format(
+                count=len(network.devices),
+            ),
+            "",
+        ],
+    )
 
     if not network.devices:
         lines.append(strings["empty_bluetooth"])

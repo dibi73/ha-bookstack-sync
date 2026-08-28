@@ -22,6 +22,7 @@ from custom_components.bookstack_sync.extractor import (
     BackupStatusSnapshot,
     BluetoothDeviceHeard,
     BluetoothNetwork,
+    BluetoothProxy,
     DeviceIntegrationRef,
     DeviceSnapshot,
     EntitySnapshot,
@@ -1284,6 +1285,54 @@ class TestBluetoothPage:
         network = BluetoothNetwork(devices=[])
         out = render_bluetooth_auto_block(network, fixed_now, strings_de)
         assert "Keine Bluetooth-Geräte gefunden" in out
+
+    def test_proxies_section_lists_hosts(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """
+        #162: excluding scanner artifacts from `devices` (needed since
+        #155) made every BT proxy disappear from the page entirely -
+        `proxies` lists each one's host identity separately.
+        """
+        network = BluetoothNetwork(
+            devices=[
+                BluetoothDeviceHeard(
+                    name="LeosPflanzensenor",
+                    address="5c:85:7e:b0:d6:cb",
+                    is_available=True,
+                    last_seen="2026-08-28T11:01:09+00:00",
+                ),
+            ],
+            proxies=[BluetoothProxy(name="esp-btgw-badeg", device_id="dev123")],
+        )
+        out = render_bluetooth_auto_block(
+            network,
+            fixed_now,
+            strings_de,
+            ha_url="http://ha.local:8123",
+        )
+
+        proxies_pos = out.index("## Bluetooth-Proxies (1)")
+        devices_pos = out.index("## Bluetooth-Geräte (1)")
+        assert proxies_pos < devices_pos
+        assert (
+            "[esp-btgw-badeg](http://ha.local:8123/config/devices/device/dev123)" in out
+        )
+
+    def test_proxy_without_ha_url_falls_back_to_bold(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        network = BluetoothNetwork(
+            devices=[],
+            proxies=[BluetoothProxy(name="esp-btgw-badeg", device_id="dev123")],
+        )
+        out = render_bluetooth_auto_block(network, fixed_now, strings_de)
+        assert "**esp-btgw-badeg**" in out
+        assert "http" not in out
 
 
 class TestAreaPageMinimal:

@@ -37,7 +37,8 @@ Pages are organised into chapters inside your target book:
   triggered etc.
 - **Network** — table of every device with network data, plus a UniFi
   topology tree and a DHCP-reservation export block, when applicable
-- **Bluetooth** — table of every BT-tracked device with its current
+- **Bluetooth** — the list of BT proxies (ESPHome BT-proxy nodes and
+  similar), plus a table of every BT-tracked device with its current
   status (reachable / unreachable) and when it was last active, sorted
   most-recently-active first
 - **Recorder**, **Energy**, **MQTT topics**, **Helpers** — one page
@@ -76,9 +77,11 @@ a scanner/adapter to the physical host it runs on — it never links a
 discovered BLE peripheral to the proxy that heard it. This is
 architectural: a BLE device can be in range of several proxies at
 once, so there's no single-parent concept for it, unlike WiFi/AP
-association. So the Bluetooth page doesn't group by scanner at all —
+association. So the Bluetooth page lists proxies and tracked devices
+separately: a "Bluetooth proxies" section naming every BT-proxy host
+(so you can at least see which proxies exist), and a device table with
 just a status (reachable/unreachable) and a last-active timestamp per
-device. An early version of this page instead split devices into a
+device — no attempt to say which proxy heard which device. An early version of this page instead split devices into a
 binary "seen" vs. "should be there, but not found" — that turned out
 to be actively misleading: a passive BLE sensor is normally
 `unavailable` for anywhere from seconds to tens of minutes after any

@@ -91,9 +91,13 @@ Custom-Integrationen nicht formal validiert:
   es gehört hat. Das ist architekturbedingt: Ein BLE-Gerät kann von
   mehreren Proxies gleichzeitig empfangen werden, es gibt also anders
   als bei WLAN/AP-Zuordnung kein Eltern-Kind-Konzept dafür. Die
-  Bluetooth-Seite gruppiert deshalb gar nicht nach Scanner, sondern
-  zeigt nur Status (erreichbar/nicht erreichbar) und Zeitstempel der
-  letzten Aktivität pro Gerät. Eine frühere Version dieser Seite
+  Bluetooth-Seite listet Proxies und getrackte Geräte deshalb getrennt:
+  ein Abschnitt "Bluetooth-Proxies" nennt jeden BT-Proxy-Host (damit
+  zumindest sichtbar bleibt, welche Proxies existieren), und eine
+  Geräte-Tabelle zeigt nur Status (erreichbar/nicht erreichbar) und
+  Zeitstempel der letzten Aktivität pro Gerät — ohne den Versuch zu
+  sagen, welcher Proxy welches Gerät gehört hat. Eine frühere Version
+  dieser Seite
   teilte stattdessen binär in "Gesehen" vs. "Sollte da sein, aber
   nicht gefunden" auf — das erwies sich als aktiv irreführend: ein
   passiver BLE-Sensor ist nach jedem HA-Neustart normalerweise für

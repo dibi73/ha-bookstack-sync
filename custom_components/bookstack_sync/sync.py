@@ -302,6 +302,7 @@ def _plan_pages(
                     snapshot.bluetooth,
                     now,
                     strings,
+                    ha_url=ha_url,
                 ),
             ),
         )
