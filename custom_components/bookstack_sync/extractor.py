@@ -445,6 +445,8 @@ def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]
     by_identifier: dict[tuple[str, str], list[str]] = {}
     by_connection: dict[tuple[str, str], list[str]] = {}
     by_tuya_value: dict[str, list[str]] = {}
+    # Whole-registry scan (#146): no per-ID/identifier lookup applies here,
+    # and HA has no dedicated bulk-enumeration helper - .values() is fine.
     for device in device_reg.devices.values():
         find(device.id)  # ensure every device has a parent entry
         for identifier in device.identifiers:
@@ -855,6 +857,8 @@ def _extract_integrations(
     entity_reg: er.EntityRegistry,
 ) -> list[IntegrationSnapshot]:
     devices_per_entry: dict[str, int] = {}
+    # Whole-registry scan (#146) - see _compute_device_groups for why
+    # .values() stays (no per-ID lookup applies, no bulk-enum helper exists).
     for device in device_reg.devices.values():
         # device_reg's devices iterate the raw HA registry here (not our
         # filtered DeviceSnapshots), so the values are still entry_id strings.
@@ -1417,6 +1421,8 @@ def _extract_unifi_topology(
     installed or only clients tracked).
     """
     nodes: dict[str, UnifiInfraNode] = {}
+    # Whole-registry scan (#146) - see _compute_device_groups for why
+    # .values() stays (no per-ID lookup applies, no bulk-enum helper exists).
     for device in device_reg.devices.values():
         if device.manufacturer not in _UNIFI_MANUFACTURERS:
             continue
@@ -1570,6 +1576,8 @@ def _extract_bluetooth_network(
     proxies`` - just the proxy's identity, not what it hears (still
     not derivable).
     """
+    # Whole-registry scan (#146) - see _compute_device_groups for why
+    # .values() stays (no per-ID lookup applies, no bulk-enum helper exists).
     all_bt_devices = [
         d
         for d in device_reg.devices.values()
