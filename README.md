@@ -68,6 +68,18 @@ itself, not something this integration can work around. Wired devices
 still show up correctly everywhere else (their own device page, the
 flat Network table, DHCP export).
 
+**Bluetooth peripherals can't be attributed to a specific proxy
+either.** The Bluetooth tree groups scanners (local HA adapter +
+ESPHome BT proxies) and the devices each one hears, but HA's
+`via_device_id` for a Bluetooth-connected device only ever links a
+scanner/adapter to the physical host it runs on — it never links a
+discovered BLE peripheral to the proxy that heard it. This is
+architectural: a BLE device can be in range of several proxies at
+once, so there's no single-parent concept for it, unlike WiFi/AP
+association. As a result, every real peripheral (sensors, beacons,
+etc.) is listed under "local", regardless of which ESPHome proxy
+actually detected it.
+
 ## Why use it
 
 - **Self-documenting smart home**. Every device, area, automation
