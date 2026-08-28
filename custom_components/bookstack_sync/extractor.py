@@ -551,15 +551,15 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         # only useful devices land in the wiki. A group counts as named as
         # long as at least one member has a name — an unnamed sibling
         # doesn't hide an otherwise-documented physical device.
-        named_members = [
-            (member_id, device_reg.devices[member_id], name)
+        member_entries = [
+            (member_id, entry)
             for member_id in members
-            if (
-                name := (
-                    device_reg.devices[member_id].name_by_user
-                    or device_reg.devices[member_id].name
-                )
-            )
+            if (entry := device_reg.async_get(member_id)) is not None
+        ]
+        named_members = [
+            (member_id, entry, name)
+            for member_id, entry in member_entries
+            if (name := (entry.name_by_user or entry.name))
         ]
         if not named_members:
             continue
