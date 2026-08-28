@@ -83,6 +83,18 @@ Custom-Integrationen nicht formal validiert:
   Datenlücke in HAs `unifi`-Integration selbst, die sich nicht umgehen
   lässt. Kabelgebundene Geräte tauchen trotzdem überall sonst korrekt auf
   (eigene Device-Page, flache Netzwerk-Tabelle, DHCP-Export).
+- **Bluetooth-Peripheriegeräte lassen sich ebenfalls keinem bestimmten
+  Proxy zuordnen**: Der Bluetooth-Baum gruppiert Scanner (lokaler
+  HA-Adapter + ESPHome-BT-Proxies) und die von ihnen gehörten Geräte —
+  HAs `via_device_id` bei einem Bluetooth-verbundenen Gerät verknüpft
+  aber ausschließlich einen Scanner/Adapter mit seinem physischen Host,
+  niemals ein entdecktes BLE-Peripheriegerät mit dem Proxy, der es
+  gehört hat. Das ist architekturbedingt: Ein BLE-Gerät kann von
+  mehreren Proxies gleichzeitig empfangen werden, es gibt also anders
+  als bei WLAN/AP-Zuordnung kein Eltern-Kind-Konzept dafür. Deshalb
+  erscheint jedes echte Peripheriegerät (Sensoren, Beacons etc.)
+  unter "local", unabhängig davon, welcher ESPHome-Proxy es tatsächlich
+  erkannt hat.
 - **Schutz manueller Inhalte**: jede Page hat zwei Marker-Blöcke –
   `<!-- BEGIN AUTO-GENERATED -->` und `<!-- BEGIN MANUAL -->`. Nur der
   Auto-Block wird vom Sync angefasst. Wenn der Auto-Block manuell editiert

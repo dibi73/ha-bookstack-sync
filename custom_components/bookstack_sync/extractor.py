@@ -1496,6 +1496,24 @@ def _extract_bluetooth_network(
     Group BT-tracked HA devices by the proxy / scanner that heard them.
 
     Returns ``None`` when no Bluetooth-connected device exists.
+
+    Note (issue #155): a ``bt_device`` that itself carries a
+    ``via_device_id`` is HA's link from a scanner/adapter device to the
+    physical host it runs on (e.g. an ESPHome BT-proxy's own radio
+    device -> the ESPHome node hosting it, wired up by
+    ``homeassistant.components.bluetooth``/``esphome`` - verified live
+    against HA core's source and against this repo's own production
+    Bluetooth setup). It is NEVER used to link a discovered BLE
+    peripheral to the proxy that heard it - checked live, every real
+    peripheral (Xiaomi/Govee/etc. sensors) has ``via_device_id is
+    None``. So a ``bt_device`` with ``via_device_id`` set is always the
+    proxy's own radio artifact, not a genuine "heard" device - counting
+    it as one duplicated the proxy under its own header. Because no
+    real peripheral is EVER attributable to a specific proxy this way
+    (a BLE device can be in range of several proxies at once - HA has
+    no single-parent concept for it, unlike WiFi/AP association), every
+    genuine peripheral shows up under "local" instead; documented as a
+    known limitation in the READMEs, not something fixable here.
     """
     bt_devices: list[dr.DeviceEntry] = [
         d
@@ -1508,14 +1526,16 @@ def _extract_bluetooth_network(
     # device_id → proxy device (None = local HA adapter)
     by_proxy: dict[str | None, list[dr.DeviceEntry]] = {}
     for d in bt_devices:
-        proxy_id = d.via_device_id or None
-        # Skip proxies themselves from the heard-list.
-        by_proxy.setdefault(proxy_id, []).append(d)
+        if d.via_device_id:
+            continue  # scanner-to-host artifact, not a heard device
+        by_proxy.setdefault(None, []).append(d)
 
     # Build BluetoothScanner entries.
     scanners: list[BluetoothScanner] = []
 
     for proxy_id, heard in by_proxy.items():
+        if not heard:
+            continue
         if proxy_id is None:
             scanner = BluetoothScanner(name="local", is_proxy=False)
         else:

@@ -29,6 +29,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.bookstack_sync.extractor import (
     _classify_unifi_role,
     _compute_device_groups,
+    _extract_bluetooth_network,
     _parse_energy_payload,
     async_extract_addons,
     async_extract_backup_status,
@@ -1193,6 +1194,59 @@ async def test_topology_uses_uplink_mac_sensor_when_via_device_id_is_unset(
     assert topo.root_device_ids == [gateway.id]
     assert switch.id in topo.nodes[gateway.id].child_device_ids
     assert ap.id in topo.nodes[switch.id].child_device_ids
+
+
+async def test_bluetooth_proxy_radio_not_listed_as_its_own_heard_device(
+    hass: HomeAssistant,
+) -> None:
+    """
+    #155: a BT-proxy's own radio device must not appear as a "heard" device.
+
+    Live-verified real-world shape: an ESPHome node ("esp-btgw-badeg",
+    WiFi MAC, no Bluetooth connection at all) hosts a *separate* HA
+    device for its Bluetooth radio (own BT MAC, ``via_device_id``
+    pointing back to the ESPHome node) - that's HA's scanner-to-host
+    link, wired up by ``homeassistant.components.bluetooth``/
+    ``esphome``, never a "this proxy heard this peripheral" link (no
+    real peripheral ever carries ``via_device_id``, checked live).
+    Before the fix, the radio device was treated as a device the
+    (nonexistent) "proxy" had heard, duplicating the ESPHome node's own
+    name under itself with nothing to distinguish it from the real
+    peripherals list.
+    """
+    entry = MockConfigEntry(domain="esphome", entry_id="entry_esphome", title="ESPHome")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    esphome_node = device_reg.async_get_or_create(
+        config_entry_id="entry_esphome",
+        identifiers={("esphome", "esp-btgw-badeg")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "90:15:06:db:33:d0")},
+        name="esp-btgw-badeg",
+    )
+    device_reg.async_get_or_create(
+        config_entry_id="entry_esphome",
+        identifiers={("bluetooth", "90:15:06:db:33:d2")},
+        connections={(dr.CONNECTION_BLUETOOTH, "90:15:06:db:33:d2")},
+        name="esp-btgw-badeg",
+        via_device_id=esphome_node.id,
+    )
+    device_reg.async_get_or_create(
+        config_entry_id="entry_esphome",
+        identifiers={("bluetooth", "5c:85:7e:b0:d6:cb")},
+        connections={(dr.CONNECTION_BLUETOOTH, "5c:85:7e:b0:d6:cb")},
+        name="LeosPflanzensenor",
+    )
+
+    network = _extract_bluetooth_network(device_reg)
+
+    assert network is not None
+    assert len(network.scanners) == 1
+    local = network.scanners[0]
+    assert local.is_proxy is False
+    heard_names = {d.name for d in local.devices_heard}
+    assert heard_names == {"LeosPflanzensenor"}
+    assert len(local.devices_heard) == 1
 
 
 async def test_disabled_automation_still_extracted(hass: HomeAssistant) -> None:
