@@ -1279,34 +1279,50 @@ def render_bluetooth_auto_block(
     now: datetime,
     strings: dict[str, str],
 ) -> str:
-    """Render the AUTO block of the standalone Bluetooth page (#32)."""
-    lines: list[str] = [
-        _format_attribution(strings, now),
-        "",
-        "## "
-        + strings["section_bluetooth_count_template"].format(
-            count=len(network.scanners),
-        ),
-        "",
-    ]
-    if not network.scanners:
+    """Render the AUTO block of the standalone Bluetooth page (#32/#158)."""
+    lines: list[str] = [_format_attribution(strings, now), ""]
+
+    if not network.seen and not network.not_found:
         lines.append(strings["empty_bluetooth"])
         return "\n".join(lines).rstrip() + "\n"
 
-    lines.append("```")
-    for s_idx, scanner in enumerate(network.scanners):
-        if s_idx > 0:
-            lines.append("")
-        if scanner.is_proxy:
-            header = strings["bt_proxy_label_template"].format(name=scanner.name)
-        else:
-            header = strings["bt_local_label"]
-        lines.append(header)
-        for d_idx, dev in enumerate(scanner.devices_heard):
-            last = d_idx == len(scanner.devices_heard) - 1
-            branch = "└──" if last else "├──"
-            lines.append(f"{branch} {dev.name} (`{dev.address}`)")
-    lines.append("```")
+    lines.extend(
+        [
+            "## "
+            + strings["section_bluetooth_seen_count_template"].format(
+                count=len(network.seen),
+            ),
+            "",
+        ],
+    )
+    if network.seen:
+        lines.extend(f"- {dev.name} (`{dev.address}`)" for dev in network.seen)
+    else:
+        lines.append(strings["empty_bluetooth_seen"])
+
+    lines.extend(
+        [
+            "",
+            "## "
+            + strings["section_bluetooth_not_found_count_template"].format(
+                count=len(network.not_found),
+            ),
+            "",
+        ],
+    )
+    if network.not_found:
+        lines.extend(
+            f"- {dev.name} (`{dev.address}`)"
+            + (
+                strings["bt_last_seen_template"].format(when=dev.last_seen)
+                if dev.last_seen
+                else ""
+            )
+            for dev in network.not_found
+        )
+    else:
+        lines.append(strings["empty_bluetooth_not_found"])
+
     return "\n".join(lines).rstrip() + "\n"
 
 

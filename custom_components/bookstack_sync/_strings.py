@@ -147,10 +147,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "network_col_ap_switch": "AP / Switch-Port",
         "network_col_oui": "Hersteller (OUI)",
         "empty_network": "_Keine Geräte mit Netzwerkdaten gefunden._",
-        "section_bluetooth_count_template": "Bluetooth-Scanner ({count})",
-        "bt_local_label": "HA-Host (lokaler BT-Adapter)",
-        "bt_proxy_label_template": "ESPHome-Proxy: {name}",
-        "empty_bluetooth": "_Keine Bluetooth-Scanner / -Proxies gefunden._",
+        "section_bluetooth_seen_count_template": "Gesehen ({count})",
+        "section_bluetooth_not_found_count_template": (
+            "Sollte da sein, aber nicht gefunden ({count})"
+        ),
+        "empty_bluetooth": "_Keine Bluetooth-Geräte gefunden._",
+        "empty_bluetooth_seen": "_Aktuell keine Geräte erreichbar._",
+        "empty_bluetooth_not_found": "_Alle bekannten Geräte sind erreichbar._",
+        "bt_last_seen_template": " — seit {when} nicht mehr erreichbar",
         # Stats list labels (Übersicht)
         "stat_areas": "Räume",
         "stat_devices": "Geräte",
@@ -374,10 +378,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "network_col_ap_switch": "AP / Switch port",
         "network_col_oui": "Manufacturer (OUI)",
         "empty_network": "_No devices with network data found._",
-        "section_bluetooth_count_template": "Bluetooth scanners ({count})",
-        "bt_local_label": "HA host (local BT adapter)",
-        "bt_proxy_label_template": "ESPHome proxy: {name}",
-        "empty_bluetooth": "_No Bluetooth scanners / proxies found._",
+        "section_bluetooth_seen_count_template": "Seen ({count})",
+        "section_bluetooth_not_found_count_template": (
+            "Should be there, but not found ({count})"
+        ),
+        "empty_bluetooth": "_No Bluetooth devices found._",
+        "empty_bluetooth_seen": "_No devices currently reachable._",
+        "empty_bluetooth_not_found": "_All known devices are reachable._",
+        "bt_last_seen_template": " — unreachable since {when}",
         "stat_areas": "Areas",
         "stat_devices": "Devices",
         "stat_entities": "Entities",

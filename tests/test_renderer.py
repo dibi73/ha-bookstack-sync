@@ -20,6 +20,8 @@ from custom_components.bookstack_sync.extractor import (
     BackupAgentEntry,
     BackupEntry,
     BackupStatusSnapshot,
+    BluetoothDeviceHeard,
+    BluetoothNetwork,
     DeviceIntegrationRef,
     DeviceSnapshot,
     EntitySnapshot,
@@ -41,6 +43,7 @@ from custom_components.bookstack_sync.renderer import (
     render_area_auto_block,
     render_automations_auto_block,
     render_backup_auto_block,
+    render_bluetooth_auto_block,
     render_device_auto_block,
     render_helpers_auto_block,
     render_integrations_auto_block,
@@ -1235,6 +1238,54 @@ class TestNetworkPage:
         assert gateway_line.startswith("Gateway:")
         assert switch_line.startswith("└── Switch:")
         assert ap_line.startswith("    └── AP:")
+
+
+class TestBluetoothPage:
+    """#158: Bluetooth page splits devices by current availability."""
+
+    def test_seen_and_not_found_sections(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        network = BluetoothNetwork(
+            seen=[
+                BluetoothDeviceHeard(
+                    name="LeosPflanzensenor", address="5c:85:7e:b0:d6:cb"
+                )
+            ],
+            not_found=[
+                BluetoothDeviceHeard(
+                    name="XiaomiFuehlerKeller",
+                    address="aa:bb:cc:dd:ee:ff",
+                    last_seen="2026-08-20T10:00:00+00:00",
+                ),
+            ],
+        )
+        out = render_bluetooth_auto_block(network, fixed_now, strings_de)
+
+        seen_pos = out.index("## Gesehen (1)")
+        not_found_pos = out.index("## Sollte da sein, aber nicht gefunden (1)")
+        assert seen_pos < not_found_pos
+        assert "LeosPflanzensenor" in out
+        assert "XiaomiFuehlerKeller" in out
+        assert "2026-08-20T10:00:00+00:00" in out
+
+    def test_empty_sections_show_fallback_text(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        network = BluetoothNetwork(
+            seen=[],
+            not_found=[
+                BluetoothDeviceHeard(
+                    name="XiaomiFuehlerKeller", address="aa:bb:cc:dd:ee:ff"
+                ),
+            ],
+        )
+        out = render_bluetooth_auto_block(network, fixed_now, strings_de)
+        assert "Aktuell keine Geräte erreichbar" in out
 
 
 class TestAreaPageMinimal:

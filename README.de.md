@@ -54,7 +54,7 @@ Custom-Integrationen nicht formal validiert:
 ## Funktionsumfang
 
 - **Daten aus HA**: Areas, Devices, Entities, Automationen, Skripte, Szenen,
-  Integrationen, Add-ons, Netzwerk-/Bluetooth-Topologie, Recorder- und
+  Integrationen, Add-ons, Netzwerk-Topologie, Bluetooth-Erreichbarkeit, Recorder- und
   Energie-Konfiguration, MQTT-Topics, Helpers und Backups werden über die
   HA-Registries und HAs eigene Manager-APIs gelesen.
 - **Pages in BookStack**:
@@ -84,18 +84,20 @@ Custom-Integrationen nicht formal validiert:
   lässt. Kabelgebundene Geräte tauchen trotzdem überall sonst korrekt auf
   (eigene Device-Page, flache Netzwerk-Tabelle, DHCP-Export). Upstream
   gemeldet: [home-assistant/core#180499](https://github.com/home-assistant/core/issues/180499).
-- **Bluetooth-Peripheriegeräte lassen sich ebenfalls keinem bestimmten
-  Proxy zuordnen**: Der Bluetooth-Baum gruppiert Scanner (lokaler
-  HA-Adapter + ESPHome-BT-Proxies) und die von ihnen gehörten Geräte —
-  HAs `via_device_id` bei einem Bluetooth-verbundenen Gerät verknüpft
-  aber ausschließlich einen Scanner/Adapter mit seinem physischen Host,
-  niemals ein entdecktes BLE-Peripheriegerät mit dem Proxy, der es
-  gehört hat. Das ist architekturbedingt: Ein BLE-Gerät kann von
+- **Bluetooth-Peripheriegeräte lassen sich keinem bestimmten Proxy
+  zuordnen**: HAs `via_device_id` bei einem Bluetooth-verbundenen Gerät
+  verknüpft ausschließlich einen Scanner/Adapter mit seinem physischen
+  Host, niemals ein entdecktes BLE-Peripheriegerät mit dem Proxy, der
+  es gehört hat. Das ist architekturbedingt: Ein BLE-Gerät kann von
   mehreren Proxies gleichzeitig empfangen werden, es gibt also anders
   als bei WLAN/AP-Zuordnung kein Eltern-Kind-Konzept dafür. Deshalb
-  erscheint jedes echte Peripheriegerät (Sensoren, Beacons etc.)
-  unter "local", unabhängig davon, welcher ESPHome-Proxy es tatsächlich
-  erkannt hat.
+  gruppiert die Bluetooth-Seite gar nicht mehr nach Scanner, sondern
+  teilt jedes bekannte Gerät nach aktueller Erreichbarkeit auf:
+  **Gesehen** (mindestens eine Entity meldet gerade einen echten Wert)
+  vs. **Sollte da sein, aber nicht gefunden** (alle Entities stehen
+  auf `unavailable`, mit Zeitstempel seit wann). Das beantwortet
+  "ist Gerät X noch da?", auch wenn "welcher Proxy hat es gehört?"
+  aus HAs Datenmodell nicht ableitbar ist.
 - **Schutz manueller Inhalte**: jede Page hat zwei Marker-Blöcke –
   `<!-- BEGIN AUTO-GENERATED -->` und `<!-- BEGIN MANUAL -->`. Nur der
   Auto-Block wird vom Sync angefasst. Wenn der Auto-Block manuell editiert

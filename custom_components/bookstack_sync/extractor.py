@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.helpers import (
     area_registry as ar,
 )
@@ -284,27 +285,28 @@ class UnifiTopology:
 
 @dataclass
 class BluetoothDeviceHeard:
-    """One BT device heard by a scanner."""
+    """One HA-registered BT-connected device."""
 
     name: str
     address: str  # MAC
-    last_seen: str | None = None
-
-
-@dataclass
-class BluetoothScanner:
-    """One BT scanner — HA's local adapter or an ESPHome proxy."""
-
-    name: str
-    is_proxy: bool  # False = HA-host's own BT adapter
-    devices_heard: list[BluetoothDeviceHeard] = field(default_factory=list)
+    last_seen: str | None = None  # for `not_found`: since when unavailable
 
 
 @dataclass
 class BluetoothNetwork:
-    """Snapshot of all BT scanners + the BT devices each heard."""
+    """
+    Snapshot of all BT-tracked devices, split by current availability.
 
-    scanners: list[BluetoothScanner] = field(default_factory=list)
+    Issue #158: proxy attribution (which ESPHome/BT proxy heard a given
+    device) is not derivable from HA's data model at all - see the
+    docstring on ``_extract_bluetooth_network`` - so devices are no
+    longer grouped by scanner. Instead this splits on whether the
+    device is currently reachable, which HA already tracks per-entity
+    via availability.
+    """
+
+    seen: list[BluetoothDeviceHeard] = field(default_factory=list)
+    not_found: list[BluetoothDeviceHeard] = field(default_factory=list)
 
 
 @dataclass
@@ -668,7 +670,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     snapshot.unifi_topology = _extract_unifi_topology(
         hass, device_reg, entity_reg, snapshot
     )
-    snapshot.bluetooth = _extract_bluetooth_network(device_reg)
+    snapshot.bluetooth = _extract_bluetooth_network(hass, device_reg, entity_reg)
     snapshot.notify_services = _extract_services(hass, "notify")
     snapshot.tts_services = _extract_services(hass, "tts")
     snapshot.recorder = _extract_recorder_config(hass)
@@ -1468,36 +1470,44 @@ def _device_first_bt_address(device: dr.DeviceEntry) -> str | None:
     return None
 
 
-def _is_bt_proxy_device(device: dr.DeviceEntry) -> bool:
+def _device_bt_availability(
+    device: dr.DeviceEntry,
+    hass: HomeAssistant,
+    entity_reg: er.EntityRegistry,
+) -> tuple[bool, str | None]:
     """
-    Heuristic: ESPHome devices with bluetooth_proxy entities act as proxies.
+    Return ``(is_seen, last_changed_iso)`` for a BT-connected device.
 
-    ESPHome's BT-proxy support exposes the underlying BT adapter as a
-    HA device that other BLE devices link to via ``via_device_id``. We
-    detect proxies by:
-    - manufacturer mention "ESPHome"
-    - or model containing "bluetooth proxy" / "ble proxy"
-    - or any HA device with at least one ``via_device_id`` pointing here
-      AND that pointer-device has CONNECTION_BLUETOOTH (i.e. children
-      are BT devices)
-    The third heuristic is left to caller — it has the registry to walk.
+    A device counts as currently seen if at least one of its entities
+    has a real (non-``unavailable``) state. ``last_changed_iso`` is the
+    most recent ``last_changed`` timestamp across its entities — for an
+    unseen device this approximates "since when unreachable", since all
+    its entities are unavailable at that point.
     """
-    manuf = (device.manufacturer or "").lower()
-    model = (device.model or "").lower()
-    if "esphome" in manuf:
-        return True
-    return "bluetooth proxy" in model or "ble proxy" in model
+    is_seen = False
+    latest_change: datetime | None = None
+    for entry in entity_reg.entities.get_entries_for_device_id(device.id):
+        state = hass.states.get(entry.entity_id)
+        if state is None:
+            continue
+        if state.state != STATE_UNAVAILABLE:
+            is_seen = True
+        if latest_change is None or state.last_changed > latest_change:
+            latest_change = state.last_changed
+    return is_seen, latest_change.isoformat() if latest_change else None
 
 
 def _extract_bluetooth_network(
+    hass: HomeAssistant,
     device_reg: dr.DeviceRegistry,
+    entity_reg: er.EntityRegistry,
 ) -> BluetoothNetwork | None:
     """
-    Group BT-tracked HA devices by the proxy / scanner that heard them.
+    Split all BT-tracked HA devices into currently-seen vs. not-found.
 
     Returns ``None`` when no Bluetooth-connected device exists.
 
-    Note (issue #155): a ``bt_device`` that itself carries a
+    Note (issue #155/#158): a ``bt_device`` that itself carries a
     ``via_device_id`` is HA's link from a scanner/adapter device to the
     physical host it runs on (e.g. an ESPHome BT-proxy's own radio
     device -> the ESPHome node hosting it, wired up by
@@ -1506,68 +1516,42 @@ def _extract_bluetooth_network(
     Bluetooth setup). It is NEVER used to link a discovered BLE
     peripheral to the proxy that heard it - checked live, every real
     peripheral (Xiaomi/Govee/etc. sensors) has ``via_device_id is
-    None``. So a ``bt_device`` with ``via_device_id`` set is always the
-    proxy's own radio artifact, not a genuine "heard" device - counting
-    it as one duplicated the proxy under its own header. Because no
-    real peripheral is EVER attributable to a specific proxy this way
-    (a BLE device can be in range of several proxies at once - HA has
-    no single-parent concept for it, unlike WiFi/AP association), every
-    genuine peripheral shows up under "local" instead; documented as a
-    known limitation in the READMEs, not something fixable here.
+    None``. So a ``bt_device`` with ``via_device_id`` set is always a
+    scanner's own radio artifact, not a genuine tracked device, and is
+    excluded here. Because no real peripheral is EVER attributable to a
+    specific proxy (a BLE device can be in range of several proxies at
+    once - HA has no single-parent concept for it, unlike WiFi/AP
+    association), this splits by current availability instead of by
+    scanner - see issue #158.
     """
     bt_devices: list[dr.DeviceEntry] = [
         d
         for d in device_reg.devices.values()
         if any(c[0] == dr.CONNECTION_BLUETOOTH for c in d.connections)
+        and not d.via_device_id  # scanner-to-host artifact, not tracked
     ]
     if not bt_devices:
         return None
 
-    # device_id → proxy device (None = local HA adapter)
-    by_proxy: dict[str | None, list[dr.DeviceEntry]] = {}
+    seen: list[BluetoothDeviceHeard] = []
+    not_found: list[BluetoothDeviceHeard] = []
     for d in bt_devices:
-        if d.via_device_id:
-            continue  # scanner-to-host artifact, not a heard device
-        by_proxy.setdefault(None, []).append(d)
+        display_name = d.name_by_user or d.name or d.id
+        address = _device_first_bt_address(d) or "—"
+        is_seen, last_changed = _device_bt_availability(d, hass, entity_reg)
+        entry = BluetoothDeviceHeard(
+            name=display_name,
+            address=address,
+            last_seen=None if is_seen else last_changed,
+        )
+        (seen if is_seen else not_found).append(entry)
 
-    # Build BluetoothScanner entries.
-    scanners: list[BluetoothScanner] = []
+    seen.sort(key=lambda d: d.name.lower())
+    not_found.sort(key=lambda d: d.name.lower())
 
-    for proxy_id, heard in by_proxy.items():
-        if not heard:
-            continue
-        if proxy_id is None:
-            scanner = BluetoothScanner(name="local", is_proxy=False)
-        else:
-            proxy_device = device_reg.async_get(proxy_id)
-            if proxy_device is None:
-                continue
-            scanner = BluetoothScanner(
-                name=(
-                    proxy_device.name_by_user
-                    or proxy_device.name
-                    or proxy_device.model
-                    or proxy_id
-                ),
-                is_proxy=True,
-            )
-        for hd in sorted(heard, key=lambda d: (d.name or d.id).lower()):
-            display_name = hd.name_by_user or hd.name or hd.id
-            address = _device_first_bt_address(hd) or "—"
-            scanner.devices_heard.append(
-                BluetoothDeviceHeard(
-                    name=display_name,
-                    address=address,
-                ),
-            )
-        scanners.append(scanner)
-
-    # Order: local first, then proxies alphabetically.
-    scanners.sort(key=lambda s: (s.is_proxy, s.name.lower()))
-
-    if not scanners:
+    if not seen and not not_found:
         return None
-    return BluetoothNetwork(scanners=scanners)
+    return BluetoothNetwork(seen=seen, not_found=not_found)
 
 
 def _extract_services(hass: HomeAssistant, domain: str) -> list[ServiceInfo]:
