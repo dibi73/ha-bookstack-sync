@@ -66,7 +66,8 @@ AP. It does not expose an equivalent attribute for which switch port a
 the Switch node — this is a data gap in HA's `unifi` integration
 itself, not something this integration can work around. Wired devices
 still show up correctly everywhere else (their own device page, the
-flat Network table, DHCP export).
+flat Network table, DHCP export). Reported upstream:
+[home-assistant/core#180499](https://github.com/home-assistant/core/issues/180499).
 
 **Bluetooth peripherals can't be attributed to a specific proxy
 either.** The Bluetooth tree groups scanners (local HA adapter +

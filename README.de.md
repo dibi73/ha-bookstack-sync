@@ -82,7 +82,8 @@ Custom-Integrationen nicht formal validiert:
   *kabelgebundenen* Clients liefert sie aber nicht — das ist eine
   Datenlücke in HAs `unifi`-Integration selbst, die sich nicht umgehen
   lässt. Kabelgebundene Geräte tauchen trotzdem überall sonst korrekt auf
-  (eigene Device-Page, flache Netzwerk-Tabelle, DHCP-Export).
+  (eigene Device-Page, flache Netzwerk-Tabelle, DHCP-Export). Upstream
+  gemeldet: [home-assistant/core#180499](https://github.com/home-assistant/core/issues/180499).
 - **Bluetooth-Peripheriegeräte lassen sich ebenfalls keinem bestimmten
   Proxy zuordnen**: Der Bluetooth-Baum gruppiert Scanner (lokaler
   HA-Adapter + ESPHome-BT-Proxies) und die von ihnen gehörten Geräte —
