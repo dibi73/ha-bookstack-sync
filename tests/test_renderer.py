@@ -1170,6 +1170,72 @@ class TestNetworkPage:
         table_pos = out.index("## Geräte mit Netzwerkdaten")
         assert topology_pos < table_pos
 
+    def test_nested_infra_gets_indented_tree_branches(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        """
+        #152: Switch (child of Gateway) and AP (child of Switch) must render
+        with an indented tree branch, not flush-left like the root.
+
+        Never visible before #147/#149 fixed the underlying gateway/switch
+        classification and uplink-based hierarchy - a two-level-deep infra
+        chain never existed to expose this. The bug: ``child_prefix``'s
+        ``if prefix else ""`` guard collapsed indentation back to "" for
+        every root's children, since an empty prefix string is falsy.
+        """
+        gateway = UnifiInfraNode(
+            device_id="gw",
+            name="Cloud Gateway Ultra",
+            model="UDRULT",
+            role="gateway",
+            mac="0c:ea:14:35:2c:17",
+            ip=None,
+            parent_device_id=None,
+            child_device_ids=["sw"],
+        )
+        switch = UnifiInfraNode(
+            device_id="sw",
+            name="US 24 PoE 250W",
+            model="US24P250",
+            role="switch",
+            mac="74:83:c2:6d:76:f2",
+            ip=None,
+            parent_device_id="gw",
+            child_device_ids=["ap"],
+        )
+        ap = UnifiInfraNode(
+            device_id="ap",
+            name="EG AC LR",
+            model="U6-Pro",
+            role="ap",
+            mac="e0:63:da:e6:7a:d8",
+            ip=None,
+            parent_device_id="sw",
+        )
+        topology = UnifiTopology(
+            nodes={"gw": gateway, "sw": switch, "ap": ap},
+            root_device_ids=["gw"],
+        )
+
+        out = render_network_auto_block(
+            [],
+            fixed_now,
+            strings_de,
+            topology=topology,
+            snapshot=_empty_snapshot(),
+        )
+
+        lines = out.splitlines()
+        gateway_line = next(li for li in lines if "Cloud Gateway Ultra" in li)
+        switch_line = next(li for li in lines if "US 24 PoE 250W" in li)
+        ap_line = next(li for li in lines if "EG AC LR" in li)
+
+        assert gateway_line.startswith("Gateway:")
+        assert switch_line.startswith("└── Switch:")
+        assert ap_line.startswith("    └── AP:")
+
 
 class TestAreaPageMinimal:
     """v0.14.0: area pages are navigation hubs only — no full device data."""
