@@ -294,6 +294,14 @@ class BluetoothDeviceHeard:
 
 
 @dataclass
+class BluetoothProxy:
+    """One HA device that hosts a Bluetooth scanner/proxy (#162)."""
+
+    name: str
+    device_id: str
+
+
+@dataclass
 class BluetoothNetwork:
     """
     Snapshot of all BT-tracked devices, sorted by most recent activity.
@@ -310,9 +318,18 @@ class BluetoothNetwork:
     per-device availability flag and a last-activity timestamp instead,
     letting the reader judge - no "should be there but isn't" framing
     that a routine restart can make look alarmingly wrong.
+
+    Issue #162: excluding the scanner-artifact devices from ``devices``
+    (needed since #155 - see ``_extract_bluetooth_network``) had the
+    side effect of removing every BT proxy from the page entirely, with
+    no way to tell which proxies even exist. ``proxies`` lists the
+    distinct HA devices those artifacts point to via ``via_device_id``
+    (ESPHome nodes, a Shelly Gen3 gateway, ...) - just their identity,
+    since which peripherals each one hears still isn't derivable.
     """
 
     devices: list[BluetoothDeviceHeard] = field(default_factory=list)
+    proxies: list[BluetoothProxy] = field(default_factory=list)
 
 
 @dataclass
@@ -1543,18 +1560,29 @@ def _extract_bluetooth_network(
     flat list instead, with a per-device availability flag and a
     last-activity timestamp, sorted most-recent-first - lets the
     reader judge without a binary "should be there but isn't" framing.
+
+    Note (issue #162): excluding the scanner-artifact devices above
+    means every BT proxy disappeared from the page entirely - live
+    feedback ("es fehlen nun alle ble proxies") caught that the page
+    gave no way to tell which proxies even exist anymore. Each
+    artifact's ``via_device_id`` still identifies its real host
+    device, so that's resolved separately into ``BluetoothNetwork.
+    proxies`` - just the proxy's identity, not what it hears (still
+    not derivable).
     """
-    bt_devices: list[dr.DeviceEntry] = [
+    all_bt_devices = [
         d
         for d in device_reg.devices.values()
         if any(c[0] == dr.CONNECTION_BLUETOOTH for c in d.connections)
-        and not d.via_device_id  # scanner-to-host artifact, not tracked
     ]
-    if not bt_devices:
+    if not all_bt_devices:
         return None
 
+    tracked = [d for d in all_bt_devices if not d.via_device_id]
+    artifacts = [d for d in all_bt_devices if d.via_device_id]
+
     devices: list[BluetoothDeviceHeard] = []
-    for d in bt_devices:
+    for d in tracked:
         display_name = d.name_by_user or d.name or d.id
         address = _device_first_bt_address(d) or "—"
         is_available, last_seen = _device_bt_status(d, hass, entity_reg)
@@ -1573,9 +1601,23 @@ def _extract_bluetooth_network(
     devices.sort(key=lambda d: d.name.lower())
     devices.sort(key=lambda d: d.last_seen or "", reverse=True)
 
-    if not devices:
+    proxy_host_ids = {a.via_device_id for a in artifacts if a.via_device_id}
+    proxies: list[BluetoothProxy] = []
+    for host_id in proxy_host_ids:
+        host = device_reg.async_get(host_id)
+        if host is None:
+            continue
+        proxies.append(
+            BluetoothProxy(
+                name=host.name_by_user or host.name or host.id,
+                device_id=host.id,
+            ),
+        )
+    proxies.sort(key=lambda p: p.name.lower())
+
+    if not devices and not proxies:
         return None
-    return BluetoothNetwork(devices=devices)
+    return BluetoothNetwork(devices=devices, proxies=proxies)
 
 
 def _extract_services(hass: HomeAssistant, domain: str) -> list[ServiceInfo]:

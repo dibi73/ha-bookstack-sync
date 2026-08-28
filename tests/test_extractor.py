@@ -1196,11 +1196,12 @@ async def test_topology_uses_uplink_mac_sensor_when_via_device_id_is_unset(
     assert ap.id in topo.nodes[switch.id].child_device_ids
 
 
-async def test_bluetooth_proxy_radio_not_listed_as_tracked_device(
+async def test_bluetooth_proxy_radio_not_tracked_but_listed_as_proxy(
     hass: HomeAssistant,
 ) -> None:
     """
     #155: a BT-proxy's own radio device must not appear as a tracked device.
+    #162: but its host must still show up in ``proxies``.
 
     Live-verified real-world shape: an ESPHome node ("esp-btgw-badeg",
     WiFi MAC, no Bluetooth connection at all) hosts a *separate* HA
@@ -1209,9 +1210,13 @@ async def test_bluetooth_proxy_radio_not_listed_as_tracked_device(
     link, wired up by ``homeassistant.components.bluetooth``/
     ``esphome``, never a "this proxy heard this peripheral" link (no
     real peripheral ever carries ``via_device_id``, checked live).
-    Before the fix, the radio device was treated as a tracked device
-    itself, duplicating the ESPHome node's own name under itself with
-    nothing to distinguish it from real peripherals.
+    Before the #155 fix, the radio device was treated as a tracked
+    device itself, duplicating the ESPHome node's own name under itself
+    with nothing to distinguish it from real peripherals. Excluding it
+    entirely then made every BT proxy vanish from the page with no way
+    to tell which proxies even exist (live feedback: "es fehlen nun
+    alle ble proxies") - #162 resolves the artifact's ``via_device_id``
+    back to its host and lists that identity separately.
     """
     entry = MockConfigEntry(domain="esphome", entry_id="entry_esphome", title="ESPHome")
     entry.add_to_hass(hass)
@@ -1251,6 +1256,8 @@ async def test_bluetooth_proxy_radio_not_listed_as_tracked_device(
     assert network is not None
     assert [d.name for d in network.devices] == ["LeosPflanzensenor"]
     assert network.devices[0].is_available is True
+    assert [p.name for p in network.proxies] == ["esp-btgw-badeg"]
+    assert network.proxies[0].device_id == esphome_node.id
 
 
 async def test_bluetooth_device_availability_and_last_seen(
