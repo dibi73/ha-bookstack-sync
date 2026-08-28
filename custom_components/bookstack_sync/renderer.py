@@ -1279,49 +1279,38 @@ def render_bluetooth_auto_block(
     now: datetime,
     strings: dict[str, str],
 ) -> str:
-    """Render the AUTO block of the standalone Bluetooth page (#32/#158)."""
-    lines: list[str] = [_format_attribution(strings, now), ""]
+    """Render the AUTO block of the standalone Bluetooth page (#32/#160)."""
+    lines: list[str] = [
+        _format_attribution(strings, now),
+        "",
+        "## "
+        + strings["section_bluetooth_count_template"].format(
+            count=len(network.devices)
+        ),
+        "",
+    ]
 
-    if not network.seen and not network.not_found:
+    if not network.devices:
         lines.append(strings["empty_bluetooth"])
         return "\n".join(lines).rstrip() + "\n"
 
     lines.extend(
         [
-            "## "
-            + strings["section_bluetooth_seen_count_template"].format(
-                count=len(network.seen),
-            ),
-            "",
+            f"| {strings['bt_col_name']} "
+            f"| {strings['bt_col_address']} "
+            f"| {strings['bt_col_status']} "
+            f"| {strings['bt_col_last_seen']} |",
+            "| --- | --- | --- | --- |",
         ],
     )
-    if network.seen:
-        lines.extend(f"- {dev.name} (`{dev.address}`)" for dev in network.seen)
-    else:
-        lines.append(strings["empty_bluetooth_seen"])
-
-    lines.extend(
-        [
-            "",
-            "## "
-            + strings["section_bluetooth_not_found_count_template"].format(
-                count=len(network.not_found),
-            ),
-            "",
-        ],
-    )
-    if network.not_found:
-        lines.extend(
-            f"- {dev.name} (`{dev.address}`)"
-            + (
-                strings["bt_last_seen_template"].format(when=dev.last_seen)
-                if dev.last_seen
-                else ""
-            )
-            for dev in network.not_found
+    for dev in network.devices:
+        status = (
+            strings["bt_status_available"]
+            if dev.is_available
+            else strings["bt_status_unavailable"]
         )
-    else:
-        lines.append(strings["empty_bluetooth_not_found"])
+        last_seen = dev.last_seen or "—"
+        lines.append(f"| {dev.name} | `{dev.address}` | {status} | {last_seen} |")
 
     return "\n".join(lines).rstrip() + "\n"
 

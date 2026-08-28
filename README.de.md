@@ -90,14 +90,19 @@ Custom-Integrationen nicht formal validiert:
   Host, niemals ein entdecktes BLE-Peripheriegerät mit dem Proxy, der
   es gehört hat. Das ist architekturbedingt: Ein BLE-Gerät kann von
   mehreren Proxies gleichzeitig empfangen werden, es gibt also anders
-  als bei WLAN/AP-Zuordnung kein Eltern-Kind-Konzept dafür. Deshalb
-  gruppiert die Bluetooth-Seite gar nicht mehr nach Scanner, sondern
-  teilt jedes bekannte Gerät nach aktueller Erreichbarkeit auf:
-  **Gesehen** (mindestens eine Entity meldet gerade einen echten Wert)
-  vs. **Sollte da sein, aber nicht gefunden** (alle Entities stehen
-  auf `unavailable`, mit Zeitstempel seit wann). Das beantwortet
-  "ist Gerät X noch da?", auch wenn "welcher Proxy hat es gehört?"
-  aus HAs Datenmodell nicht ableitbar ist.
+  als bei WLAN/AP-Zuordnung kein Eltern-Kind-Konzept dafür. Die
+  Bluetooth-Seite gruppiert deshalb gar nicht nach Scanner, sondern
+  zeigt nur Status (erreichbar/nicht erreichbar) und Zeitstempel der
+  letzten Aktivität pro Gerät. Eine frühere Version dieser Seite
+  teilte stattdessen binär in "Gesehen" vs. "Sollte da sein, aber
+  nicht gefunden" auf — das erwies sich als aktiv irreführend: ein
+  passiver BLE-Sensor ist nach jedem HA-Neustart normalerweise für
+  irgendwo zwischen Sekunden und zig Minuten `unavailable`, während
+  sein Proxy sich neu verbindet — das ist nicht dasselbe wie "das
+  Gerät ist wirklich weg". Ein ganz normaler Neustart ließ dadurch die
+  komplette Seite so aussehen, als wären alle Geräte verschwunden. Der
+  reine Status + Zeitstempel vermeidet diesen Fehlalarm und überlässt
+  die Bewertung dem Betrachter.
 - **Schutz manueller Inhalte**: jede Page hat zwei Marker-Blöcke –
   `<!-- BEGIN AUTO-GENERATED -->` und `<!-- BEGIN MANUAL -->`. Nur der
   Auto-Block wird vom Sync angefasst. Wenn der Auto-Block manuell editiert
