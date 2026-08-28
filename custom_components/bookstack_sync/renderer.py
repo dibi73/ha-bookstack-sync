@@ -1224,19 +1224,32 @@ def render_topology_section(  # noqa: PLR0915 - cohesive recursive walk
         )
         return f"{d.name} ({ip}) [{conn}]{port_suffix}"
 
-    def walk_infra(node_id: str, prefix: str, *, is_last: bool) -> None:
+    def walk_infra(
+        node_id: str,
+        prefix: str,
+        *,
+        is_last: bool,
+        is_root: bool = False,
+    ) -> None:
         node = topology.nodes[node_id]
         branch = "└──" if is_last else "├──"
-        # Root nodes shouldn't get a tree branch; they're emitted as headers.
         header = f"{role_label(node.role)}: {node.name}"
         if node.mac:
             header += f" — `{node.mac}`"
-        if prefix == "":
+        # #152: whether THIS node gets a branch must be driven by an
+        # explicit is_root flag, not by "prefix == ''" - a real child can
+        # legitimately inherit an empty prefix too (any first-level child
+        # right under an unbracketed root starts flush, same convention as
+        # render_mqtt_auto_block's walk()), and treating that as "this must
+        # be a root" silently dropped the branch on a switch/AP one level
+        # deep, making it LOOK like a second, disconnected root even though
+        # topology.nodes correctly recorded it as a child.
+        if is_root:
             lines.append(header)
+            child_prefix = ""
         else:
             lines.append(f"{prefix}{branch} {header}")
-
-        child_prefix = prefix + ("    " if is_last else "│   ") if prefix else ""
+            child_prefix = prefix + ("    " if is_last else "│   ")
 
         # Mid-tier infra (switches under gateway, APs under switch/gateway):
         # render their child infra nodes first, then their clients.
@@ -1255,7 +1268,7 @@ def render_topology_section(  # noqa: PLR0915 - cohesive recursive walk
         last_root = r_idx == len(topology.root_device_ids) - 1
         if r_idx > 0:
             lines.append("")
-        walk_infra(root_id, "", is_last=last_root)
+        walk_infra(root_id, "", is_last=last_root, is_root=True)
 
     lines.append("```")
     return lines
