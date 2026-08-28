@@ -75,6 +75,14 @@ Custom-Integrationen nicht formal validiert:
   in gleicher Form bereitstellen. Bei anderen Herstellern zeigt die
   Netzwerk-Seite weiterhin die flache Geräte-Tabelle mit IP/MAC/Verbindung,
   nur eben ohne Topologie-Baum.
+- **Kabelgebundene (LAN-)Geräte hängen sich nicht unter den Switch, auch
+  nicht bei UniFi**: HAs `unifi`-Integration meldet, an welchem Access Point
+  ein *WLAN*-Client hängt (`ap_mac`) — WLAN-Geräte erscheinen deshalb korrekt
+  unter ihrem AP. Ein entsprechendes Attribut für den Switch-Port eines
+  *kabelgebundenen* Clients liefert sie aber nicht — das ist eine
+  Datenlücke in HAs `unifi`-Integration selbst, die sich nicht umgehen
+  lässt. Kabelgebundene Geräte tauchen trotzdem überall sonst korrekt auf
+  (eigene Device-Page, flache Netzwerk-Tabelle, DHCP-Export).
 - **Schutz manueller Inhalte**: jede Page hat zwei Marker-Blöcke –
   `<!-- BEGIN AUTO-GENERATED -->` und `<!-- BEGIN MANUAL -->`. Nur der
   Auto-Block wird vom Sync angefasst. Wenn der Auto-Block manuell editiert
