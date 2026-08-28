@@ -58,6 +58,16 @@ shape. With other hardware, the Network page still shows the flat
 device table with IP/MAC/connection info — just without the topology
 tree.
 
+**Wired (LAN) clients don't nest under the Switch, even with UniFi.**
+HA's `unifi` integration reports the access point a *wireless* client
+is on (`ap_mac`), so WLAN devices correctly show up nested under their
+AP. It does not expose an equivalent attribute for which switch port a
+*wired* client is plugged into, so wired clients can't be placed under
+the Switch node — this is a data gap in HA's `unifi` integration
+itself, not something this integration can work around. Wired devices
+still show up correctly everywhere else (their own device page, the
+flat Network table, DHCP export).
+
 ## Why use it
 
 - **Self-documenting smart home**. Every device, area, automation
