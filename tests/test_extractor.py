@@ -1196,11 +1196,11 @@ async def test_topology_uses_uplink_mac_sensor_when_via_device_id_is_unset(
     assert ap.id in topo.nodes[switch.id].child_device_ids
 
 
-async def test_bluetooth_proxy_radio_not_listed_as_its_own_heard_device(
+async def test_bluetooth_proxy_radio_not_listed_as_tracked_device(
     hass: HomeAssistant,
 ) -> None:
     """
-    #155: a BT-proxy's own radio device must not appear as a "heard" device.
+    #155: a BT-proxy's own radio device must not appear as a tracked device.
 
     Live-verified real-world shape: an ESPHome node ("esp-btgw-badeg",
     WiFi MAC, no Bluetooth connection at all) hosts a *separate* HA
@@ -1209,14 +1209,14 @@ async def test_bluetooth_proxy_radio_not_listed_as_its_own_heard_device(
     link, wired up by ``homeassistant.components.bluetooth``/
     ``esphome``, never a "this proxy heard this peripheral" link (no
     real peripheral ever carries ``via_device_id``, checked live).
-    Before the fix, the radio device was treated as a device the
-    (nonexistent) "proxy" had heard, duplicating the ESPHome node's own
-    name under itself with nothing to distinguish it from the real
-    peripherals list.
+    Before the fix, the radio device was treated as a tracked device
+    itself, duplicating the ESPHome node's own name under itself with
+    nothing to distinguish it from real peripherals.
     """
     entry = MockConfigEntry(domain="esphome", entry_id="entry_esphome", title="ESPHome")
     entry.add_to_hass(hass)
     device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
 
     esphome_node = device_reg.async_get_or_create(
         config_entry_id="entry_esphome",
@@ -1231,22 +1231,80 @@ async def test_bluetooth_proxy_radio_not_listed_as_its_own_heard_device(
         name="esp-btgw-badeg",
         via_device_id=esphome_node.id,
     )
-    device_reg.async_get_or_create(
+    plant_sensor = device_reg.async_get_or_create(
         config_entry_id="entry_esphome",
         identifiers={("bluetooth", "5c:85:7e:b0:d6:cb")},
         connections={(dr.CONNECTION_BLUETOOTH, "5c:85:7e:b0:d6:cb")},
         name="LeosPflanzensenor",
     )
+    sensor_entry = entity_reg.async_get_or_create(
+        domain="sensor",
+        platform="xiaomi_ble",
+        unique_id="leos_battery",
+        device_id=plant_sensor.id,
+        suggested_object_id="leos_battery",
+    )
+    hass.states.async_set(sensor_entry.entity_id, "87", {})
 
-    network = _extract_bluetooth_network(device_reg)
+    network = _extract_bluetooth_network(hass, device_reg, entity_reg)
 
     assert network is not None
-    assert len(network.scanners) == 1
-    local = network.scanners[0]
-    assert local.is_proxy is False
-    heard_names = {d.name for d in local.devices_heard}
-    assert heard_names == {"LeosPflanzensenor"}
-    assert len(local.devices_heard) == 1
+    assert [d.name for d in network.seen] == ["LeosPflanzensenor"]
+    assert network.not_found == []
+
+
+async def test_bluetooth_unavailable_device_lands_in_not_found(
+    hass: HomeAssistant,
+) -> None:
+    """
+    #158: devices with only "unavailable" entities go into `not_found`.
+
+    Splits BT-tracked devices by current reachability instead of by
+    scanner (proxy attribution isn't derivable from HA's data model at
+    all, see #155's docstring) - a device counts as `not_found` when
+    every one of its entities currently reports `unavailable`.
+    """
+    entry = MockConfigEntry(domain="esphome", entry_id="entry_esphome", title="ESPHome")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    reachable = device_reg.async_get_or_create(
+        config_entry_id="entry_esphome",
+        identifiers={("bluetooth", "5c:85:7e:b0:d6:cb")},
+        connections={(dr.CONNECTION_BLUETOOTH, "5c:85:7e:b0:d6:cb")},
+        name="LeosPflanzensenor",
+    )
+    reachable_sensor = entity_reg.async_get_or_create(
+        domain="sensor",
+        platform="xiaomi_ble",
+        unique_id="leos_battery",
+        device_id=reachable.id,
+        suggested_object_id="leos_battery",
+    )
+    hass.states.async_set(reachable_sensor.entity_id, "87", {})
+
+    missing = device_reg.async_get_or_create(
+        config_entry_id="entry_esphome",
+        identifiers={("bluetooth", "aa:bb:cc:dd:ee:ff")},
+        connections={(dr.CONNECTION_BLUETOOTH, "aa:bb:cc:dd:ee:ff")},
+        name="XiaomiFuehlerKeller",
+    )
+    missing_sensor = entity_reg.async_get_or_create(
+        domain="sensor",
+        platform="xiaomi_ble",
+        unique_id="keller_battery",
+        device_id=missing.id,
+        suggested_object_id="keller_battery",
+    )
+    hass.states.async_set(missing_sensor.entity_id, "unavailable", {})
+
+    network = _extract_bluetooth_network(hass, device_reg, entity_reg)
+
+    assert network is not None
+    assert [d.name for d in network.seen] == ["LeosPflanzensenor"]
+    assert [d.name for d in network.not_found] == ["XiaomiFuehlerKeller"]
+    assert network.not_found[0].last_seen is not None
 
 
 async def test_disabled_automation_still_extracted(hass: HomeAssistant) -> None:

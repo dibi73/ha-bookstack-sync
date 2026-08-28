@@ -293,7 +293,7 @@ def _plan_pages(
                 ),
             ),
         )
-    if snapshot.bluetooth and snapshot.bluetooth.scanners:
+    if snapshot.bluetooth:
         planned.append(
             _PlannedPage(
                 key=f"{PAGE_KIND_BLUETOOTH}:_",

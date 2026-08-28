@@ -37,8 +37,9 @@ Pages are organised into chapters inside your target book:
   triggered etc.
 - **Network** — table of every device with network data, plus a UniFi
   topology tree and a DHCP-reservation export block, when applicable
-- **Bluetooth** — tree of every BT scanner (local + ESPHome proxies)
-  and the devices they hear
+- **Bluetooth** — every BT-tracked device split into "Seen" (currently
+  reachable) and "Should be there, but not found" (known devices that
+  have gone unavailable, with a since-when timestamp)
 - **Recorder**, **Energy**, **MQTT topics**, **Helpers** — one page
   each, when the corresponding HA feature is configured
 - **Backup** — last successful/attempted backup, plus a table of every
@@ -69,17 +70,19 @@ still show up correctly everywhere else (their own device page, the
 flat Network table, DHCP export). Reported upstream:
 [home-assistant/core#180499](https://github.com/home-assistant/core/issues/180499).
 
-**Bluetooth peripherals can't be attributed to a specific proxy
-either.** The Bluetooth tree groups scanners (local HA adapter +
-ESPHome BT proxies) and the devices each one hears, but HA's
-`via_device_id` for a Bluetooth-connected device only ever links a
-scanner/adapter to the physical host it runs on — it never links a
+**Bluetooth peripherals can't be attributed to a specific proxy.**
+HA's `via_device_id` for a Bluetooth-connected device only ever links
+a scanner/adapter to the physical host it runs on — it never links a
 discovered BLE peripheral to the proxy that heard it. This is
 architectural: a BLE device can be in range of several proxies at
 once, so there's no single-parent concept for it, unlike WiFi/AP
-association. As a result, every real peripheral (sensors, beacons,
-etc.) is listed under "local", regardless of which ESPHome proxy
-actually detected it.
+association. Because of that, the Bluetooth page doesn't group by
+scanner at all — instead it splits every tracked device by current
+availability: **Seen** (at least one entity is reporting a real value
+right now) vs. **Should be there, but not found** (every entity is
+`unavailable`, with a timestamp for how long that's been the case).
+That answers "is device X still around?" even though "which proxy
+heard it?" isn't derivable from HA's data model.
 
 ## Why use it
 
