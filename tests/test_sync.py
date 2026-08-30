@@ -691,6 +691,34 @@ async def test_404_on_tombstone_clears_mapping_silently(
     )
 
 
+async def test_overview_links_to_orphaned_pages_overview(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    The main Overview page must link to the orphaned-pages page, not just
+    render its bold-name fallback.
+
+    Regression: the orphaned-pages bundle page must be synced (and its
+    URL captured into ``page_links`` via ``_refresh_url``) BEFORE the
+    main overview renders — even on the very first sync ever, when
+    neither page has existed before.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+
+    await run_sync(hass, client, store, 1, strings)
+
+    orphaned_mapping = store.get("orphaned:_")
+    overview_mapping = store.get("overview:_")
+    assert orphaned_mapping is not None
+    assert overview_mapping is not None
+    overview_markdown = state["pages"][overview_mapping.page_id]["markdown"]
+    expected_slug = state["pages"][orphaned_mapping.page_id]["slug"]
+    assert f"[Verwaiste Seiten](/books/book/page/{expected_slug})" in overview_markdown
+
+
 async def test_orphaned_overview_lists_tombstoned_page_next_sync(
     hass: HomeAssistant,
     store: BookStackSyncStore,
