@@ -9,10 +9,10 @@ Flow per run:
 3. Pass 2 renders area pages (device URLs now known) and syncs them.
 4. Pass 3 renders label pages (device + area URLs now known, issue #22)
    and syncs them.
-5. Pass 4 renders the overview with markdown links to the IDs from the
-   earlier passes and writes it.
-6. Pass 5 renders the orphaned-pages overview (#166) from the store's
+5. Pass 4 renders the orphaned-pages overview (#166) from the store's
    currently-tombstoned mappings and writes it.
+6. Pass 5 renders the overview with markdown links to the IDs from the
+   earlier passes (including pass 4's) and writes it.
 7. Pages whose HA object has vanished get a one-time tombstone block.
 8. Mapping store is persisted and a persistent notification is posted.
 
@@ -745,7 +745,49 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
             await store.async_save()  # #127: incremental persistence
             await asyncio.sleep(WRITE_PAUSE_SECONDS)
 
-    # Pass 4: render overview with the full URL map + sync it.
+    # Pass 4: orphaned-pages overview (#166). Built from the store's
+    # CURRENT tombstoned mappings — i.e. as of before this run's own
+    # tombstoning below, same one-sync-cycle lag the overview/area/label
+    # pages already have relative to each other. Synced (and its URL
+    # captured via ``_refresh_url``) BEFORE the main overview below, for
+    # two reasons: (1) its own key must exist in ``all_planned`` before
+    # ``_tombstone_orphans`` runs, else this bundle page itself would
+    # look like a vanished HA object and get wrongly tombstoned every
+    # run; (2) the main overview's "Other pages" list can then link to
+    # it directly instead of always rendering bold, unlinked text.
+    orphaned_entries = await _gather_orphaned_entries(client, store, book_slug)
+    orphaned_page = _PlannedPage(
+        key=f"{PAGE_KIND_ORPHANED}:_",
+        title=strings["title_orphaned"],
+        auto_body=render_orphaned_auto_block(orphaned_entries, now, strings),
+    )
+    step += 1
+    try:
+        orphaned_page_id = await _sync_one(
+            client,
+            store,
+            book_id,
+            orphaned_page,
+            chapters,
+            report,
+            strings,
+            index=step,
+            total=total_steps,
+            dry_run=dry_run,
+            force=force,
+        )
+        if orphaned_page_id is not None:
+            _refresh_url(orphaned_page.key)
+    except BookStackApiAuthError:
+        raise
+    except BookStackApiError as err:
+        LOGGER.exception("BookStack sync failed for orphaned-pages overview")
+        report.errors.append(f"{orphaned_page.key}: {err}")
+    _emit_progress()
+    if not dry_run:
+        await store.async_save()  # #127: incremental persistence
+
+    # Pass 5: render overview with the full URL map + sync it.
     overview = _PlannedPage(
         key=f"{PAGE_KIND_OVERVIEW}:_",
         title=strings["title_overview"],
@@ -776,44 +818,6 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     except BookStackApiError as err:
         LOGGER.exception("BookStack sync failed for overview")
         report.errors.append(f"{overview.key}: {err}")
-    _emit_progress()
-    if not dry_run:
-        await store.async_save()  # #127: incremental persistence
-
-    # Pass 5: orphaned-pages overview (#166). Built from the store's
-    # CURRENT tombstoned mappings — i.e. as of before this run's own
-    # tombstoning below, same one-sync-cycle lag the overview/area/label
-    # pages already have relative to each other. Its own key must be
-    # synced (and added to ``all_planned``) BEFORE ``_tombstone_orphans``
-    # runs, exactly like the regular overview above — otherwise this
-    # bundle page itself would look like a vanished HA object and get
-    # wrongly tombstoned on every single run.
-    orphaned_entries = await _gather_orphaned_entries(client, store, book_slug)
-    orphaned_page = _PlannedPage(
-        key=f"{PAGE_KIND_ORPHANED}:_",
-        title=strings["title_orphaned"],
-        auto_body=render_orphaned_auto_block(orphaned_entries, now, strings),
-    )
-    step += 1
-    try:
-        await _sync_one(
-            client,
-            store,
-            book_id,
-            orphaned_page,
-            chapters,
-            report,
-            strings,
-            index=step,
-            total=total_steps,
-            dry_run=dry_run,
-            force=force,
-        )
-    except BookStackApiAuthError:
-        raise
-    except BookStackApiError as err:
-        LOGGER.exception("BookStack sync failed for orphaned-pages overview")
-        report.errors.append(f"{orphaned_page.key}: {err}")
     _emit_progress()
     if not dry_run:
         await store.async_save()  # #127: incremental persistence
