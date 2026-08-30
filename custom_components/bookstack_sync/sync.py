@@ -928,7 +928,9 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
         if dry_run:
             report.created.append(page.title)
             return None
-        body = build_page_body(page.auto_body, "")
+        manual_heading = strings.get("heading_manual")
+        initial_manual = f"# {manual_heading}" if manual_heading else ""
+        body = build_page_body(page.auto_body, initial_manual)
         if chapter_id is not None:
             created = await client.create_page(
                 page.title,
@@ -989,6 +991,7 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
         existing_markdown=existing_markdown,
         last_known_auto_hash=mapping.auto_block_hash or None,
         default_manual_body=strings.get("default_manual_body"),
+        manual_heading=strings.get("heading_manual"),
     )
 
     if merged.markers_missing and not force:
@@ -1088,10 +1091,15 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
         existing_auto_hash == new_hash
         and not needs_move
         and mapping.hash_origin == "bookstack"
+        and not merged.manual_heading_added
     ):
         # Skip-on-unchanged needs a trustworthy stored hash — only
         # safe when origin is ``bookstack``. Legacy ``write`` mappings
         # always re-write once to settle into the new regime.
+        # ``manual_heading_added`` also forces a write: the one-time
+        # ``# {heading_manual}`` migration (see merge.py) would never
+        # actually reach BookStack for a page whose AUTO content never
+        # changes again otherwise.
         report.unchanged.append(page.title)
         mapping.last_seen = datetime.now(tz=UTC).isoformat()
         # v0.14.4: refresh slug from BookStack — handles the case where
@@ -1289,6 +1297,7 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
         existing_markdown=existing_markdown,
         last_known_auto_hash=mapping.auto_block_hash or None,
         default_manual_body=strings.get("default_manual_body"),
+        manual_heading=strings.get("heading_manual"),
     )
 
     if merged.manual_block_tampered:
