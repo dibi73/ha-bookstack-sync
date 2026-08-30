@@ -570,6 +570,18 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     # Energy-Dashboard config however is read from ``.storage/energy``,
     # so we fetch it here on the executor (v0.14.10) and inject it into
     # the otherwise-sync snapshot pipeline.
+    # Loaded before the snapshot (not after, like every other read here)
+    # so ``known_device_pages`` can make merged-device primary selection
+    # sticky — see ``extract_snapshot``'s docstring / ``_primary_priority``.
+    # ``async_load`` is a no-op on a second call, so this doesn't change
+    # anything for callers that already loaded the store themselves.
+    await store.async_load()
+    known_device_pages = {
+        key.split(":", 1)[1]: mapping.tombstoned_at is not None
+        for key, mapping in store.all().items()
+        if key.startswith(f"{PAGE_KIND_DEVICE}:")
+    }
+
     energy_config = await async_extract_energy_config(hass)
     backup_status = await async_extract_backup_status(hass)
     addons = await async_extract_addons(hass)
@@ -578,6 +590,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         energy_config=energy_config,
         backup_status=backup_status,
         addons=addons,
+        known_device_pages=known_device_pages,
     )
     # v0.14.5: HA-frontend deep-links use this base. ``external_url``
     # wins over ``internal_url`` because the same Markdown lands in
@@ -588,7 +601,6 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     ha_url = (hass.config.external_url or hass.config.internal_url or "").rstrip("/")
     planned = _plan_pages(snapshot, now, strings, ha_url=ha_url)
 
-    await store.async_load()
     chapters = (
         {} if dry_run else await _ensure_chapters(client, store, book_id, strings)
     )

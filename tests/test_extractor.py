@@ -796,6 +796,102 @@ async def test_device_group_aggregation_unions_entities_and_network(
     assert device.network.mac == "48:55:19:17:8e:10"
 
 
+async def test_sticky_primary_prefers_existing_active_mapping(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A device that already has an active BookStack page must keep primary
+    status when a brand-new sibling registry row joins its group —
+    regardless of list/ID ordering.
+
+    Regression: found live in production. ``_compute_device_groups``
+    recomputes groups fresh every sync with no memory of past runs;
+    picking "smallest device_id" blindly meant a newly-appearing sibling
+    (HA 2026.8 device-registry split, or a dual Tuya cloud+local
+    registration) could steal primary status from an already-documented
+    device purely by sorting smaller. The old page then looked like its
+    HA object had vanished (false tombstone) while a duplicate page got
+    created for the same physical device — confirmed to affect the vast
+    majority of "orphaned" pages on a real installation.
+    """
+    entry_a = MockConfigEntry(domain="tuya", entry_id="entry_a")
+    entry_b = MockConfigEntry(domain="tuya_local", entry_id="entry_b")
+    entry_a.add_to_hass(hass)
+    entry_b.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    existing_device = device_reg.async_get_or_create(
+        config_entry_id="entry_a",
+        identifiers={("tuya", "shared-value")},
+        name="Lamp",
+    )
+    new_sibling = device_reg.async_get_or_create(
+        config_entry_id="entry_b",
+        identifiers={("tuya_local", "shared-value")},
+        name="Lamp",
+    )
+    # Fully replace grouping (unit-tested separately) so this test only
+    # exercises primary selection — new sibling listed FIRST, simulating
+    # the exact "sorts first" scenario that caused the production bug.
+    monkeypatch.setattr(
+        "custom_components.bookstack_sync.extractor._compute_device_groups",
+        lambda device_reg: {"x": [new_sibling.id, existing_device.id]},
+    )
+
+    snap = extract_snapshot(
+        hass,
+        known_device_pages={existing_device.id: False},  # active, not tombstoned
+    )
+
+    assert len(snap.unassigned_devices) == 1
+    assert snap.unassigned_devices[0].device_id == existing_device.id
+    aka_ids = {aka.device_id for aka in snap.unassigned_devices[0].also_known_as}
+    assert aka_ids == {new_sibling.id}
+
+
+async def test_sticky_primary_prefers_active_over_tombstoned_mapping(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    When both group members already have a page, the currently-active
+    one wins over an old, already-tombstoned duplicate — no reason to
+    revive stale content just because it happens to sort first.
+    """
+    entry_a = MockConfigEntry(domain="tuya", entry_id="entry_a")
+    entry_b = MockConfigEntry(domain="tuya_local", entry_id="entry_b")
+    entry_a.add_to_hass(hass)
+    entry_b.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    tombstoned_device = device_reg.async_get_or_create(
+        config_entry_id="entry_a",
+        identifiers={("tuya", "shared-value")},
+        name="Lamp",
+    )
+    active_device = device_reg.async_get_or_create(
+        config_entry_id="entry_b",
+        identifiers={("tuya_local", "shared-value")},
+        name="Lamp",
+    )
+    monkeypatch.setattr(
+        "custom_components.bookstack_sync.extractor._compute_device_groups",
+        lambda device_reg: {"x": [tombstoned_device.id, active_device.id]},
+    )
+
+    snap = extract_snapshot(
+        hass,
+        known_device_pages={
+            tombstoned_device.id: True,
+            active_device.id: False,
+        },
+    )
+
+    assert len(snap.unassigned_devices) == 1
+    assert snap.unassigned_devices[0].device_id == active_device.id
+
+
 async def test_label_on_non_canonical_group_member_still_surfaces(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,

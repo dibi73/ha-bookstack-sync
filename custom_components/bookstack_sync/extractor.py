@@ -488,6 +488,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     energy_config: EnergyConfig | None = None,
     backup_status: BackupStatusSnapshot | None = None,
     addons: list[AddonSnapshot] | None = None,
+    known_device_pages: dict[str, bool] | None = None,
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
@@ -513,6 +514,11 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     own coordinator on its own refresh cycle and isn't guaranteed ready
     yet, so the async wrapper retries a few times before giving up.
     ``None``/omitted defaults to an empty list.
+
+    ``known_device_pages`` maps ``device_id -> is_tombstoned`` for every
+    device that already has a BookStack page (from ``sync.py``'s store,
+    loaded before this call). Used to make merged-device primary
+    selection sticky — see the comment at ``primary_id`` below for why.
     """
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
@@ -539,6 +545,32 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         return DeviceIntegrationRef(entry_id=eid, domain=entry_domains.get(eid, eid))
 
     device_groups = _compute_device_groups(device_reg)
+    known_device_pages = known_device_pages or {}
+
+    def _primary_priority(member_id: str) -> tuple[int, str]:
+        """
+        Sort key: mapped-and-active first, then mapped-but-tombstoned, then unmapped.
+
+        Why: ``_compute_device_groups`` recomputes the group purely from
+        live registry state every sync, with no memory of past runs. Its
+        own docstring already flags this: nothing about which member ends
+        up smallest is guaranteed to stay put. HA's 2026.8 device-registry
+        split (``composite_device_id``) and dual cloud+local registrations
+        (Tuya's ``tuya``/``tuya_local`` pair, see the merge below) both
+        routinely add a NEW sibling row for an already-documented device.
+        If that new row's ID happens to sort smaller, picking "smallest
+        ID" blindly steals primary status from the page that already
+        exists — the old page then looks like its HA object vanished
+        (falsely tombstoned) while a brand-new duplicate page gets
+        created for the same physical device. Preferring whichever member
+        already has a page keeps the SAME page assigned for as long as
+        that member keeps existing, regardless of what new IDs join the
+        group later — confirmed against production data where this was
+        found to affect the vast majority of "orphaned" pages.
+        """
+        if member_id in known_device_pages:
+            return (1 if known_device_pages[member_id] else 0, member_id)
+        return (2, member_id)
 
     devices: dict[str, DeviceSnapshot] = {}
     # Raw member device_id -> the DeviceSnapshot.device_id it was folded
@@ -566,14 +598,17 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         if not named_members:
             continue
 
-        # Canonical member (smallest device_id, from ``_compute_device_groups``)
-        # provides the registry fields (manufacturer/model/etc.) when it
-        # has a name; otherwise the smallest NAMED member takes over so
-        # the merged page doesn't inherit facts from a stub entry. This
-        # is a "canonical wins" simplification — if two named members
-        # genuinely disagree on e.g. manufacturer, the non-chosen value
-        # is silently dropped rather than reconciled.
-        primary_id, primary_device, primary_name = named_members[0]
+        # Primary member: whichever named member already has a BookStack
+        # page wins (sticky — see ``_primary_priority``); only falls back
+        # to smallest device_id when none of them do (first sync ever).
+        # Provides the registry fields (manufacturer/model/etc.) for the
+        # merged page. This is a "primary wins" simplification — if two
+        # named members genuinely disagree on e.g. manufacturer, the
+        # non-chosen value is silently dropped rather than reconciled.
+        primary_id, primary_device, primary_name = min(
+            named_members,
+            key=lambda item: _primary_priority(item[0]),
+        )
 
         device_refs = tuple(
             _domain_ref(eid) for eid in sorted(primary_device.config_entries)
@@ -589,7 +624,8 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
                 or "?",
                 device_id=member_id,
             )
-            for member_id, dev, name in named_members[1:]
+            for member_id, dev, name in named_members
+            if member_id != primary_id
         )
 
         devices[primary_id] = DeviceSnapshot(
