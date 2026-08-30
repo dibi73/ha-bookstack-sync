@@ -333,6 +333,88 @@ async def test_second_sync_with_unchanged_data_makes_no_changes(
     assert report2.errors == []
 
 
+async def test_new_page_manual_block_starts_with_heading(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """A brand-new page's MANUAL block starts with ``# Manuelle Dokumentation``."""
+    from custom_components.bookstack_sync.merge import (  # noqa: PLC0415
+        extract_manual_block,
+    )
+
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    key = next(k for k in store.all() if k.startswith("area:"))
+    page = state["pages"][store.get(key).page_id]
+    manual = extract_manual_block(page["markdown"])
+    assert manual == "# Manuelle Dokumentation"
+
+
+async def test_manual_heading_migrated_once_then_stable(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    Pages synced before the ``# Manuelle Dokumentation`` heading existed
+    get it migrated in on the first sync after upgrading — even though
+    their AUTO content hasn't changed — and settle back into normal
+    unchanged/skip behaviour immediately afterwards.
+    """
+    from custom_components.bookstack_sync.merge import (  # noqa: PLC0415
+        build_page_body,
+        extract_manual_block,
+    )
+
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    # Simulate a pre-migration page: same AUTO content, MANUAL block has
+    # the user's own notes but no heading (as every real page looked
+    # like before this feature).
+    _key, mapping = next(iter(store.all().items()))
+    old_page = state["pages"][mapping.page_id]
+    old_page["markdown"] = build_page_body(
+        old_page["markdown"]
+        .split("<!-- BEGIN AUTO-GENERATED -->", 1)[1]
+        .split(
+            "<!-- END AUTO-GENERATED -->",
+            1,
+        )[0],
+        "meine eigenen Notizen",
+    )
+
+    page_title = old_page["name"]
+    report2 = await run_sync(hass, client, store, 1, strings)
+    migrated_markdown = state["pages"][mapping.page_id]["markdown"]
+    manual = extract_manual_block(migrated_markdown)
+    assert manual is not None
+    assert manual.startswith("# Manuelle Dokumentation")
+    assert "meine eigenen Notizen" in manual
+    # Migrating forces a write even though the AUTO content is identical
+    # to before — it must NOT be silently skipped as "unchanged".
+    assert page_title in report2.updated
+    assert page_title not in report2.unchanged
+    assert report2.errors == []
+
+    # Third sync: heading already present, nothing left to migrate —
+    # back to the normal unchanged/skip fast path.
+    report3 = await run_sync(hass, client, store, 1, strings)
+    assert state["pages"][mapping.page_id]["markdown"] == migrated_markdown
+    assert page_title in report3.unchanged
+    assert report3.errors == []
+
+
 async def test_dry_run_does_not_call_writes(
     hass: HomeAssistant,
     store: BookStackSyncStore,

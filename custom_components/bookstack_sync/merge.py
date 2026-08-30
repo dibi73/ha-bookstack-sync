@@ -63,6 +63,13 @@ class MergeResult:
     # surface a repair issue) so we don't blow away the user's edits on
     # the next write.
     markers_missing: bool = False
+    # True exactly once per page: set the first time the ``# {heading}``
+    # line gets prepended to an existing MANUAL block that didn't have it
+    # yet (one-time migration for pages synced before the heading
+    # existed). The caller must write the page even when the AUTO block
+    # is otherwise unchanged, or the migration would never actually reach
+    # BookStack for a page whose HA object never changes again.
+    manual_heading_added: bool = False
 
 
 def _normalise_for_hash(auto_body: str) -> str:
@@ -154,6 +161,7 @@ def merge_page(
     existing_markdown: str | None,
     last_known_auto_hash: str | None,
     default_manual_body: str | None = None,
+    manual_heading: str | None = None,
 ) -> MergeResult:
     """
     Combine the new AUTO block with an existing page's MANUAL block.
@@ -166,6 +174,15 @@ def merge_page(
     notes. Callers should pass the localised version from ``_strings``;
     the hardcoded fallback is German for backward compatibility with
     pre-i18n stores.
+
+    ``manual_heading`` (issue: symmetry with the AUTO block's own
+    ``# {heading_auto_generated}`` line, added in v0.15.2 but never
+    mirrored on the MANUAL side) is prepended as ``# {manual_heading}``
+    to an EXISTING manual block that doesn't already start with it — a
+    one-time migration per page, signalled via
+    ``MergeResult.manual_heading_added`` so the caller can force a write
+    even when the AUTO block itself is unchanged. ``None`` skips this
+    entirely (backward-compatible default).
     """
     new_hash = hash_auto_block(new_auto_body)
 
@@ -189,6 +206,13 @@ def merge_page(
     placeholder = default_manual_body or _FALLBACK_MANUAL_BODY
     manual_body = existing_manual if existing_manual is not None else placeholder
 
+    manual_heading_added = False
+    if manual_heading:
+        heading_line = f"# {manual_heading}"
+        if not manual_body.strip().startswith(heading_line):
+            manual_body = f"{heading_line}\n\n{manual_body.strip()}".rstrip()
+            manual_heading_added = True
+
     tampered = (
         existing_auto is not None
         and bool(last_known_auto_hash)
@@ -210,4 +234,5 @@ def merge_page(
         auto_block_changed=auto_changed,
         manual_block_tampered=tampered,
         markers_missing=markers_missing,
+        manual_heading_added=manual_heading_added,
     )

@@ -181,6 +181,70 @@ class TestMergePage:
         assert result.manual_block_tampered is False
 
 
+class TestManualHeading:
+    """One-time ``# {manual_heading}`` migration for existing MANUAL blocks.
+
+    Mirrors the AUTO block's own heading (v0.15.2, issue #129) which was
+    never symmetric on the MANUAL side.
+    """
+
+    def test_new_page_gets_heading_in_default_manual(self) -> None:
+        result = merge_page(
+            "auto body",
+            existing_markdown=None,
+            last_known_auto_hash=None,
+            default_manual_body="_hint text_",
+            manual_heading="Manuelle Dokumentation",
+        )
+        manual = extract_manual_block(result.body)
+        assert manual is not None
+        assert manual.startswith("# Manuelle Dokumentation")
+        assert "_hint text_" in manual
+
+    def test_existing_manual_without_heading_gets_migrated(self) -> None:
+        existing_full = build_page_body("auto body", "my own notes")
+        result = merge_page(
+            new_auto_body="auto body",
+            existing_markdown=existing_full,
+            last_known_auto_hash=hash_auto_block("auto body"),
+            manual_heading="Manuelle Dokumentation",
+        )
+        manual = extract_manual_block(result.body)
+        assert manual is not None
+        assert manual.startswith("# Manuelle Dokumentation")
+        assert "my own notes" in manual
+        assert result.manual_heading_added is True
+
+    def test_migration_is_idempotent(self) -> None:
+        """Running the migration twice must not stack a second heading."""
+        already_migrated = build_page_body(
+            "auto body",
+            "# Manuelle Dokumentation\n\nmy own notes",
+        )
+        result = merge_page(
+            new_auto_body="auto body",
+            existing_markdown=already_migrated,
+            last_known_auto_hash=hash_auto_block("auto body"),
+            manual_heading="Manuelle Dokumentation",
+        )
+        manual = extract_manual_block(result.body)
+        assert manual is not None
+        assert manual.count("# Manuelle Dokumentation") == 1
+        assert result.manual_heading_added is False
+
+    def test_no_heading_configured_leaves_manual_untouched(self) -> None:
+        """``manual_heading=None`` (default) must not change behaviour at all."""
+        existing_full = build_page_body("auto body", "my own notes")
+        result = merge_page(
+            new_auto_body="auto body",
+            existing_markdown=existing_full,
+            last_known_auto_hash=hash_auto_block("auto body"),
+        )
+        manual = extract_manual_block(result.body)
+        assert manual == "my own notes"
+        assert result.manual_heading_added is False
+
+
 class TestMarkersMissing:
     """v0.14.9: WYSIWYG-toggle round-trip drops the marker comments.
 
