@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .const import ATTRIBUTION, PAGE_KIND_DEVICE, PAGE_KIND_LABEL
@@ -306,6 +307,7 @@ def render_overview_auto_block(
         ("mqtt:_", strings["bundle_mqtt"]),
         ("energy:_", strings["bundle_energy"]),
         ("backup:_", strings["bundle_backup"]),
+        ("orphaned:_", strings["bundle_orphaned"]),
     )
     for key, label in bundle_links:
         url = links.get(key)
@@ -1552,6 +1554,58 @@ def render_backup_auto_block(
             f"| {_md_escape(backup.name)} | {backup.date} "
             f"| {_md_escape(backup.ha_version or '—')} | {targets} |",
         )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# ----- #166 Orphaned-pages overview -------------------------------------------
+
+
+@dataclass(frozen=True)
+class OrphanedPageEntry:
+    """
+    One row on the orphaned-pages overview page.
+
+    Built in ``sync.py`` from the store's tombstoned mappings (not from the
+    HA snapshot — the whole point is that the underlying HA object is gone).
+    ``url`` is ``None`` when the page's current slug couldn't be resolved
+    (e.g. BookStack unreachable for that one lookup); the renderer falls
+    back to a bold, non-linked name in that case.
+    """
+
+    name: str
+    url: str | None
+    orphaned_since: str
+
+
+def render_orphaned_auto_block(
+    entries: list[OrphanedPageEntry],
+    now: datetime,
+    strings: dict[str, str],
+) -> str:
+    """
+    Render the AUTO block of the orphaned-pages overview page (#166).
+
+    Always synced (even with zero entries) so the link on the overview
+    page is always live and a non-technical user can check it periodically
+    without needing to know about BookStack's tag-search syntax.
+    """
+    lines: list[str] = [_format_attribution(strings, now), ""]
+    lines.append(strings["orphaned_intro"])
+    lines.append("")
+    if not entries:
+        lines.append(strings["empty_orphaned"])
+        return "\n".join(lines).rstrip() + "\n"
+
+    lines.extend(
+        [
+            f"| {strings['orphaned_col_page']} | {strings['orphaned_col_since']} |",
+            "| --- | --- |",
+        ],
+    )
+    for entry in sorted(entries, key=lambda e: e.orphaned_since):
+        label = _md_escape(entry.name)
+        head = f"[{label}]({entry.url})" if entry.url else f"**{label}**"
+        lines.append(f"| {head} | {entry.orphaned_since} |")
     return "\n".join(lines).rstrip() + "\n"
 
 

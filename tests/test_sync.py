@@ -691,6 +691,100 @@ async def test_404_on_tombstone_clears_mapping_silently(
     )
 
 
+async def test_orphaned_overview_lists_tombstoned_page_next_sync(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    Orphaned-pages overview (#166) lists pages whose HA object vanished.
+
+    One-sync-cycle lag by design (same pattern as the overview/area/label
+    pages): the bundle page's own key must be synced BEFORE tombstoning
+    runs in a given cycle, so a page tombstoned *during* a run only shows
+    up on the *next* run's overview, not the same one.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    living = area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    area_reg.async_delete(living.id)
+    await run_sync(hass, client, store, 1, strings)  # tombstones the area
+
+    orphaned_mapping = store.get("orphaned:_")
+    assert orphaned_mapping is not None
+    orphaned_markdown = state["pages"][orphaned_mapping.page_id]["markdown"]
+    assert "Living Room" not in orphaned_markdown, (
+        "same-run tombstone should not appear yet (one-cycle lag)"
+    )
+
+    await run_sync(hass, client, store, 1, strings)  # picks it up now
+
+    orphaned_mapping = store.get("orphaned:_")
+    orphaned_markdown = state["pages"][orphaned_mapping.page_id]["markdown"]
+    assert "Living Room" in orphaned_markdown
+    area_mapping = store.get("area:" + living.id)
+    assert area_mapping is not None
+    # The overview builder re-fetches the page live (see
+    # ``_gather_orphaned_entries``) rather than trusting the mapping's own
+    # ``slug``, so the link must match what BookStack currently reports —
+    # not the mapping's cached (and, post-tombstone, blanked) value.
+    target_slug = state["pages"][area_mapping.page_id]["slug"]
+    assert f"(/books/book/page/{target_slug})" in orphaned_markdown
+
+
+async def test_orphaned_overview_drops_stale_mapping_if_deleted_in_bookstack(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    A tombstoned page the user then deleted directly in BookStack must not
+    wedge every future sync — the overview builder 404s on ``get_page``,
+    drops the stale mapping, and moves on (mirrors
+    ``test_404_on_tombstone_clears_mapping_silently`` one step later).
+    """
+    from custom_components.bookstack_sync.api import (  # noqa: PLC0415
+        BookStackApiNotFoundError,
+    )
+
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    living = area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+    area_reg.async_delete(living.id)
+    await run_sync(hass, client, store, 1, strings)  # tombstones the area
+
+    area_keys = [k for k in store.all() if k.startswith("area:")]
+    target_key = area_keys[0]
+    target_mapping = store.get(target_key)
+    assert target_mapping is not None
+    assert target_mapping.tombstoned_at is not None
+    deleted_id = target_mapping.page_id
+    state["pages"].pop(deleted_id, None)  # user deleted it directly in BookStack
+    real_get_page = client.get_page.side_effect
+
+    async def get_page_404_for_target(page_id: int) -> dict[str, Any]:
+        if page_id == deleted_id:
+            msg = f"BookStack resource not found (/api/pages/{page_id})"
+            raise BookStackApiNotFoundError(msg)
+        return await real_get_page(page_id)
+
+    client.get_page = AsyncMock(side_effect=get_page_404_for_target)
+
+    report = await run_sync(hass, client, store, 1, strings)
+
+    assert report.errors == [], f"unexpected errors: {report.errors}"
+    assert store.get(target_key) is None, (
+        "stale tombstoned mapping should have been dropped"
+    )
+
+
 async def test_markers_missing_skips_page_and_records_repair_keys(
     hass: HomeAssistant,
     store: BookStackSyncStore,

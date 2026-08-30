@@ -45,11 +45,12 @@ Custom-Integrationen nicht formal validiert:
   eigentlich getrackten "Quell-Devices" leben als BookStack-Pages und
   werden bereits weich gelöscht (tombstoned), sobald ihr HA-Objekt
   verschwindet. Das ist der Sinn der Regel, nur nicht was sie wörtlich prüft.
-  Jede tombstonete Page trägt den Tag `bookstack_sync = orphaned` — über
-  BookStacks eigene Tag-Suche (`[bookstack_sync=orphaned]` in die
-  Suchleiste, oder direkt als Link:
-  `<deine-bookstack-url>/search?term=%5Bbookstack_sync%3Dorphaned%5D`)
-  findet man alle verwaisten Pages auf einen Blick zum manuellen Aufräumen.
+  Eine eigene Seite **„Verwaiste Seiten"** (verlinkt von der
+  Übersichtsseite unter „Weitere Seiten") listet bei jedem Sync alle
+  aktuell verwaisten Pages mit direktem Link und Datum „verwaist seit" —
+  ganz ohne BookStack-Vorwissen nutzbar. Zusätzlich trägt jede tombstonete
+  Page den Tag `bookstack_sync = orphaned`, falls du lieber BookStacks
+  eigene Tag-Suche (`[bookstack_sync=orphaned]`) nutzt.
 - ✅ **Platinum**: `strict-typing` (`py.typed` + `mypy --strict`-CI-Gate,
   seit v0.16.2), `inject-websession` (nutzt durchgehend HAs eigene
   `async_get_clientsession`/`async_create_clientsession`, nie eine
