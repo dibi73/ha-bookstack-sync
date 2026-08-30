@@ -691,6 +691,64 @@ async def test_404_on_tombstone_clears_mapping_silently(
     )
 
 
+async def test_device_split_does_not_falsely_tombstone_existing_page(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    End-to-end regression: a device that already has a synced page must
+    NOT get tombstoned just because a new sibling registry row (dual
+    Tuya cloud+local registration, or an HA 2026.8 device-registry
+    split) appears later and happens to sort first.
+
+    This is the exact production bug behind the orphaned-pages overview
+    (#166) showing 81 of 84 "verwaist" pages for devices that were, in
+    fact, still fully alive and registered.
+    """
+    from homeassistant.helpers import device_registry as dr  # noqa: PLC0415
+
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    device_reg = dr.async_get(hass)
+    entry_a = MockConfigEntry(domain="tuya", entry_id="entry_a")
+    entry_a.add_to_hass(hass)
+    device_a = device_reg.async_get_or_create(
+        config_entry_id="entry_a",
+        identifiers={("tuya", "shared-value")},
+        name="Lamp",
+    )
+
+    await run_sync(hass, client, store, 1, strings)
+
+    original_mapping = store.get(f"device:{device_a.id}")
+    assert original_mapping is not None
+    original_page_id = original_mapping.page_id
+
+    # Simulate the sibling row appearing later, unioned via the shared
+    # Tuya identifier value (same mechanism as _compute_device_groups).
+    entry_b = MockConfigEntry(domain="tuya_local", entry_id="entry_b")
+    entry_b.add_to_hass(hass)
+    device_reg.async_get_or_create(
+        config_entry_id="entry_b",
+        identifiers={("tuya_local", "shared-value")},
+        name="Lamp",
+    )
+
+    report = await run_sync(hass, client, store, 1, strings)
+
+    updated_mapping = store.get(f"device:{device_a.id}")
+    assert updated_mapping is not None
+    assert updated_mapping.page_id == original_page_id, (
+        "same physical device must keep the same page"
+    )
+    assert updated_mapping.tombstoned_at is None, (
+        "must not be tombstoned just because a sibling row appeared"
+    )
+    assert report.tombstoned == []
+    assert report.errors == []
+
+
 async def test_overview_links_to_orphaned_pages_overview(
     hass: HomeAssistant,
     store: BookStackSyncStore,
