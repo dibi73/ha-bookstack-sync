@@ -58,6 +58,7 @@ PAGE_KIND_ENERGY = "energy"
 PAGE_KIND_HELPERS = "helpers"
 PAGE_KIND_LABEL = "label"
 PAGE_KIND_BACKUP = "backup"
+PAGE_KIND_ORPHANED = "orphaned"
 
 # Chapters group the many area/device pages so the book stays readable.
 # Titles + descriptions come from `_strings.py` so they follow the user's

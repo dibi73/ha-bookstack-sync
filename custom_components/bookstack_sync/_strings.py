@@ -61,6 +61,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "title_energy": "Energie-Dashboard",
         "title_backup": "Backup",
         "title_helpers": "Helpers",
+        "title_orphaned": "Verwaiste Seiten",
         "title_area_template": "Raum: {name}",
         "title_device_template": "Gerät: {name}",
         "title_label_template": "Label: {name}",
@@ -179,6 +180,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "bundle_energy": "Energie",
         "bundle_backup": "Backup",
         "bundle_helpers": "Helpers",
+        "bundle_orphaned": "Verwaiste Seiten",
         # Backup page (#47)
         "section_backup_status": "Backup-Status",
         "backup_field_last_completed": "Letztes erfolgreiches Backup",
@@ -192,6 +194,18 @@ _STRINGS: dict[str, dict[str, str]] = {
         "backup_agent_errors_template": (
             "⚠ Folgende Backup-Ziele waren beim Sync nicht abfragbar: {agents}."
         ),
+        # Orphaned-pages overview (#166)
+        "orphaned_intro": (
+            "Diese Seiten wurden automatisch erzeugt, aber das zugehörige "
+            "Objekt existiert nicht mehr in Home Assistant (z. B. weil ein "
+            "Gerät entfernt oder ein Raum umbenannt wurde). Sie werden nicht "
+            "automatisch gelöscht — das bleibt dir überlassen: Seite öffnen, "
+            "prüfen ob noch relevante Notizen im unteren Bereich stehen, dann "
+            "bei Bedarf in BookStack löschen."
+        ),
+        "orphaned_col_page": "Seite",
+        "orphaned_col_since": "Verwaist seit",
+        "empty_orphaned": "_Aktuell keine verwaisten Seiten._",
         # Empty-state messages
         "empty_areas": "_Keine Areas konfiguriert._",
         "empty_devices_in_room": "_Keine Geräte in diesem Raum._",
@@ -295,6 +309,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "title_energy": "Energy dashboard",
         "title_backup": "Backup",
         "title_helpers": "Helpers",
+        "title_orphaned": "Orphaned pages",
         "title_area_template": "Area: {name}",
         "title_device_template": "Device: {name}",
         "title_label_template": "Label: {name}",
@@ -409,6 +424,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "bundle_energy": "Energy",
         "bundle_backup": "Backup",
         "bundle_helpers": "Helpers",
+        "bundle_orphaned": "Orphaned pages",
         "section_backup_status": "Backup status",
         "backup_field_last_completed": "Last successful backup",
         "backup_field_last_attempted": "Last backup attempt",
@@ -421,6 +437,18 @@ _STRINGS: dict[str, dict[str, str]] = {
         "backup_agent_errors_template": (
             "⚠ The following backup targets could not be queried during sync: {agents}."
         ),
+        # Orphaned-pages overview (#166)
+        "orphaned_intro": (
+            "These pages were auto-generated, but the underlying object no "
+            "longer exists in Home Assistant (e.g. a device was removed or "
+            "an area renamed). They are not deleted automatically — that's "
+            "up to you: open the page, check whether the manual block "
+            "below still has relevant notes, then delete it in BookStack "
+            "if it doesn't."
+        ),
+        "orphaned_col_page": "Page",
+        "orphaned_col_since": "Orphaned since",
+        "empty_orphaned": "_No orphaned pages currently._",
         "empty_areas": "_No areas configured._",
         "empty_devices_in_room": "_No devices in this area._",
         "empty_entities_in_device": "_No entities on this device._",

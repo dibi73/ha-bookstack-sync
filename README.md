@@ -426,11 +426,13 @@ moves them to the right chapter automatically.
   back into HA.
 - **Sync is HA-state-driven.** Renaming an area or device renames the
   page on next sync; the old page becomes orphan and gets a tombstone
-  banner. Manual cleanup of tombstoned pages is left to the user — every
-  tombstoned page carries the tag `bookstack_sync = orphaned`, so
-  BookStack's own tag search finds them all at once. Either type
-  `[bookstack_sync=orphaned]` into the search bar, or bookmark a direct
-  link: `<your-bookstack-url>/search?term=%5Bbookstack_sync%3Dorphaned%5D`.
+  banner. Manual cleanup of tombstoned pages is left to the user — a
+  dedicated **"Orphaned pages"** page (linked from the Overview page,
+  under "Other pages") lists every currently orphaned page with a direct
+  link and the date it was orphaned since, refreshed on every sync — no
+  BookStack knowledge required. Every tombstoned page also carries the
+  tag `bookstack_sync = orphaned`, so BookStack's own tag search
+  (`[bookstack_sync=orphaned]`) works too if you prefer that.
 - **Page-output languages: DE + EN only.** The integration UI itself
   is localised in 28 languages (since v0.12.0), but the *content*
   written into BookStack pages is German or English. Adding a content

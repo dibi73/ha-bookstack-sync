@@ -38,6 +38,7 @@ from custom_components.bookstack_sync.extractor import (
     UnifiTopology,
 )
 from custom_components.bookstack_sync.renderer import (
+    OrphanedPageEntry,
     _format_bytes,
     _md_escape,
     render_addons_auto_block,
@@ -50,6 +51,7 @@ from custom_components.bookstack_sync.renderer import (
     render_integrations_auto_block,
     render_label_auto_block,
     render_network_auto_block,
+    render_orphaned_auto_block,
     render_overview_auto_block,
     render_scenes_auto_block,
     render_scripts_auto_block,
@@ -1827,3 +1829,82 @@ class TestRenderLabel:
         out = render_label_auto_block(label, fixed_now, strings_en)
         assert "Devices with this label (1)" in out
         assert "**Smoke Detector**" in out
+
+
+class TestOrphanedPagesOverview:
+    """Orphaned-pages overview page rendering (#166)."""
+
+    def test_lists_entries_sorted_oldest_first(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        entries = [
+            OrphanedPageEntry(
+                name="Raum: Bandraum",
+                url="/books/hausdoku/page/raum-bandraum",
+                orphaned_since="2026-08-24T18:00:00+00:00",
+            ),
+            OrphanedPageEntry(
+                name="Gerät: ElternLEDStreifen",
+                url="/books/hausdoku/page/geraet-elternledstreifen",
+                orphaned_since="2026-08-10T09:00:00+00:00",
+            ),
+        ]
+        out = render_orphaned_auto_block(entries, fixed_now, strings_de)
+        older = out.index("ElternLEDStreifen")
+        newer = out.index("Bandraum")
+        assert older < newer  # oldest orphan listed first
+        assert "[Raum: Bandraum](/books/hausdoku/page/raum-bandraum)" in out
+        assert "2026-08-24T18:00:00+00:00" in out
+
+    def test_entry_without_url_falls_back_to_bold(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        entries = [
+            OrphanedPageEntry(
+                name="Gerät: Unbekannt",
+                url=None,
+                orphaned_since="2026-08-24T18:00:00+00:00",
+            ),
+        ]
+        out = render_orphaned_auto_block(entries, fixed_now, strings_de)
+        assert "**Gerät: Unbekannt**" in out
+        assert "[Gerät: Unbekannt]" not in out
+
+    def test_empty_state_when_no_orphaned_pages(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_orphaned_auto_block([], fixed_now, strings_de)
+        assert "Aktuell keine verwaisten Seiten" in out
+
+    def test_english_strings(
+        self,
+        fixed_now: datetime,
+        strings_en: dict[str, str],
+    ) -> None:
+        out = render_orphaned_auto_block([], fixed_now, strings_en)
+        assert "No orphaned pages currently" in out
+
+    def test_name_is_escaped(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        entries = [
+            OrphanedPageEntry(
+                name="Lampe](javascript:alert(1))",
+                url="/books/hausdoku/page/lampe",
+                orphaned_since="2026-08-24T18:00:00+00:00",
+            ),
+        ]
+        out = render_orphaned_auto_block(entries, fixed_now, strings_de)
+        # The malicious close-bracket must arrive backslash-escaped so it
+        # can't terminate the markdown link label early (see
+        # TestMdEscape.test_link_label_breakout_defused for the same
+        # property against render_area_auto_block etc.).
+        assert "Lampe\\](javascript:alert(1))" in out

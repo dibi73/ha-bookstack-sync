@@ -11,8 +11,10 @@ Flow per run:
    and syncs them.
 5. Pass 4 renders the overview with markdown links to the IDs from the
    earlier passes and writes it.
-6. Pages whose HA object has vanished get a one-time tombstone block.
-7. Mapping store is persisted and a persistent notification is posted.
+6. Pass 5 renders the orphaned-pages overview (#166) from the store's
+   currently-tombstoned mappings and writes it.
+7. Pages whose HA object has vanished get a one-time tombstone block.
+8. Mapping store is persisted and a persistent notification is posted.
 
 The active output language is passed in via ``strings`` — see
 ``_strings.get_strings``. Default in coordinator is ``hass.config.language``.
@@ -51,6 +53,7 @@ from .const import (
     PAGE_KIND_LABEL,
     PAGE_KIND_MQTT,
     PAGE_KIND_NETWORK,
+    PAGE_KIND_ORPHANED,
     PAGE_KIND_OVERVIEW,
     PAGE_KIND_RECORDER,
     PAGE_KIND_SCENES,
@@ -74,6 +77,7 @@ from .merge import (
     merge_page,
 )
 from .renderer import (
+    OrphanedPageEntry,
     render_addons_auto_block,
     render_area_auto_block,
     render_automations_auto_block,
@@ -86,6 +90,7 @@ from .renderer import (
     render_label_auto_block,
     render_mqtt_auto_block,
     render_network_auto_block,
+    render_orphaned_auto_block,
     render_overview_auto_block,
     render_recorder_auto_block,
     render_scenes_auto_block,
@@ -626,8 +631,8 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     area_planned = _plan_area_pages(snapshot, now, strings, page_links, ha_url=ha_url)
     label_planned = _plan_label_pages(snapshot, now, strings, page_links, ha_url=ha_url)
     total_steps = (
-        len(planned) + len(area_planned) + len(label_planned) + 1
-    )  # +1 for the overview
+        len(planned) + len(area_planned) + len(label_planned) + 2
+    )  # +1 overview, +1 orphaned-pages overview (#166)
     step = 0
 
     def _emit_progress() -> None:
@@ -775,7 +780,45 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     if not dry_run:
         await store.async_save()  # #127: incremental persistence
 
-    all_planned = [overview, *area_planned, *label_planned, *planned]
+    # Pass 5: orphaned-pages overview (#166). Built from the store's
+    # CURRENT tombstoned mappings — i.e. as of before this run's own
+    # tombstoning below, same one-sync-cycle lag the overview/area/label
+    # pages already have relative to each other. Its own key must be
+    # synced (and added to ``all_planned``) BEFORE ``_tombstone_orphans``
+    # runs, exactly like the regular overview above — otherwise this
+    # bundle page itself would look like a vanished HA object and get
+    # wrongly tombstoned on every single run.
+    orphaned_entries = await _gather_orphaned_entries(client, store, book_slug)
+    orphaned_page = _PlannedPage(
+        key=f"{PAGE_KIND_ORPHANED}:_",
+        title=strings["title_orphaned"],
+        auto_body=render_orphaned_auto_block(orphaned_entries, now, strings),
+    )
+    step += 1
+    try:
+        await _sync_one(
+            client,
+            store,
+            book_id,
+            orphaned_page,
+            chapters,
+            report,
+            strings,
+            index=step,
+            total=total_steps,
+            dry_run=dry_run,
+            force=force,
+        )
+    except BookStackApiAuthError:
+        raise
+    except BookStackApiError as err:
+        LOGGER.exception("BookStack sync failed for orphaned-pages overview")
+        report.errors.append(f"{orphaned_page.key}: {err}")
+    _emit_progress()
+    if not dry_run:
+        await store.async_save()  # #127: incremental persistence
+
+    all_planned = [overview, orphaned_page, *area_planned, *label_planned, *planned]
     await _tombstone_orphans(
         client,
         store,
@@ -1102,6 +1145,56 @@ def _needs_move(
         )
         return True
     return actual != expected_chapter_id
+
+
+async def _gather_orphaned_entries(
+    client: BookStackApiClient,
+    store: BookStackSyncStore,
+    book_slug: str,
+) -> list[OrphanedPageEntry]:
+    """
+    Build the row list for the orphaned-pages overview page (#166).
+
+    Re-fetches each tombstoned page from BookStack rather than trusting
+    the mapping's own cached ``slug`` (which the tombstone step doesn't
+    carry forward) — same one-GET-per-page cost the markdown export
+    already pays for the same set of pages. A page that 404s was deleted
+    directly in BookStack since it was tombstoned; the stale mapping is
+    dropped so it stops being re-checked on every future sync.
+    """
+    entries: list[OrphanedPageEntry] = []
+    for key, mapping in sorted(store.all().items()):
+        if mapping.tombstoned_at is None:
+            continue
+        try:
+            page = await client.get_page(mapping.page_id)
+        except BookStackApiNotFoundError:
+            LOGGER.info(
+                "Orphaned-pages overview: page id=%s (%s) already gone from "
+                "BookStack — dropping stale mapping.",
+                mapping.page_id,
+                key,
+            )
+            store.discard(key)
+            continue
+        except BookStackApiError as err:
+            LOGGER.warning(
+                "Orphaned-pages overview: could not refresh %s: %s",
+                key,
+                err,
+            )
+            continue
+        name = str(page.get("name") or key)
+        slug = str(page.get("slug") or "")
+        url = _build_page_url(book_slug, slug) if slug else None
+        entries.append(
+            OrphanedPageEntry(
+                name=name,
+                url=url,
+                orphaned_since=mapping.tombstoned_at,
+            ),
+        )
+    return entries
 
 
 async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
