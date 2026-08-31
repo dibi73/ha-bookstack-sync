@@ -669,6 +669,138 @@ def test_compute_device_groups_links_tuya_and_tuya_local_by_value() -> None:
     assert groups["d_unrelated"] == ["d_unrelated"]
 
 
+def test_compute_device_groups_merges_bluetooth_radio_artifact_into_its_host() -> None:
+    """
+    A device's own Bluetooth-radio artifact merges into its host (#132/#173).
+
+    Real-world case: an ESPHome node's onboard BT radio gets its own
+    device_registry row (network MAC + 2 on the last octet, per
+    ``_extract_bluetooth_network``'s own finding), linked back via
+    ``via_device_id``. Its MAC differs from the host's, so the generic
+    connection/identifier matching above never catches it — that's
+    exactly why this needs its own union step.
+    """
+
+    class _FakeDevice:
+        def __init__(
+            self,
+            device_id: str,
+            identifiers: set[tuple[str, str]] | None = None,
+            connections: set[tuple[str, str]] | None = None,
+            via_device_id: str | None = None,
+        ) -> None:
+            self.id = device_id
+            self.identifiers = identifiers or set()
+            self.connections = connections or set()
+            self.via_device_id = via_device_id
+
+    class _FakeRegistry:
+        def __init__(self, devices: list[_FakeDevice]) -> None:
+            self.devices = {d.id: d for d in devices}
+
+        def async_get(self, device_id: str) -> _FakeDevice | None:
+            return self.devices.get(device_id)
+
+    host = _FakeDevice("z_host", connections={("mac", "90:15:06:db:33:d0")})
+    bt_radio = _FakeDevice(
+        "a_bt_radio",
+        connections={("bluetooth", "90:15:06:DB:33:D2")},
+        via_device_id="z_host",
+    )
+    unrelated = _FakeDevice("m_unrelated", identifiers={("mqtt", "solo")})
+
+    groups = _compute_device_groups(_FakeRegistry([host, bt_radio, unrelated]))
+
+    assert groups["a_bt_radio"] == ["a_bt_radio", "z_host"]
+    assert groups["m_unrelated"] == ["m_unrelated"]
+
+
+def test_compute_device_groups_does_not_merge_non_bluetooth_via_device_id() -> None:
+    """
+    A plain hub/child ``via_device_id`` relationship must NOT merge.
+
+    Real-world case: a NAS's individual drives, a solar inverter's
+    smart-meter/battery accessories, or an account integration's sensor
+    devices all use ``via_device_id`` to mean "child of this hub", not
+    "same physical hardware" — folding those into the hub's page would
+    hide a genuinely separate device. Verified against production data:
+    of 88 devices with ``via_device_id`` set, only 9 also carried a
+    Bluetooth connection — merging must stay scoped to exactly that
+    case, not every ``via_device_id`` relationship.
+    """
+
+    class _FakeDevice:
+        def __init__(
+            self,
+            device_id: str,
+            identifiers: set[tuple[str, str]] | None = None,
+            connections: set[tuple[str, str]] | None = None,
+            via_device_id: str | None = None,
+        ) -> None:
+            self.id = device_id
+            self.identifiers = identifiers or set()
+            self.connections = connections or set()
+            self.via_device_id = via_device_id
+
+    class _FakeRegistry:
+        def __init__(self, devices: list[_FakeDevice]) -> None:
+            self.devices = {d.id: d for d in devices}
+
+        def async_get(self, device_id: str) -> _FakeDevice | None:
+            return self.devices.get(device_id)
+
+    nas = _FakeDevice("a_nas", identifiers={("synology_dsm", "nas")})
+    drive = _FakeDevice(
+        "b_drive",
+        identifiers={("synology_dsm", "drive1")},
+        via_device_id="a_nas",
+    )
+
+    groups = _compute_device_groups(_FakeRegistry([nas, drive]))
+
+    assert groups["a_nas"] == ["a_nas"]
+    assert groups["b_drive"] == ["b_drive"]
+
+
+def test_compute_device_groups_ignores_dangling_via_device_id() -> None:
+    """A Bluetooth artifact whose ``via_device_id`` target no longer exists is a no-op.
+
+    Real-world case: several RTL_433 sensor devices point ``via_device_id``
+    at a long-removed gateway device. Even if one of those happened to
+    also carry a Bluetooth connection, a missing host must not raise or
+    fabricate a group for the dangling reference.
+    """
+
+    class _FakeDevice:
+        def __init__(
+            self,
+            device_id: str,
+            connections: set[tuple[str, str]] | None = None,
+            via_device_id: str | None = None,
+        ) -> None:
+            self.id = device_id
+            self.identifiers: set[tuple[str, str]] = set()
+            self.connections = connections or set()
+            self.via_device_id = via_device_id
+
+    class _FakeRegistry:
+        def __init__(self, devices: list[_FakeDevice]) -> None:
+            self.devices = {d.id: d for d in devices}
+
+        def async_get(self, device_id: str) -> _FakeDevice | None:
+            return self.devices.get(device_id)
+
+    orphaned = _FakeDevice(
+        "a_orphan",
+        connections={("bluetooth", "AA:BB:CC:DD:EE:FF")},
+        via_device_id="does-not-exist",
+    )
+
+    groups = _compute_device_groups(_FakeRegistry([orphaned]))
+
+    assert groups["a_orphan"] == ["a_orphan"]
+
+
 def test_compute_device_groups_handles_non_2_tuple_identifiers() -> None:
     """
     Identifiers aren't always a strict (domain, value) 2-tuple.
