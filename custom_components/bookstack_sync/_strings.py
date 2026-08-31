@@ -192,6 +192,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "backup_col_date": "Datum",
         "backup_col_version": "HA-Version",
         "backup_col_targets": "Ziel(e)",
+        "backup_col_location": "Speicherort",
+        "backup_location_unavailable": "kein Speicherort verfügbar",
         "backup_target_failed_suffix": "fehlgeschlagen",
         "empty_backups": "_Keine Backups gefunden._",
         "backup_agent_errors_template": (
@@ -438,6 +440,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "backup_col_date": "Date",
         "backup_col_version": "HA version",
         "backup_col_targets": "Target(s)",
+        "backup_col_location": "Location",
+        "backup_location_unavailable": "not available",
         "backup_target_failed_suffix": "failed",
         "empty_backups": "_No backups found._",
         "backup_agent_errors_template": (

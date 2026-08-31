@@ -1536,8 +1536,9 @@ def render_backup_auto_block(
     lines.extend(
         [
             f"| {strings['backup_col_name']} | {strings['backup_col_date']} "
-            f"| {strings['backup_col_version']} | {strings['backup_col_targets']} |",
-            "| --- | --- | --- | --- |",
+            f"| {strings['backup_col_version']} | {strings['backup_col_targets']} "
+            f"| {strings['backup_col_location']} |",
+            "| --- | --- | --- | --- | --- |",
         ],
     )
     for backup in status.backups:
@@ -1550,9 +1551,20 @@ def render_backup_auto_block(
             for agent_id in backup.failed_agent_ids
         )
         targets = ", ".join(target_parts) if target_parts else "—"
+        # One agent per row's target list (#176) — failed agents have no
+        # location to report, so they're left out here (already flagged
+        # in the targets column above).
+        location_parts = []
+        for a in backup.agents:
+            location = _md_escape(a.location) if a.location else None
+            location_parts.append(
+                f"{_md_escape(a.agent_name)}: "
+                f"{location or strings['backup_location_unavailable']}",
+            )
+        locations = ", ".join(location_parts) if location_parts else "—"
         lines.append(
             f"| {_md_escape(backup.name)} | {backup.date} "
-            f"| {_md_escape(backup.ha_version or '—')} | {targets} |",
+            f"| {_md_escape(backup.ha_version or '—')} | {targets} | {locations} |",
         )
     return "\n".join(lines).rstrip() + "\n"
 

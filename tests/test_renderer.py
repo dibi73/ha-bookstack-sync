@@ -981,6 +981,7 @@ class TestBackupPage:
                             agent_name="Local",
                             size_bytes=1_288_490_188,  # ~1.2 GB
                             protected=True,
+                            location="/backups",
                         ),
                     ],
                 ),
@@ -991,6 +992,32 @@ class TestBackupPage:
         assert "Automatic backup 2026-08-26" in out
         assert "2026.8.3" in out
         assert "Local (1.2 GB)" in out
+        assert "Local: /backups" in out
+
+    def test_location_unavailable_shown_explicitly(
+        self,
+        fixed_now,
+        strings_de: dict[str, str],
+    ) -> None:
+        """Agents with no known location (e.g. OneDrive) say so, not blank (#176)."""
+        status = BackupStatusSnapshot(
+            backups=[
+                BackupEntry(
+                    name="Automatic backup",
+                    date="2026-08-26T03:00:00+00:00",
+                    agents=[
+                        BackupAgentEntry(
+                            agent_name="OneDrive",
+                            size_bytes=1000,
+                            protected=True,
+                            location=None,
+                        ),
+                    ],
+                ),
+            ],
+        )
+        out = render_backup_auto_block(status, fixed_now, strings_de)
+        assert "OneDrive: kein Speicherort verfügbar" in out
 
     def test_failed_agent_shown_distinctly(
         self,
