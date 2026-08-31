@@ -165,11 +165,16 @@ class SyncReport:
     # Human-readable titles paired with the keys above (same length,
     # same order). Lets repair-issue translations show the page name.
     tampered_page_titles: list[str] = field(default_factory=list)
+    # Absolute BookStack URLs paired with the keys above (issue #189) —
+    # "" when unresolvable (see _build_absolute_page_url). Lets the
+    # repair-issue description link straight to the affected page.
+    tampered_page_urls: list[str] = field(default_factory=list)
     # Page keys + titles of pages where the marker comments are gone
     # (typical cause: WYSIWYG-editor toggle). Same shape as the tampered
     # lists so the coordinator can reconcile a separate repair issue.
     markers_missing_page_keys: list[str] = field(default_factory=list)
     markers_missing_page_titles: list[str] = field(default_factory=list)
+    markers_missing_page_urls: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     dry_run: bool = False
 
@@ -430,6 +435,31 @@ def _build_page_url(book_slug: str, page_slug: str) -> str | None:
     return f"/books/{book_slug}/page/{page_slug}"
 
 
+def _build_absolute_page_url(
+    base_url: str,
+    book_slug: str,
+    page_slug: str,
+) -> str | None:
+    """
+    Construct a full, clickable BookStack page URL (issue #189).
+
+    Unlike ``_build_page_url`` above, this one IS meant to be resolved
+    against ``base_url`` — used only for links rendered in Home
+    Assistant's own UI (repair issues), which has no BookStack page to
+    resolve a root-relative href against. Carries the same caveat
+    ``_build_page_url`` avoids: ``base_url`` is whatever address
+    bookstack-sync itself uses to reach BookStack's API (e.g. a
+    LAN-only address), which could differ from how a person actually
+    browses to BookStack (reverse-proxy hostname, public domain) — the
+    link may not be clickable from outside that network. Still far more
+    useful than no link at all for the common case where they match.
+    """
+    relative = _build_page_url(book_slug, page_slug)
+    if relative is None or not base_url:
+        return None
+    return f"{base_url.rstrip('/')}{relative}"
+
+
 def _plan_area_pages(
     snapshot: HASnapshot,
     now: datetime,
@@ -668,6 +698,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
                 total=total_steps,
                 dry_run=dry_run,
                 force=force,
+                book_slug=book_slug,
             )
             if page_id is not None:
                 _refresh_url(page.key)
@@ -707,6 +738,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
                 total=total_steps,
                 dry_run=dry_run,
                 force=force,
+                book_slug=book_slug,
             )
             if page_id is not None:
                 _refresh_url(page.key)
@@ -741,6 +773,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
                 total=total_steps,
                 dry_run=dry_run,
                 force=force,
+                book_slug=book_slug,
             )
             if page_id is not None:
                 _refresh_url(page.key)
@@ -787,6 +820,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
             total=total_steps,
             dry_run=dry_run,
             force=force,
+            book_slug=book_slug,
         )
         if orphaned_page_id is not None:
             _refresh_url(orphaned_page.key)
@@ -824,6 +858,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
             total=total_steps,
             dry_run=dry_run,
             force=force,
+            book_slug=book_slug,
         )
     except BookStackApiAuthError:
         raise
@@ -910,6 +945,7 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
     total: int,
     dry_run: bool,
     force: bool = False,
+    book_slug: str = "",
 ) -> int | None:
     """Sync one page; return the BookStack page id (or None on dry-run create)."""
     chapter_id = chapters.get(page.chapter_key) if page.chapter_key else None
@@ -1015,6 +1051,9 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
         report.skipped_conflict.append(page.title)
         report.markers_missing_page_keys.append(page.key)
         report.markers_missing_page_titles.append(page.title)
+        report.markers_missing_page_urls.append(
+            _build_absolute_page_url(client.base_url, book_slug, mapping.slug) or "",
+        )
         return mapping.page_id
 
     if merged.manual_block_tampered:
@@ -1085,6 +1124,10 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
             report.skipped_conflict.append(page.title)
             report.tampered_page_keys.append(page.key)
             report.tampered_page_titles.append(page.title)
+            report.tampered_page_urls.append(
+                _build_absolute_page_url(client.base_url, book_slug, mapping.slug)
+                or "",
+            )
             return mapping.page_id
 
     if (

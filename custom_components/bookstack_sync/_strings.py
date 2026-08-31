@@ -26,6 +26,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         # Attribution + tombstone
         "heading_auto_generated": "Automatische Dokumentation",
         "heading_manual": "Manuelle Dokumentation",
+        # Repair issues (#189)
+        "repair_no_page_url": "kein Link verfügbar",
         "attribution_template": ("_{attribution} – Stand {timestamp} UTC._"),
         "tombstone_attribution_template": (
             "_{attribution} – letzter Sync {timestamp} UTC._"
@@ -278,6 +280,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     LANG_EN: {
         "heading_auto_generated": "Automatic Documentation",
         "heading_manual": "Manual Documentation",
+        # Repair issues (#189)
+        "repair_no_page_url": "no link available",
         "attribution_template": ("_{attribution} – synced at {timestamp} UTC._"),
         "tombstone_attribution_template": (
             "_{attribution} – last sync {timestamp} UTC._"
