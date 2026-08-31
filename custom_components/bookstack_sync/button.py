@@ -20,7 +20,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import CONF_BASE_URL, DOMAIN
 from .coordinator import BookStackSyncCoordinator
 
 if TYPE_CHECKING:
@@ -77,6 +77,7 @@ class _BookStackSyncButtonBase(
             name=coordinator.config_entry.title,
             manufacturer="BookStack Sync",
             entry_type=None,
+            configuration_url=coordinator.config_entry.data.get(CONF_BASE_URL),
         )
 
     @property
