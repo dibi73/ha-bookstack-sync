@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     ATTRIBUTION,
+    CONF_BASE_URL,
     CONF_EXPORT_ENABLED,
     DEFAULT_EXPORT_ENABLED,
     DOMAIN,
@@ -63,6 +64,7 @@ class BookStackSyncStatusSensor(
             name=coordinator.config_entry.title,
             manufacturer="BookStack Sync",
             entry_type=None,
+            configuration_url=coordinator.config_entry.data.get(CONF_BASE_URL),
         )
 
     @property
