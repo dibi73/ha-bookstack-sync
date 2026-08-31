@@ -428,7 +428,9 @@ async def test_stale_tamper_issues_resolved_after_restart(
     assert coord._active_tamper_keys == set()  # in-memory cache empty
 
     # Simulate a clean sync run — no tampered pages reported.
-    coord._reconcile_tamper_issues(SyncReport())
+    from custom_components.bookstack_sync._strings import get_strings  # noqa: PLC0415
+
+    coord._reconcile_tamper_issues(SyncReport(), get_strings("de"))
 
     # All previously-stored tamper issues for this entry are gone.
     issue_reg = ir.async_get(hass)
@@ -456,6 +458,7 @@ async def test_tamper_issue_created_as_persistent(
     """
     from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
 
+    from custom_components.bookstack_sync._strings import get_strings  # noqa: PLC0415
     from custom_components.bookstack_sync.const import (  # noqa: PLC0415
         DOMAIN,
         REPAIR_ISSUE_TAMPERED,
@@ -467,7 +470,10 @@ async def test_tamper_issue_created_as_persistent(
     report = SyncReport()
     report.tampered_page_keys.append("device:abc")
     report.tampered_page_titles.append("Acurite-Rain-25")
-    coord._reconcile_tamper_issues(report)
+    report.tampered_page_urls.append(
+        "http://bookstack.local/books/hausdoku/page/acurite"
+    )
+    coord._reconcile_tamper_issues(report, get_strings("de"))
 
     entry_id = config_entry.entry_id
     issue_reg = ir.async_get(hass)
@@ -477,6 +483,47 @@ async def test_tamper_issue_created_as_persistent(
     )
     assert issue is not None
     assert issue.is_persistent is True
+    assert issue.translation_placeholders == {
+        "page_title": "Acurite-Rain-25",
+        "page_url": "http://bookstack.local/books/hausdoku/page/acurite",
+    }
+
+
+async def test_tamper_issue_falls_back_when_page_url_unresolvable(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    #189: an empty ``tampered_page_urls`` entry (e.g. legacy mapping with
+    no cached slug) must not leave a dangling ``{page_url}`` in the
+    rendered description — falls back to a localized placeholder string.
+    """
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync._strings import get_strings  # noqa: PLC0415
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_TAMPERED,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+
+    report = SyncReport()
+    report.tampered_page_keys.append("device:abc")
+    report.tampered_page_titles.append("Acurite-Rain-25")
+    report.tampered_page_urls.append("")
+    coord._reconcile_tamper_issues(report, get_strings("de"))
+
+    entry_id = config_entry.entry_id
+    issue_reg = ir.async_get(hass)
+    issue = issue_reg.async_get_issue(
+        DOMAIN,
+        f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_device:abc",
+    )
+    assert issue is not None
+    assert issue.translation_placeholders is not None
+    assert issue.translation_placeholders["page_url"] == "kein Link verfügbar"
 
 
 async def test_progress_callback_updates_sensor_progress_state(

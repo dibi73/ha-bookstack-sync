@@ -137,7 +137,11 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             # stale issues. We keep this branch only to return the report.
             return report
 
-    def _reconcile_tamper_issues(self, report: SyncReport) -> None:
+    def _reconcile_tamper_issues(
+        self,
+        report: SyncReport,
+        strings: dict[str, str],
+    ) -> None:
         """
         Create / auto-resolve ``page_tampered`` repair issues.
 
@@ -148,9 +152,15 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         the diff against the current sync's tampered keys produces the
         correct delete-set even right after a restart.
         """
-        current = dict(
-            zip(report.tampered_page_keys, report.tampered_page_titles, strict=True),
-        )
+        current = {
+            key: (title, url)
+            for key, title, url in zip(
+                report.tampered_page_keys,
+                report.tampered_page_titles,
+                report.tampered_page_urls,
+                strict=True,
+            )
+        }
         entry_id = self.config_entry.entry_id
         prefix = f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_"
         existing = {
@@ -162,6 +172,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         resolved_keys = existing - set(current.keys())
 
         for key in new_keys:
+            title, url = current[key]
             ir.async_create_issue(
                 self.hass,
                 DOMAIN,
@@ -170,7 +181,10 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 is_persistent=True,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key=REPAIR_ISSUE_TAMPERED,
-                translation_placeholders={"page_title": current[key]},
+                translation_placeholders={
+                    "page_title": title,
+                    "page_url": url or strings["repair_no_page_url"],
+                },
             )
         for key in resolved_keys:
             ir.async_delete_issue(
@@ -183,20 +197,26 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         # authoritative source.
         self._active_tamper_keys = set(current.keys())
 
-    def _reconcile_markers_missing_issues(self, report: SyncReport) -> None:
+    def _reconcile_markers_missing_issues(
+        self,
+        report: SyncReport,
+        strings: dict[str, str],
+    ) -> None:
         """
         Create / auto-resolve ``page_markers_missing`` repair issues.
 
         Same shape as ``_reconcile_tamper_issues`` (issue-registry is the
         source of truth, in-memory cache only for tests/diagnostics).
         """
-        current = dict(
-            zip(
+        current = {
+            key: (title, url)
+            for key, title, url in zip(
                 report.markers_missing_page_keys,
                 report.markers_missing_page_titles,
+                report.markers_missing_page_urls,
                 strict=True,
-            ),
-        )
+            )
+        }
         entry_id = self.config_entry.entry_id
         prefix = f"{REPAIR_ISSUE_MARKERS_MISSING}_{entry_id}_"
         existing = {
@@ -208,6 +228,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         resolved_keys = existing - set(current.keys())
 
         for key in new_keys:
+            title, url = current[key]
             ir.async_create_issue(
                 self.hass,
                 DOMAIN,
@@ -216,7 +237,10 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 is_persistent=True,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key=REPAIR_ISSUE_MARKERS_MISSING,
-                translation_placeholders={"page_title": current[key]},
+                translation_placeholders={
+                    "page_title": title,
+                    "page_url": url or strings["repair_no_page_url"],
+                },
             )
         for key in resolved_keys:
             ir.async_delete_issue(
@@ -376,8 +400,8 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     # v0.13.4 only reconciled from ``_async_update_data``,
                     # so users on ``manual`` interval saw their old
                     # repair-issues hang around forever (v0.14.1 fix).
-                    self._reconcile_tamper_issues(report)
-                    self._reconcile_markers_missing_issues(report)
+                    self._reconcile_tamper_issues(report, strings)
+                    self._reconcile_markers_missing_issues(report, strings)
             finally:
                 # End of sync phase. ``is_syncing`` stays True if we're
                 # about to roll into the export phase below — keeps the
