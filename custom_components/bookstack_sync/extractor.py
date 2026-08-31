@@ -427,6 +427,26 @@ def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]
     Devices sharing nothing with any other device form a group of one
     (the vast majority) — behaviour for those is unchanged from before
     this feature existed.
+
+    Also unions a device into its ``via_device_id`` host's group, but
+    ONLY when the device itself carries a Bluetooth connection (issue
+    #132/#173 follow-up). That narrow scope matters: ``via_device_id``
+    is HA's generic "this belongs under that hub" link, used for two
+    very different relationships. A BT-proxy's own radio device (e.g.
+    an ESPHome node's onboard Bluetooth MAC, always +2 on the last
+    octet vs. its network MAC per ``_extract_bluetooth_network``'s own
+    finding) genuinely IS the same physical hardware as its host —
+    merging is correct there, and exactly what stopped it from being
+    auto-grouped by connections/identifiers in the first place (the two
+    MACs differ). But most other ``via_device_id`` uses on a real
+    installation are hub/child relationships between genuinely distinct
+    hardware (a NAS's individual drives, a solar inverter's smart-meter
+    and battery accessories, an account integration's sensor devices) —
+    merging THOSE would wrongly fold a real, separate device into its
+    hub's page. Verified against production data: of 88 devices with
+    ``via_device_id`` set, only 9 also carry a Bluetooth connection —
+    exactly the known BT-proxy-artifact count (8 ESPHome nodes + 1
+    Shelly Gen3) from the #155/#162 investigation.
     """
     parent: dict[str, str] = {}
 
@@ -445,6 +465,7 @@ def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]
     by_identifier: dict[tuple[str, str], list[str]] = {}
     by_connection: dict[tuple[str, str], list[str]] = {}
     by_tuya_value: dict[str, list[str]] = {}
+    bt_artifact_hosts: list[tuple[str, str]] = []  # (artifact_id, host_id)
     # Whole-registry scan (#146): no per-ID/identifier lookup applies here,
     # and HA has no dedicated bulk-enumeration helper - .values() is fine.
     for device in device_reg.devices.values():
@@ -460,8 +481,17 @@ def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]
             domain, *value_parts = identifier
             if domain in _TUYA_LINK_DOMAINS and value_parts:
                 by_tuya_value.setdefault(value_parts[0], []).append(device.id)
+        has_bt_connection = False
         for connection in device.connections:
             by_connection.setdefault(connection, []).append(device.id)
+            if connection[0] == dr.CONNECTION_BLUETOOTH:
+                has_bt_connection = True
+        if (
+            has_bt_connection
+            and device.via_device_id
+            and device_reg.async_get(device.via_device_id) is not None
+        ):
+            bt_artifact_hosts.append((device.id, device.via_device_id))
 
     for bucket in (
         *by_identifier.values(),
@@ -470,6 +500,8 @@ def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]
     ):
         for other_id in bucket[1:]:
             union(bucket[0], other_id)
+    for artifact_id, host_id in bt_artifact_hosts:
+        union(artifact_id, host_id)
 
     members_by_root: dict[str, list[str]] = {}
     for device_id in parent:
