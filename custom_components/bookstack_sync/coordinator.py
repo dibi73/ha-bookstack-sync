@@ -167,6 +167,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 DOMAIN,
                 f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_{key}",
                 is_fixable=False,
+                is_persistent=True,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key=REPAIR_ISSUE_TAMPERED,
                 translation_placeholders={"page_title": current[key]},
@@ -212,6 +213,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 DOMAIN,
                 f"{REPAIR_ISSUE_MARKERS_MISSING}_{entry_id}_{key}",
                 is_fixable=False,
+                is_persistent=True,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key=REPAIR_ISSUE_MARKERS_MISSING,
                 translation_placeholders={"page_title": current[key]},
@@ -234,6 +236,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 DOMAIN,
                 f"{REPAIR_ISSUE_UNREACHABLE}_{self.config_entry.entry_id}",
                 is_fixable=False,
+                is_persistent=True,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key=REPAIR_ISSUE_UNREACHABLE,
                 translation_placeholders={

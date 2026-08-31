@@ -441,6 +441,44 @@ async def test_stale_tamper_issues_resolved_after_restart(
     assert remaining == [], f"stale tamper issues survived: {remaining}"
 
 
+async def test_tamper_issue_created_as_persistent(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    #186: repair issues must survive HA restarts, not just sync-to-sync.
+
+    ``is_persistent`` defaults to ``False`` on ``ir.async_create_issue`` —
+    HA does not restore non-persistent issues into the live registry
+    after a restart, so a user could see zero entries in Settings ->
+    System -> Repairs even while a real, ongoing conflict existed,
+    simply because no sync had completed yet in the new session.
+    """
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_TAMPERED,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+
+    report = SyncReport()
+    report.tampered_page_keys.append("device:abc")
+    report.tampered_page_titles.append("Acurite-Rain-25")
+    coord._reconcile_tamper_issues(report)
+
+    entry_id = config_entry.entry_id
+    issue_reg = ir.async_get(hass)
+    issue = issue_reg.async_get_issue(
+        DOMAIN,
+        f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_device:abc",
+    )
+    assert issue is not None
+    assert issue.is_persistent is True
+
+
 async def test_progress_callback_updates_sensor_progress_state(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
