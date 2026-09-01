@@ -71,13 +71,14 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
         state["chapters"][cid] = name
         return {"id": cid, "name": name}
 
-    async def create_page(
+    async def create_page(  # noqa: PLR0913 - mirrors the real client's signature
         name: str,
         markdown: str,
         *,
         book_id: int | None = None,
         chapter_id: int | None = None,
         tags: list[dict[str, str]] | None = None,
+        priority: int | None = None,
     ) -> dict[str, Any]:
         pid = state["next_id"]
         state["next_id"] += 1
@@ -89,19 +90,21 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
             "chapter_id": chapter_id,
             "book_id": book_id,
             "tags": tags,
+            "priority": priority,
         }
         return state["pages"][pid]
 
     async def get_page(page_id: int) -> dict[str, Any]:
         return state["pages"][page_id]
 
-    async def update_page(
+    async def update_page(  # noqa: PLR0913 - mirrors the real client's signature
         page_id: int,
         name: str,
         markdown: str,
         *,
         chapter_id: int | None = None,
         tags: list[dict[str, str]] | None = None,
+        priority: int | None = None,
     ) -> dict[str, Any]:
         state["pages"][page_id]["name"] = name
         state["pages"][page_id]["markdown"] = markdown
@@ -109,6 +112,8 @@ def _fake_client_with_state(state: dict[str, Any]) -> MagicMock:
             state["pages"][page_id]["chapter_id"] = chapter_id
         if tags is not None:
             state["pages"][page_id]["tags"] = tags
+        if priority is not None:
+            state["pages"][page_id]["priority"] = priority
         return state["pages"][page_id]
 
     client.list_books = AsyncMock(side_effect=list_books)
@@ -331,6 +336,156 @@ async def test_second_sync_with_unchanged_data_makes_no_changes(
     assert report2.created == []
     assert report2.skipped_conflict == []  # NO false positives
     assert report2.errors == []
+
+
+async def test_area_and_device_pages_get_sequential_priority(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    Area/device pages get 1-based priority in existing sort order (#185).
+
+    Two areas, alphabetically "Bad" then "Küche" — each area's devices
+    are sorted alphabetically within it (extractor's job, not this
+    test's), so the whole "Geräte" chapter numbers 1..N across both
+    areas in that order (area-grouped, not a fresh global re-sort - see
+    the issue discussion on why that's the intended scope).
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    bad = area_reg.async_create("Bad")
+    kueche = area_reg.async_create("Küche")
+
+    entry = MockConfigEntry(domain="mqtt", entry_id="entry1", title="MQTT")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    for name, identifier, area_id in (
+        ("Waschmaschine", "waschmaschine", kueche.id),
+        ("Fön", "fon", bad.id),
+        ("Herd", "herd", kueche.id),
+    ):
+        dev = device_reg.async_get_or_create(
+            config_entry_id="entry1",
+            identifiers={("mqtt", identifier)},
+            name=name,
+        )
+        device_reg.async_update_device(dev.id, area_id=area_id)
+
+    await run_sync(hass, client, store, 1, strings)
+
+    area_pages = {
+        p["name"]: p["priority"]
+        for p in state["pages"].values()
+        if p["name"].startswith("Raum: ")
+    }
+    assert area_pages == {"Raum: Bad": 1, "Raum: Küche": 2}
+
+    device_pages = {
+        p["name"]: p["priority"]
+        for p in state["pages"].values()
+        if p["name"].startswith("Gerät: ")
+    }
+    # Bad's one device first (priority 1), then Küche's devices
+    # alphabetically (Herd before Waschmaschine).
+    assert device_pages == {
+        "Gerät: Fön": 1,
+        "Gerät: Herd": 2,
+        "Gerät: Waschmaschine": 3,
+    }
+
+
+async def test_label_pages_get_sequential_priority(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """Label pages get 1-based priority in alphabetical order (#185)."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    living = area_reg.async_create("Living Room")
+    entry = MockConfigEntry(domain="mqtt", entry_id="entry1", title="MQTT")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    label_reg = lr.async_get(hass)
+    zebra = label_reg.async_create("zebra")
+    apfel = label_reg.async_create("apfel")
+    dev = device_reg.async_get_or_create(
+        config_entry_id="entry1",
+        identifiers={("mqtt", "dev1")},
+        name="Sensor",
+    )
+    device_reg.async_update_device(
+        dev.id,
+        area_id=living.id,
+        labels={zebra.label_id, apfel.label_id},
+    )
+
+    await run_sync(hass, client, store, 1, strings)
+
+    label_pages = {
+        p["name"]: p["priority"]
+        for p in state["pages"].values()
+        if p["name"].startswith("Label: ")
+    }
+    assert label_pages == {"Label: apfel": 1, "Label: zebra": 2}
+
+
+async def test_book_level_bundle_pages_have_no_priority(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    Book-root ordering is out of scope for #185 - bundle pages get priority=None.
+
+    Confirmed via the fake client actually recording ``None`` (not
+    silently defaulting to something), so a regression that starts
+    numbering bundle pages too would fail this test.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+
+    await run_sync(hass, client, store, 1, strings)
+
+    integrations_page = next(
+        p for p in state["pages"].values() if p["name"] == strings["title_integrations"]
+    )
+    assert integrations_page["priority"] is None
+
+
+async def test_priority_drift_forces_update_even_when_content_unchanged(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    A sibling's insertion must fix an untouched page's priority too (#185).
+
+    "Bad" and "Küche" sync first (priorities 1, 2). Adding "Auto" -
+    alphabetically first - shifts the desired priority of "Bad" and
+    "Küche" to 2 and 3, even though neither area page's own content
+    changes. Without the priority-drift check this would hit the
+    unchanged-skip fast path and never send the corrected priority.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Bad")
+    area_reg.async_create("Küche")
+
+    await run_sync(hass, client, store, 1, strings)
+    bad_pid = next(pid for pid, p in state["pages"].items() if p["name"] == "Raum: Bad")
+    assert state["pages"][bad_pid]["priority"] == 1
+
+    area_reg.async_create("Auto")
+    report2 = await run_sync(hass, client, store, 1, strings)
+
+    assert state["pages"][bad_pid]["priority"] == 2
+    assert "Raum: Bad" not in report2.unchanged
+    assert "Raum: Bad" in report2.updated
 
 
 async def test_new_page_manual_block_starts_with_heading(

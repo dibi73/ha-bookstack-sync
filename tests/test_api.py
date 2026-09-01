@@ -188,6 +188,34 @@ class TestCreatePage:
             assert request_kwargs["json"]["editor"] == "markdown"
             assert request_kwargs["json"]["markdown"] == "body"
 
+    async def test_priority_sent_when_given(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        """#185: priority ends up in the request body, unmodified."""
+        with aioresponses() as mocked:
+            mocked.post(
+                "http://bookstack.local:6875/api/pages",
+                payload={"id": 11, "name": "P"},
+            )
+            await client.create_page("P", "body", book_id=5, priority=3)
+            request_kwargs = next(iter(mocked.requests.values()))[0].kwargs
+            assert request_kwargs["json"]["priority"] == 3
+
+    async def test_priority_omitted_when_none(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        """#185: book-level pages that don't manage ordering send no priority."""
+        with aioresponses() as mocked:
+            mocked.post(
+                "http://bookstack.local:6875/api/pages",
+                payload={"id": 11, "name": "P"},
+            )
+            await client.create_page("P", "body", book_id=5)
+            request_kwargs = next(iter(mocked.requests.values()))[0].kwargs
+            assert "priority" not in request_kwargs["json"]
+
 
 class TestUpdatePage:
     """`update_page` optionally moves the page via chapter_id."""
@@ -225,6 +253,33 @@ class TestUpdatePage:
             await client.update_page(42, "P", "body")
             request_kwargs = next(iter(mocked.requests.values()))[0].kwargs
             assert request_kwargs["json"]["editor"] == "markdown"
+
+    async def test_priority_sent_when_given(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        """#185: priority ends up in the request body, unmodified."""
+        with aioresponses() as mocked:
+            mocked.put(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P"},
+            )
+            await client.update_page(42, "P", "body", priority=7)
+            request_kwargs = next(iter(mocked.requests.values()))[0].kwargs
+            assert request_kwargs["json"]["priority"] == 7
+
+    async def test_priority_omitted_when_none(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.put(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P"},
+            )
+            await client.update_page(42, "P", "body")
+            request_kwargs = next(iter(mocked.requests.values()))[0].kwargs
+            assert "priority" not in request_kwargs["json"]
 
 
 class TestNotFoundError:
