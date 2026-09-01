@@ -271,6 +271,7 @@ async def test_async_extract_backup_status_parses_manager_data(
 
     local_agent = MagicMock()
     local_agent.name = "Local"
+    local_agent.location = "/backups"
 
     backup = MagicMock()
     backup.name = "Automatic backup 2026-08-26"
@@ -309,6 +310,44 @@ async def test_async_extract_backup_status_parses_manager_data(
     assert entry.agents[0].agent_name == "Local"
     assert entry.agents[0].size_bytes == 123456
     assert entry.agents[0].protected is True
+    assert entry.agents[0].location == "/backups"
+
+
+async def test_async_extract_backup_status_location_none_when_agent_lacks_it(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Cloud agents (e.g. OneDrive) expose no public location -> None (#176).
+
+    ``spec=["name"]`` makes the mock behave like a real object that
+    genuinely has no ``.location`` attribute (a plain ``MagicMock()``
+    would auto-create one on access, masking exactly the case this test
+    is for).
+    """
+    cloud_agent = MagicMock(spec=["name"])
+    cloud_agent.name = "OneDrive"
+
+    backup = MagicMock()
+    backup.name = "Automatic backup"
+    backup.date = "2026-08-26T03:00:00+00:00"
+    backup.homeassistant_version = "2026.8.3"
+    backup.failed_agent_ids = []
+    backup.agents = {"onedrive.abc": MagicMock(size=1, protected=False)}
+
+    manager = MagicMock()
+    manager.config.data.last_completed_automatic_backup = None
+    manager.config.data.last_attempted_automatic_backup = None
+    manager.backup_agents = {"onedrive.abc": cloud_agent}
+    manager.async_get_backups = AsyncMock(return_value=({"backup1": backup}, {}))
+
+    with patch(
+        "homeassistant.components.backup.async_get_manager",
+        return_value=manager,
+    ):
+        status = await async_extract_backup_status(hass)
+
+    assert status is not None
+    assert status.backups[0].agents[0].location is None
 
 
 async def test_automation_with_area_id_routed_to_area(

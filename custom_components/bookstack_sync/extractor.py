@@ -1916,6 +1916,14 @@ class BackupAgentEntry:
     agent_name: str
     size_bytes: int
     protected: bool
+    # Storage location, e.g. a filesystem path or Supervisor network-mount
+    # name (issue #176). Only ``SupervisorBackupAgent`` (local + Supervisor
+    # network-storage mounts, see ``homeassistant.components.hassio.backup``)
+    # exposes this publicly as ``.location`` — cloud agents like OneDrive
+    # only track an opaque, private folder id, nothing human-readable.
+    # ``None`` means "not available", surfaced explicitly by the renderer
+    # rather than hidden (same contract as ``agent_errors``, #128's lesson).
+    location: str | None = None
 
 
 @dataclass
@@ -2013,6 +2021,11 @@ async def async_extract_backup_status(
                     agent_name=agent.name if agent else agent_id,
                     size_bytes=status.size,
                     protected=status.protected,
+                    # duck-typed on purpose (#176): importing
+                    # SupervisorBackupAgent would need "hassio" in
+                    # manifest.json's after_dependencies for a type check
+                    # that's never wrong on a non-Supervisor install anyway.
+                    location=getattr(agent, "location", None),
                 ),
             )
         entry.agents.sort(key=lambda a: a.agent_name.lower())
