@@ -927,6 +927,89 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     return report
 
 
+async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params + page_key
+    hass: HomeAssistant,
+    client: BookStackApiClient,
+    store: BookStackSyncStore,
+    book_id: int,
+    page_key: str,
+    strings: dict[str, str],
+) -> bool:
+    """
+    Force-resync exactly one page's AUTO block (#190 repair-issue Fix flow).
+
+    Unlike ``run_sync(force=True)``, which force-overwrites every page,
+    this only touches the one page identified by ``page_key`` - so
+    clicking "Fix" on a single tampered/markers-missing repair issue
+    doesn't also churn every unrelated page's revision history in
+    BookStack.
+
+    Cross-page Markdown links use the slugs already recorded in
+    ``store`` from previous full syncs, rather than a fresh write pass
+    over every other page - safe because a repair issue can only exist
+    for a page that has already been through at least one full sync.
+
+    Returns ``False`` if no planned page currently matches ``page_key``
+    (the underlying device/area/label was removed from HA between the
+    issue being raised and the fix being confirmed) - caller should
+    treat that as "nothing left to fix", not an error.
+    """
+    await store.async_load()
+    known_device_pages = {
+        key.split(":", 1)[1]: mapping.tombstoned_at is not None
+        for key, mapping in store.all().items()
+        if key.startswith(f"{PAGE_KIND_DEVICE}:")
+    }
+    energy_config = await async_extract_energy_config(hass)
+    backup_status = await async_extract_backup_status(hass)
+    addons = await async_extract_addons(hass)
+    snapshot = extract_snapshot(
+        hass,
+        energy_config=energy_config,
+        backup_status=backup_status,
+        addons=addons,
+        known_device_pages=known_device_pages,
+    )
+    now = datetime.now(tz=UTC)
+    ha_url = (hass.config.external_url or hass.config.internal_url or "").rstrip("/")
+    book_slug = store.get_book_slug() or ""
+
+    page_links: dict[str, str] = {}
+    for key, mapping in store.all().items():
+        if mapping.slug:
+            url = _build_page_url(book_slug, mapping.slug)
+            if url:
+                page_links[key] = url
+
+    all_planned = [
+        *_plan_pages(snapshot, now, strings, ha_url=ha_url),
+        *_plan_area_pages(snapshot, now, strings, page_links, ha_url=ha_url),
+        *_plan_label_pages(snapshot, now, strings, page_links, ha_url=ha_url),
+    ]
+    page = next((p for p in all_planned if p.key == page_key), None)
+    if page is None:
+        return False
+
+    chapters = await _ensure_chapters(client, store, book_id, strings)
+    report = SyncReport()
+    await _sync_one(
+        client,
+        store,
+        book_id,
+        page,
+        chapters,
+        report,
+        strings,
+        index=1,
+        total=1,
+        dry_run=False,
+        force=True,
+        book_slug=book_slug,
+    )
+    await store.async_save()
+    return True
+
+
 def _post_sync_notification(
     hass: HomeAssistant,
     report: SyncReport,

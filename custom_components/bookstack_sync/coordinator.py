@@ -33,7 +33,7 @@ from .const import (
 )
 from .export import ExportResult
 from .export import export as export_run
-from .sync import SyncReport, run_sync
+from .sync import SyncReport, resync_single_page, run_sync
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -177,7 +177,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 self.hass,
                 DOMAIN,
                 f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_{key}",
-                is_fixable=False,
+                is_fixable=True,
                 is_persistent=True,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key=REPAIR_ISSUE_TAMPERED,
@@ -185,6 +185,9 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     "page_title": title,
                     "page_url": url or strings["repair_no_page_url"],
                 },
+                # Read back by repairs.async_create_fix_flow (#190) to
+                # know which entry/page the Fix button should resync.
+                data={"entry_id": entry_id, "page_key": key},
             )
         for key in resolved_keys:
             ir.async_delete_issue(
@@ -233,7 +236,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 self.hass,
                 DOMAIN,
                 f"{REPAIR_ISSUE_MARKERS_MISSING}_{entry_id}_{key}",
-                is_fixable=False,
+                is_fixable=True,
                 is_persistent=True,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key=REPAIR_ISSUE_MARKERS_MISSING,
@@ -241,6 +244,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     "page_title": title,
                     "page_url": url or strings["repair_no_page_url"],
                 },
+                data={"entry_id": entry_id, "page_key": key},
             )
         for key in resolved_keys:
             ir.async_delete_issue(
@@ -417,6 +421,33 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         if not dry_run:
             await self._maybe_export_after_sync()
         return report
+
+    async def async_fix_single_page(self, page_key: str) -> bool:
+        """
+        Force-resync exactly one page (#190 repair-issue Fix flow).
+
+        Shares ``async_run_sync``'s lock so a Fix click can't race a
+        concurrent scheduled/manual sync. No reconciliation/notification
+        step needed afterwards: the repairs framework deletes the fixed
+        issue itself once the flow completes without aborting (the
+        in-memory tamper/markers-missing caches are diagnostics-only —
+        see ``_reconcile_tamper_issues`` — and get rebuilt from the
+        issue registry on the next full sync regardless).
+        """
+        async with self._sync_lock:
+            runtime = self.config_entry.runtime_data
+            options = self.config_entry.options
+            data = self.config_entry.data
+            book_id = int(options.get(CONF_BOOK_ID) or data[CONF_BOOK_ID])
+            strings = get_strings(self._resolve_output_language())
+            return await resync_single_page(
+                self.hass,
+                runtime.client,
+                runtime.store,
+                book_id,
+                page_key,
+                strings,
+            )
 
     async def _maybe_export_after_sync(self) -> None:
         """

@@ -421,6 +421,13 @@ moves them to the right chapter automatically.
   the page with fresh markers. The integration also pins
   `editor: "markdown"` on every write to deter the WYSIWYG toggle, but
   BookStack treats that field as advisory in older versions.
+  Since v0.22.0 the repair issue itself has a one-click **Fix** button
+  (Settings → System → Repairs) that does the same thing for just that
+  one page instead of the whole config entry — save any MANUAL-block
+  notes first, since they reset to the default placeholder and can't
+  be recovered automatically. The same button also fixes a
+  *page_tampered* issue, without resetting MANUAL content in that
+  case.
 - **No bidirectional sync.** Edits in BookStack outside the manual
   block are detected, logged, and the page is skipped — not merged
   back into HA.

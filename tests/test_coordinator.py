@@ -636,3 +636,99 @@ async def test_sensor_state_shows_progress_string_while_syncing(
     coord.last_report = SyncReport()
     coord.last_run = None  # last_run gets stamped only after successful sync
     assert sensor.native_value == "ok"
+
+
+async def test_tamper_issue_created_fixable_with_resync_data(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#190: repair issues carry is_fixable=True + the Fix flow's target data."""
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync._strings import get_strings  # noqa: PLC0415
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_TAMPERED,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+
+    report = SyncReport()
+    report.tampered_page_keys.append("device:abc")
+    report.tampered_page_titles.append("Acurite-Rain-25")
+    report.tampered_page_urls.append("")
+    coord._reconcile_tamper_issues(report, get_strings("de"))
+
+    entry_id = config_entry.entry_id
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN,
+        f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_device:abc",
+    )
+    assert issue is not None
+    assert issue.is_fixable is True
+    assert issue.data == {"entry_id": entry_id, "page_key": "device:abc"}
+
+
+async def test_markers_missing_issue_created_fixable_with_resync_data(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#190: same contract as tamper issues, for markers_missing."""
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync._strings import get_strings  # noqa: PLC0415
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_MARKERS_MISSING,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+
+    report = SyncReport()
+    report.markers_missing_page_keys.append("area:living")
+    report.markers_missing_page_titles.append("Raum: Living Room")
+    report.markers_missing_page_urls.append("")
+    coord._reconcile_markers_missing_issues(report, get_strings("de"))
+
+    entry_id = config_entry.entry_id
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN,
+        f"{REPAIR_ISSUE_MARKERS_MISSING}_{entry_id}_area:living",
+    )
+    assert issue is not None
+    assert issue.is_fixable is True
+    assert issue.data == {"entry_id": entry_id, "page_key": "area:living"}
+
+
+async def test_async_fix_single_page_resolves_book_id_and_delegates(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#190: coordinator hands off to ``resync_single_page`` with the right args."""
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    fake_client = object()
+    fake_store = object()
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": fake_client, "store": fake_store},
+    )()
+
+    fake_resync = AsyncMock(return_value=True)
+    with patch(
+        "custom_components.bookstack_sync.coordinator.resync_single_page",
+        new=fake_resync,
+    ):
+        result = await coord.async_fix_single_page("device:abc")
+
+    assert result is True
+    fake_resync.assert_awaited_once()
+    args = fake_resync.await_args.args
+    assert args[0] is hass
+    assert args[1] is fake_client
+    assert args[2] is fake_store
+    assert args[3] == 1  # CONF_BOOK_ID from the config_entry fixture
+    assert args[4] == "device:abc"

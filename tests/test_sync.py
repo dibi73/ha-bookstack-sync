@@ -35,7 +35,11 @@ from custom_components.bookstack_sync.extractor import (
     BackupStatusSnapshot,
 )
 from custom_components.bookstack_sync.store import BookStackSyncStore
-from custom_components.bookstack_sync.sync import _build_page_url, run_sync
+from custom_components.bookstack_sync.sync import (
+    _build_page_url,
+    resync_single_page,
+    run_sync,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -826,6 +830,93 @@ async def test_force_overwrites_tampered_pages(
         f"force=True should bypass skip, got {report_force.skipped_conflict!r}"
     )
     assert report_force.tampered_page_keys == []
+
+
+async def test_resync_single_page_only_touches_the_target_page(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    #190: the repair-issue Fix flow force-resyncs exactly ONE page.
+
+    Two areas exist and both end up tampered (drifted hash + changed
+    BookStack content, same setup as ``test_force_overwrites_tampered_
+    pages``). Resyncing just one of them by key must fix only that one
+    - the other page's content and the other's ``update_page`` call
+    must never happen.
+    """
+    from custom_components.bookstack_sync.store import PageMapping  # noqa: PLC0415
+
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Bad")
+    area_reg.async_create("Küche")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    for key, mapping in store.all().items():
+        store.set(
+            key,
+            PageMapping(
+                page_id=mapping.page_id,
+                auto_block_hash="cafebabe" * 8,
+                last_seen=mapping.last_seen,
+                tombstoned_at=mapping.tombstoned_at,
+                hash_origin="bookstack",
+                slug=mapping.slug,
+            ),
+        )
+    for page_id, page in state["pages"].items():
+        state["pages"][page_id] = {
+            **page,
+            "markdown": page["markdown"].replace(
+                "Auto-generated",
+                "Auto-generated [drifted]",
+            ),
+        }
+
+    target_key = next(
+        k for k in store.all() if "Bad" in state["pages"][store.get(k).page_id]["name"]
+    )
+    other_keys = [k for k in store.all() if k != target_key]
+
+    client.update_page.reset_mock()
+    found = await resync_single_page(hass, client, store, 1, target_key, strings)
+
+    assert found is True
+    assert client.update_page.call_count == 1
+    target_page = state["pages"][store.get(target_key).page_id]
+    assert "[drifted]" not in target_page["markdown"]
+
+    for other_key in other_keys:
+        other_page = state["pages"][store.get(other_key).page_id]
+        assert "[drifted]" in other_page["markdown"], (
+            f"resync_single_page must not have touched {other_key}"
+        )
+
+
+async def test_resync_single_page_returns_false_for_unknown_key(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """The device/area/label was removed from HA - nothing left to fix."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    client.update_page.reset_mock()
+    client.create_page.reset_mock()
+    found = await resync_single_page(hass, client, store, 1, "device:gone", strings)
+
+    assert found is False
+    client.update_page.assert_not_called()
+    client.create_page.assert_not_called()
 
 
 async def test_404_on_get_page_recreates_page_and_keeps_sync_running(
