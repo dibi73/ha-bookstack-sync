@@ -153,11 +153,35 @@
     },
     "page_tampered": {
       "title": "O bloco AUTO de uma página foi editado manualmente",
-      "description": "A página «{page_title}» no BookStack tem um bloco AUTO que foi editado fora do Home Assistant. A integração ignorou esta página durante a sincronização para não sobrescrever as suas alterações. Mova as suas notas para o bloco MANUAL ou anule a alteração no bloco AUTO para que a próxima sincronização possa atualizar novamente a página."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Corrigir página",
+            "description": "A página «{page_title}» no BookStack tem um bloco AUTO que foi editado fora do Home Assistant. A integração ignorou esta página durante a sincronização para não sobrescrever as suas alterações. Mova as suas notas para o bloco MANUAL ou anule a alteração no bloco AUTO para que a próxima sincronização possa atualizar novamente a página.\n\nIsto substitui o bloco AUTO desta página pelos dados atuais do Home Assistant. O bloco MANUAL é preservado. Continuar?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Não foi possível encontrar a entrada de configuração associada (pode ter sido removida).",
+          "page_not_found": "O dispositivo/área/etiqueta correspondente já não existe no Home Assistant — nada a corrigir.",
+          "resync_failed": "A tentativa de correção falhou. Verifique a ligação ao BookStack e tente novamente."
+        }
+      }
     },
     "page_markers_missing": {
       "title": "A page's marker comments are missing",
-      "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Corrigir página",
+            "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in.\n\nIsto recria a página com novos marcadores AUTO/MANUAL. As notas existentes no bloco MANUAL são repostas para o texto predefinido e não podem ser recuperadas automaticamente — copie-as primeiro do BookStack se quiser mantê-las. Continuar?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Não foi possível encontrar a entrada de configuração associada (pode ter sido removida).",
+          "page_not_found": "O dispositivo/área/etiqueta correspondente já não existe no Home Assistant — nada a corrigir.",
+          "resync_failed": "A tentativa de correção falhou. Verifique a ligação ao BookStack e tente novamente."
+        }
+      }
     }
   },
   "exceptions": {

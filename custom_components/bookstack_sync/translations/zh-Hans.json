@@ -153,11 +153,35 @@
     },
     "page_tampered": {
       "title": "页面的 AUTO 块已被手动编辑",
-      "description": "BookStack 中的页面「{page_title}」具有在 Home Assistant 之外编辑过的 AUTO 块。集成在同步期间跳过了此页面，以免覆盖您的更改。请将您的笔记移至 MANUAL 块，或撤销 AUTO 块中的更改，以便下次同步可以再次更新该页面。"
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "修复页面",
+            "description": "BookStack 中的页面「{page_title}」具有在 Home Assistant 之外编辑过的 AUTO 块。集成在同步期间跳过了此页面，以免覆盖您的更改。请将您的笔记移至 MANUAL 块，或撤销 AUTO 块中的更改，以便下次同步可以再次更新该页面。\n\n此操作会用 Home Assistant 中的当前数据覆盖此页面的 AUTO 块。MANUAL 块将被保留。是否继续？"
+          }
+        },
+        "abort": {
+          "entry_not_found": "未找到关联的配置条目（可能已被移除）。",
+          "page_not_found": "对应的设备/区域/标签在 Home Assistant 中已不存在——没有可修复的内容。",
+          "resync_failed": "修复尝试失败。请检查 BookStack 连接并重试。"
+        }
+      }
     },
     "page_markers_missing": {
       "title": "A page's marker comments are missing",
-      "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "修复页面",
+            "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in.\n\n此操作会使用全新的 AUTO/MANUAL 标记重新创建页面。MANUAL 块中现有的笔记将被重置为默认占位符，且无法自动恢复——如果想保留，请先从 BookStack 中复制。是否继续？"
+          }
+        },
+        "abort": {
+          "entry_not_found": "未找到关联的配置条目（可能已被移除）。",
+          "page_not_found": "对应的设备/区域/标签在 Home Assistant 中已不存在——没有可修复的内容。",
+          "resync_failed": "修复尝试失败。请检查 BookStack 连接并重试。"
+        }
+      }
     }
   },
   "exceptions": {

@@ -153,11 +153,35 @@
     },
     "page_tampered": {
       "title": "Cuireadh bloc AUTO de leathanach in eagar de láimh",
-      "description": "Tá bloc AUTO ag an leathanach „{page_title}\" i BookStack a cuireadh in eagar lasmuigh de Home Assistant. Lig an comhtháthú thar an leathanach seo le linn sioncronaithe chun gan d'athruithe a fhorscríobh. Bog do nótaí go dtí an bloc MANUAL nó cealaigh an t-athrú sa bhloc AUTO ionas gur féidir leis an gcéad sioncronú eile an leathanach a nuashonrú arís."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Deisigh an leathanach",
+            "description": "Tá bloc AUTO ag an leathanach „{page_title}\" i BookStack a cuireadh in eagar lasmuigh de Home Assistant. Lig an comhtháthú thar an leathanach seo le linn sioncronaithe chun gan d'athruithe a fhorscríobh. Bog do nótaí go dtí an bloc MANUAL nó cealaigh an t-athrú sa bhloc AUTO ionas gur féidir leis an gcéad sioncronú eile an leathanach a nuashonrú arís.\n\nScríobhfaidh sé seo thar bhloc AUTO an leathanaigh seo leis na sonraí reatha ó Home Assistant. Coimeádtar an bloc MANUAL. Leanúint ar aghaidh?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Níorbh fhéidir an iontráil cumraíochta ghaolmhar a aimsiú (b'fhéidir gur baineadh í).",
+          "page_not_found": "Níl an gléas/limistéar/lipéad bunúsach ann a thuilleadh i Home Assistant — níl aon rud le deisiú.",
+          "resync_failed": "Theip ar an iarracht deisithe. Seiceáil an nasc BookStack agus bain triail eile as."
+        }
+      }
     },
     "page_markers_missing": {
       "title": "A page's marker comments are missing",
-      "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Deisigh an leathanach",
+            "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in.\n\nCruthóidh sé seo an leathanach arís le marcóirí AUTO/MANUAL nua. Athshocrófar aon nótaí atá sa bhloc MANUAL cheana go dtí an sealbhóir áite réamhshocraithe agus ní féidir iad a aisghabháil go huathoibríoch — cóipeáil iad ó BookStack ar dtús más mian leat iad a choinneáil. Leanúint ar aghaidh?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Níorbh fhéidir an iontráil cumraíochta ghaolmhar a aimsiú (b'fhéidir gur baineadh í).",
+          "page_not_found": "Níl an gléas/limistéar/lipéad bunúsach ann a thuilleadh i Home Assistant — níl aon rud le deisiú.",
+          "resync_failed": "Theip ar an iarracht deisithe. Seiceáil an nasc BookStack agus bain triail eile as."
+        }
+      }
     }
   },
   "exceptions": {

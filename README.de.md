@@ -211,6 +211,13 @@ und überspringt die Page mit einer Warnung im HA-Log.
 > überschreiben* aufrufen. Die Integration setzt zusätzlich bei jedem
 > Write `editor: "markdown"`, um den WYSIWYG-Toggle zu deaktivieren —
 > ältere BookStack-Versionen ignorieren das Feld aber.
+> Seit v0.22.0 hat das Repair-Issue selbst einen "Reparieren"-Button
+> (Einstellungen → System → Reparaturen), der genau dasselbe nur für
+> diese eine Page macht statt für den ganzen Config-Eintrag — sichere
+> MANUAL-Notizen vorher, sie werden dabei auf den Standard-Platzhalter
+> zurückgesetzt und können nicht automatisch wiederhergestellt werden.
+> Derselbe Button repariert auch ein *page_tampered*-Issue, dort ohne
+> den MANUAL-Block zurückzusetzen.
 
 ## Entwicklung
 

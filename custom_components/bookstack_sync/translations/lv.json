@@ -153,11 +153,35 @@
     },
     "page_tampered": {
       "title": "Lapas AUTO bloks rediģēts manuāli",
-      "description": "Lapai „{page_title}\" BookStack ir AUTO bloks, kas tika rediģēts ārpus Home Assistant. Integrācija izlaida šo lapu sinhronizācijas laikā, lai nepārrakstītu jūsu izmaiņas. Pārvietojiet piezīmes uz MANUAL bloku vai atsauciet izmaiņas AUTO blokā, lai nākamā sinhronizācija atkal varētu atjaunināt lapu."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Labot lapu",
+            "description": "Lapai „{page_title}\" BookStack ir AUTO bloks, kas tika rediģēts ārpus Home Assistant. Integrācija izlaida šo lapu sinhronizācijas laikā, lai nepārrakstītu jūsu izmaiņas. Pārvietojiet piezīmes uz MANUAL bloku vai atsauciet izmaiņas AUTO blokā, lai nākamā sinhronizācija atkal varētu atjaunināt lapu.\n\nTas pārrakstīs šīs lapas AUTO bloku ar pašreizējiem Home Assistant datiem. MANUAL bloks tiek saglabāts. Turpināt?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Saistītais konfigurācijas ieraksts netika atrasts (iespējams, tas tika noņemts).",
+          "page_not_found": "Saistītā ierīce/zona/etiķete Home Assistant vairs nepastāv — nav ko labot.",
+          "resync_failed": "Labošanas mēģinājums neizdevās. Pārbaudiet BookStack savienojumu un mēģiniet vēlreiz."
+        }
+      }
     },
     "page_markers_missing": {
       "title": "A page's marker comments are missing",
-      "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Labot lapu",
+            "description": "The page \"{page_title}\" in BookStack lost its AUTO/MANUAL marker comments. Most common cause: the WYSIWYG editor was opened on the page — BookStack's HTML round-trip drops the marker comments. The integration skipped the page to avoid overwriting your content. Fix: open the page in the markdown editor (NOT WYSIWYG), copy any MANUAL-block content you want to keep, then call \"Sync now\" with \"Force overwrite tampered pages\" enabled — the page will be recreated with fresh markers and you can paste the MANUAL block back in.\n\nTas atkārtoti izveidos lapu ar jauniem AUTO/MANUAL marķieriem. Esošie ieraksti MANUAL blokā tiks atiestatīti uz noklusējuma vietturi, un tos nevar automātiski atgūt — ja vēlaties tos saglabāt, vispirms nokopējiet tos no BookStack. Turpināt?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Saistītais konfigurācijas ieraksts netika atrasts (iespējams, tas tika noņemts).",
+          "page_not_found": "Saistītā ierīce/zona/etiķete Home Assistant vairs nepastāv — nav ko labot.",
+          "resync_failed": "Labošanas mēģinājums neizdevās. Pārbaudiet BookStack savienojumu un mēģiniet vēlreiz."
+        }
+      }
     }
   },
   "exceptions": {
