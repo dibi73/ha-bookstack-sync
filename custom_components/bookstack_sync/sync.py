@@ -206,14 +206,20 @@ class _PlannedPage:
     title: str
     auto_body: str
     chapter_key: str | None = None  # None = page lives at book level
+    # 1-based sidebar position within chapter_key (issue #185). None = don't
+    # touch BookStack's priority - deliberately left unset for book-level
+    # pages (chapter_key=None): that root-level ordering isn't in scope, see
+    # the issue discussion.
+    priority: int | None = None
 
 
-def _device_page(
+def _device_page(  # noqa: PLR0913 - cohesive planner, mirrors _label_page's params
     device: DeviceSnapshot,
     now: datetime,
     strings: dict[str, str],
     reverse_usage: dict[str, list[ReverseUsageEntry]] | None = None,
     ha_url: str = "",
+    priority: int | None = None,
 ) -> _PlannedPage:
     return _PlannedPage(
         key=f"{PAGE_KIND_DEVICE}:{device.device_id}",
@@ -226,6 +232,7 @@ def _device_page(
             ha_url=ha_url,
         ),
         chapter_key=CHAPTER_KEY_DEVICES,
+        priority=priority,
     )
 
 
@@ -394,14 +401,24 @@ def _plan_pages(
     # Markdown links to the device pages (v0.14.0/v0.14.4). Pass 1 only
     # contains bundle pages + every device — we collect their page IDs
     # first, then ``_plan_area_pages`` renders each area on top of those.
-    for area in snapshot.areas:
-        planned.extend(
-            _device_page(d, now, strings, snapshot.reverse_usage, ha_url=ha_url)
-            for d in area.devices
-        )
+    #
+    # Priority (issue #185): every device page shares one chapter
+    # ("Geräte") regardless of area, so the sidebar order needs one
+    # counter across the whole flattened area+unassigned list below -
+    # numbering per-area would just reproduce area grouping, not the
+    # alphabetical-per-device order the sidebar shows.
+    all_devices = [d for area in snapshot.areas for d in area.devices]
+    all_devices.extend(snapshot.unassigned_devices)
     planned.extend(
-        _device_page(d, now, strings, snapshot.reverse_usage, ha_url=ha_url)
-        for d in snapshot.unassigned_devices
+        _device_page(
+            d,
+            now,
+            strings,
+            snapshot.reverse_usage,
+            ha_url=ha_url,
+            priority=idx + 1,
+        )
+        for idx, d in enumerate(all_devices)
     )
     return planned
 
@@ -480,8 +497,9 @@ def _plan_area_pages(
                 ha_url=ha_url,
             ),
             chapter_key=CHAPTER_KEY_AREAS,
+            priority=idx + 1,
         )
-        for area in snapshot.areas
+        for idx, area in enumerate(snapshot.areas)
     ]
 
 
@@ -492,6 +510,7 @@ def _label_page(  # noqa: PLR0913 - cohesive planner, mirrors _device_page's par
     page_links: dict[str, str],
     area_names: dict[str, str],
     ha_url: str = "",
+    priority: int | None = None,
 ) -> _PlannedPage:
     """
     Plan one label page (issue #22).
@@ -517,6 +536,7 @@ def _label_page(  # noqa: PLR0913 - cohesive planner, mirrors _device_page's par
             ha_url=ha_url,
         ),
         chapter_key=CHAPTER_KEY_LABELS,
+        priority=priority,
     )
 
 
@@ -530,8 +550,16 @@ def _plan_label_pages(
     """Plan every label page. Empty when no label has a device (issue #22)."""
     area_names = {area.area_id: area.name for area in snapshot.areas}
     return [
-        _label_page(label, now, strings, page_links, area_names, ha_url=ha_url)
-        for label in snapshot.labels
+        _label_page(
+            label,
+            now,
+            strings,
+            page_links,
+            area_names,
+            ha_url=ha_url,
+            priority=idx + 1,
+        )
+        for idx, label in enumerate(snapshot.labels)
     ]
 
 
@@ -973,6 +1001,7 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
                 body,
                 chapter_id=chapter_id,
                 tags=_managed_tags(),
+                priority=page.priority,
             )
         else:
             created = await client.create_page(
@@ -980,6 +1009,7 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
                 body,
                 book_id=book_id,
                 tags=_managed_tags(),
+                priority=page.priority,
             )
         page_id = int(created["id"])
         # Hash what BookStack actually stored, not what we sent (#58).
@@ -1130,11 +1160,21 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
             )
             return mapping.page_id
 
+    # #185: a page's own content can stay untouched for months while a
+    # newly-inserted sibling shifts where it belongs in the sidebar - so
+    # priority drift has to force a write even when nothing else did,
+    # otherwise it would only ever get fixed the next time that page's
+    # content happens to change too.
+    priority_drifted = (
+        page.priority is not None and _existing_priority(existing) != page.priority
+    )
+
     if (
         existing_auto_hash == new_hash
         and not needs_move
         and mapping.hash_origin == "bookstack"
         and not merged.manual_heading_added
+        and not priority_drifted
     ):
         # Skip-on-unchanged needs a trustworthy stored hash — only
         # safe when origin is ``bookstack``. Legacy ``write`` mappings
@@ -1164,6 +1204,7 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
         merged.body,
         chapter_id=chapter_id if needs_move else None,
         tags=_managed_tags(),
+        priority=page.priority,
     )
     saved_hash, hash_origin = _hash_from_response(saved, page.auto_body)
     store.set(
@@ -1179,6 +1220,23 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
     )
     report.updated.append(page.title)
     return mapping.page_id
+
+
+def _existing_priority(existing: dict[str, Any]) -> int | None:
+    """
+    Parse BookStack's current ``priority`` for a page, defensively (#185).
+
+    Same "coerce, never crash" contract as ``_needs_move`` below for
+    ``chapter_id`` — an unparsable value just means "unknown", which
+    ``priority_drifted`` treats as needing a write to reassert ours.
+    """
+    raw = existing.get("priority")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except TypeError, ValueError:
+        return None
 
 
 def _needs_move(

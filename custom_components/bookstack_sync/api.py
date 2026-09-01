@@ -146,7 +146,7 @@ class BookStackApiClient:
         """Fetch a single page including markdown body."""
         return await self._request("get", f"/api/pages/{page_id}")
 
-    async def create_page(
+    async def create_page(  # noqa: PLR0913 - all keyword-only, one per BookStack field
         self,
         name: str,
         markdown: str,
@@ -154,13 +154,17 @@ class BookStackApiClient:
         book_id: int | None = None,
         chapter_id: int | None = None,
         tags: list[dict[str, str]] | None = None,
+        priority: int | None = None,
     ) -> dict[str, Any]:
         """
         Create a markdown page either at book-level or inside a chapter.
 
         Exactly one of ``book_id`` and ``chapter_id`` must be provided.
         ``tags`` is forwarded as BookStack's tag array
-        (``[{"name": "...", "value": "..."}]``).
+        (``[{"name": "...", "value": "..."}]``). ``priority`` sets the
+        page's sidebar position within its parent (#185); omitted when
+        ``None`` so callers that don't manage ordering leave BookStack's
+        default (append-at-end) behaviour untouched.
         """
         if (book_id is None) == (chapter_id is None):
             msg = "create_page needs exactly one of book_id or chapter_id"
@@ -186,9 +190,11 @@ class BookStackApiClient:
             body["book_id"] = book_id
         if tags is not None:
             body["tags"] = tags
+        if priority is not None:
+            body["priority"] = priority
         return await self._request("post", "/api/pages", json=body)
 
-    async def update_page(
+    async def update_page(  # noqa: PLR0913 - all keyword-only, one per BookStack field
         self,
         page_id: int,
         name: str,
@@ -196,6 +202,7 @@ class BookStackApiClient:
         *,
         chapter_id: int | None = None,
         tags: list[dict[str, str]] | None = None,
+        priority: int | None = None,
     ) -> dict[str, Any]:
         """
         Update an existing markdown page; optionally move it to a chapter.
@@ -203,7 +210,8 @@ class BookStackApiClient:
         ``tags`` is forwarded as BookStack's tag array
         (``[{"name": "...", "value": "..."}]``); BookStack overwrites the
         full tag set on update, so passing the full intended list each
-        write keeps things idempotent.
+        write keeps things idempotent. ``priority`` is likewise sent
+        whenever the caller manages ordering for this page (#185).
 
         ``editor: "markdown"`` is repeated on every update so a page
         that was switched to WYSIWYG between syncs gets pulled back to
@@ -219,6 +227,8 @@ class BookStackApiClient:
             body["chapter_id"] = chapter_id
         if tags is not None:
             body["tags"] = tags
+        if priority is not None:
+            body["priority"] = priority
         return await self._request("put", f"/api/pages/{page_id}", json=body)
 
     async def _list_paginated(
