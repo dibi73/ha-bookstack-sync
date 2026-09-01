@@ -13,6 +13,7 @@ coverage.xml
 .ruff_cache
 .venv
 .mypy_cache
+.claude/settings.local.json
 
 
 # Home Assistant configuration
