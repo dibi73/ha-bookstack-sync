@@ -19,6 +19,9 @@ from custom_components.bookstack_sync.api import (
 from custom_components.bookstack_sync.const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
+    CONF_EXPORT_ENABLED,
+    CONF_EXTERNAL_BASE_URL,
+    CONF_OUTPUT_LANGUAGE,
     CONF_SYNC_INTERVAL,
     CONF_TOKEN_ID,
     CONF_TOKEN_SECRET,
@@ -198,3 +201,82 @@ async def test_reauth_flow_updates_token(
     assert result2["reason"] == "reauth_successful"
     assert config_entry.data[CONF_TOKEN_ID] == "newid"
     assert config_entry.data[CONF_TOKEN_SECRET] == "newsecret"
+
+
+def _options_submission(**overrides: object) -> dict[str, object]:
+    """Minimal valid options-flow submission; export disabled to skip its checks."""
+    base: dict[str, object] = {
+        CONF_BOOK_ID: "1",
+        CONF_SYNC_INTERVAL: INTERVAL_DAILY,
+        CONF_OUTPUT_LANGUAGE: "de",
+        CONF_EXPORT_ENABLED: False,
+    }
+    base.update(overrides)
+    return base
+
+
+async def test_options_flow_saves_external_base_url(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#202: a valid external URL is persisted as-is."""
+    config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    ):
+        result = await hass.config_entries.options.async_init(config_entry.entry_id)
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input=_options_submission(
+                **{CONF_EXTERNAL_BASE_URL: "https://bookstack.example.com"},
+            ),
+        )
+
+    assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result2["data"][CONF_EXTERNAL_BASE_URL] == "https://bookstack.example.com"
+
+
+async def test_options_flow_external_base_url_optional(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#202: leaving it blank keeps the previous client.base_url-only behaviour."""
+    config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    ):
+        result = await hass.config_entries.options.async_init(config_entry.entry_id)
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input=_options_submission(),
+        )
+
+    assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result2["data"][CONF_EXTERNAL_BASE_URL] == ""
+
+
+async def test_options_flow_rejects_invalid_external_base_url(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#202: a scheme-less value is rejected the same way CONF_BASE_URL is."""
+    config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    ):
+        result = await hass.config_entries.options.async_init(config_entry.entry_id)
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input=_options_submission(
+                **{CONF_EXTERNAL_BASE_URL: "not-a-url"},
+            ),
+        )
+
+    assert result2["type"] == data_entry_flow.FlowResultType.FORM
+    assert result2["errors"][CONF_EXTERNAL_BASE_URL] == "base_url_invalid_scheme"

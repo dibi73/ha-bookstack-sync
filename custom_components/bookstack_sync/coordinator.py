@@ -16,6 +16,7 @@ from .const import (
     CONF_BOOK_ID,
     CONF_EXPORT_ENABLED,
     CONF_EXPORT_PATH,
+    CONF_EXTERNAL_BASE_URL,
     CONF_OUTPUT_LANGUAGE,
     CONF_SYNC_INTERVAL,
     DEFAULT_EXPORT_ENABLED,
@@ -389,6 +390,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                         dry_run=dry_run,
                         force=force,
                         progress_callback=self._on_sync_progress,
+                        external_base_url=options.get(CONF_EXTERNAL_BASE_URL) or None,
                     )
                 except BookStackApiAuthError:
                     # Auth failures get their own reauth-flow handling
@@ -459,6 +461,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 book_id,
                 page_key,
                 strings,
+                external_base_url=options.get(CONF_EXTERNAL_BASE_URL) or None,
             )
 
     async def _maybe_export_after_sync(self) -> None:

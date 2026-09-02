@@ -64,11 +64,13 @@
           "sync_interval": "Interval sinkronizacije",
           "output_language": "Jezik BookStack stranica",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)"
+          "export_path": "Export folder (absolute path)",
+          "external_base_url": "Vanjski BookStack URL (neobavezno)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
+          "external_base_url": "Koristi se samo za poveznicu u obavijestima o popravcima (Postavke → Sustav → Popravci), ako se ta adresa razlikuje od gornjeg BookStack URL-a — npr. kada pristupate Home Assistantu izvan svoje mreže. Ostavite prazno za nastavak korištenja istog URL-a kao gore."
         }
       }
     }

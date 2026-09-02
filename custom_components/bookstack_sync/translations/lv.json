@@ -64,11 +64,13 @@
           "sync_interval": "Sinhronizācijas intervāls",
           "output_language": "BookStack lapu valoda",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)"
+          "export_path": "Export folder (absolute path)",
+          "external_base_url": "Ārējais BookStack URL (izvēles)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
+          "external_base_url": "Tiek izmantots tikai saitei labošanas paziņojumos (Iestatījumi → Sistēma → Labojumi), ja šī adrese atšķiras no iepriekš norādītā BookStack URL — piemēram, piekļūstot Home Assistant ārpus jūsu tīkla. Atstājiet tukšu, lai turpinātu izmantot to pašu URL kā iepriekš."
         }
       }
     }

@@ -15,6 +15,12 @@ CONF_BOOK_ID = "book_id"
 CONF_SYNC_INTERVAL = "sync_interval"
 CONF_VERIFY_SSL = "verify_ssl"
 CONF_OUTPUT_LANGUAGE = "output_language"
+# Optional override for repair-issue page links (issue #202): CONF_BASE_URL
+# is where bookstack-sync itself reaches the BookStack API (often LAN-only),
+# which may not be the address a person can actually open from wherever
+# they're reading HA's repair notifications. Empty/unset keeps the old
+# behaviour of reusing CONF_BASE_URL for those links too.
+CONF_EXTERNAL_BASE_URL = "external_base_url"
 
 DEFAULT_VERIFY_SSL = True
 # "auto" follows hass.config.language; explicit codes ("de", "en") override it

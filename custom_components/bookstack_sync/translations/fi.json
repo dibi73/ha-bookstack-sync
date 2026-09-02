@@ -64,11 +64,13 @@
           "sync_interval": "Synkronointiväli",
           "output_language": "BookStack-sivujen kieli",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)"
+          "export_path": "Export folder (absolute path)",
+          "external_base_url": "Ulkoinen BookStack-URL (valinnainen)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
+          "external_base_url": "Käytetään vain korjausilmoitusten linkissä (Asetukset → Järjestelmä → Korjaukset), jos tämä osoite eroaa yllä olevasta BookStack-URL:sta — esim. kun käytät Home Assistantia verkkosi ulkopuolelta. Jätä tyhjäksi käyttääksesi edelleen samaa URL:ia kuin yllä."
         }
       }
     }
