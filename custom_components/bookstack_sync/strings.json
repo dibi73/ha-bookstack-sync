@@ -64,11 +64,13 @@
           "sync_interval": "Sync-Intervall",
           "output_language": "Sprache der BookStack-Pages",
           "export_enabled": "Markdown-Rückexport aktivieren (standardmäßig aus)",
-          "export_path": "Export-Ordner (absoluter Pfad)"
+          "export_path": "Export-Ordner (absoluter Pfad)",
+          "external_base_url": "Externe BookStack-URL (optional)"
         },
         "data_description": {
           "export_enabled": "Standardmäßig aus. Wenn aktiv, werden BookStack-Pages zusätzlich als reine Markdown-Dateien zurückgeschrieben — als Eingabe für RAG/LLM-Pipelines. Verbraucht Speicherplatz und CPU bei jedem Lauf, daher bewusst zu aktivieren.",
-          "export_path": "Wohin die Markdown-Dateien geschrieben werden. Muss absolut sein, das Eltern­verzeichnis muss bereits existieren."
+          "export_path": "Wohin die Markdown-Dateien geschrieben werden. Muss absolut sein, das Eltern­verzeichnis muss bereits existieren.",
+          "external_base_url": "Wird nur für den Link in Reparatur-Meldungen verwendet (Einstellungen → System → Reparaturen), falls sich diese Adresse von der BookStack-URL oben unterscheidet — z.B. wenn du von außerhalb deines Netzwerks auf Home Assistant zugreifst. Leer lassen, um weiterhin dieselbe URL wie oben zu verwenden."
         }
       }
     }

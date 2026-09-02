@@ -618,8 +618,18 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     dry_run: bool = False,
     force: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
+    external_base_url: str | None = None,
 ) -> SyncReport:
-    """Execute one full sync cycle and return a report."""
+    """
+    Execute one full sync cycle and return a report.
+
+    ``external_base_url`` (issue #202) overrides ``client.base_url`` only
+    for the absolute links embedded in repair-issue descriptions - those
+    render in HA's own UI, which may be reachable from outside the LAN
+    even when ``client.base_url`` (how bookstack-sync itself reaches the
+    BookStack API) isn't. ``None`` keeps the previous behaviour of using
+    ``client.base_url`` for both.
+    """
     report = SyncReport(dry_run=dry_run)
     now = datetime.now(tz=UTC)
 
@@ -727,6 +737,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
                 dry_run=dry_run,
                 force=force,
                 book_slug=book_slug,
+                external_base_url=external_base_url,
             )
             if page_id is not None:
                 _refresh_url(page.key)
@@ -767,6 +778,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
                 dry_run=dry_run,
                 force=force,
                 book_slug=book_slug,
+                external_base_url=external_base_url,
             )
             if page_id is not None:
                 _refresh_url(page.key)
@@ -802,6 +814,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
                 dry_run=dry_run,
                 force=force,
                 book_slug=book_slug,
+                external_base_url=external_base_url,
             )
             if page_id is not None:
                 _refresh_url(page.key)
@@ -849,6 +862,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
             dry_run=dry_run,
             force=force,
             book_slug=book_slug,
+            external_base_url=external_base_url,
         )
         if orphaned_page_id is not None:
             _refresh_url(orphaned_page.key)
@@ -887,6 +901,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
             dry_run=dry_run,
             force=force,
             book_slug=book_slug,
+            external_base_url=external_base_url,
         )
     except BookStackApiAuthError:
         raise
@@ -934,6 +949,7 @@ async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params 
     book_id: int,
     page_key: str,
     strings: dict[str, str],
+    external_base_url: str | None = None,
 ) -> bool:
     """
     Force-resync exactly one page's AUTO block (#190 repair-issue Fix flow).
@@ -943,6 +959,10 @@ async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params 
     clicking "Fix" on a single tampered/markers-missing repair issue
     doesn't also churn every unrelated page's revision history in
     BookStack.
+
+    ``external_base_url`` (#202) is threaded through to ``_sync_one``
+    for consistency, though it's currently a no-op here: ``force=True``
+    never reaches the skip branches that build a repair-issue URL.
 
     Cross-page Markdown links use the slugs already recorded in
     ``store`` from previous full syncs, rather than a fresh write pass
@@ -1005,6 +1025,7 @@ async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params 
         dry_run=False,
         force=True,
         book_slug=book_slug,
+        external_base_url=external_base_url,
     )
     await store.async_save()
     return True
@@ -1057,8 +1078,14 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
     dry_run: bool,
     force: bool = False,
     book_slug: str = "",
+    external_base_url: str | None = None,
 ) -> int | None:
     """Sync one page; return the BookStack page id (or None on dry-run create)."""
+    # #202: repair-issue links use whichever base URL a person would
+    # actually be able to open from wherever they're reading HA's
+    # notifications - falls back to client.base_url (the address
+    # bookstack-sync itself uses) when nothing more specific is set.
+    repair_link_base_url = external_base_url or client.base_url
     chapter_id = chapters.get(page.chapter_key) if page.chapter_key else None
     new_hash = hash_auto_block(page.auto_body)
     mapping = store.get(page.key)
@@ -1165,7 +1192,8 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
         report.markers_missing_page_keys.append(page.key)
         report.markers_missing_page_titles.append(page.title)
         report.markers_missing_page_urls.append(
-            _build_absolute_page_url(client.base_url, book_slug, mapping.slug) or "",
+            _build_absolute_page_url(repair_link_base_url, book_slug, mapping.slug)
+            or "",
         )
         return mapping.page_id
 
@@ -1238,7 +1266,7 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
             report.tampered_page_keys.append(page.key)
             report.tampered_page_titles.append(page.title)
             report.tampered_page_urls.append(
-                _build_absolute_page_url(client.base_url, book_slug, mapping.slug)
+                _build_absolute_page_url(repair_link_base_url, book_slug, mapping.slug)
                 or "",
             )
             return mapping.page_id

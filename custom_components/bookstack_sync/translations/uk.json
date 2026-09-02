@@ -64,11 +64,13 @@
           "sync_interval": "Інтервал синхронізації",
           "output_language": "Мова сторінок BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)"
+          "export_path": "Export folder (absolute path)",
+          "external_base_url": "Зовнішній URL BookStack (необов'язково)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
+          "external_base_url": "Використовується лише для посилання у сповіщеннях про виправлення (Налаштування → Система → Виправлення), якщо ця адреса відрізняється від URL BookStack вище — напр., коли ви отримуєте доступ до Home Assistant поза межами вашої мережі. Залиште порожнім, щоб і надалі використовувати ту саму URL-адресу, що й вище."
         }
       }
     }

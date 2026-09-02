@@ -36,6 +36,7 @@ from custom_components.bookstack_sync.extractor import (
 )
 from custom_components.bookstack_sync.store import BookStackSyncStore
 from custom_components.bookstack_sync.sync import (
+    _build_absolute_page_url,
     _build_page_url,
     resync_single_page,
     run_sync,
@@ -164,6 +165,33 @@ def test_build_page_url_returns_none_on_missing_slug() -> None:
     """No book_slug or no page_slug -> None, caller falls back to bold text."""
     assert _build_page_url("", "gerat-wculed") is None
     assert _build_page_url("hausdoku", "") is None
+
+
+def test_build_absolute_page_url_combines_base_and_relative() -> None:
+    """#189: an absolute, clickable URL for repair-issue descriptions."""
+    assert (
+        _build_absolute_page_url(
+            "http://bookstack.local:6875",
+            "hausdoku",
+            "gerat-wculed",
+        )
+        == "http://bookstack.local:6875/books/hausdoku/page/gerat-wculed"
+    )
+
+
+def test_build_absolute_page_url_strips_trailing_slash_on_base() -> None:
+    assert (
+        _build_absolute_page_url(
+            "http://bookstack.local:6875/",
+            "hausdoku",
+            "gerat-wculed",
+        )
+        == "http://bookstack.local:6875/books/hausdoku/page/gerat-wculed"
+    )
+
+
+def test_build_absolute_page_url_returns_none_without_base_url() -> None:
+    assert _build_absolute_page_url("", "hausdoku", "gerat-wculed") is None
 
 
 async def test_first_sync_creates_chapters_and_pages(
@@ -830,6 +858,104 @@ async def test_force_overwrites_tampered_pages(
         f"force=True should bypass skip, got {report_force.skipped_conflict!r}"
     )
     assert report_force.tampered_page_keys == []
+
+
+async def test_tampered_page_url_uses_external_base_url_when_configured(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """#202: repair-issue links use external_base_url, not client.base_url, when set."""
+    from custom_components.bookstack_sync.store import PageMapping  # noqa: PLC0415
+
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    for key, mapping in store.all().items():
+        store.set(
+            key,
+            PageMapping(
+                page_id=mapping.page_id,
+                auto_block_hash="cafebabe" * 8,
+                last_seen=mapping.last_seen,
+                tombstoned_at=mapping.tombstoned_at,
+                hash_origin="bookstack",
+                slug=mapping.slug,
+            ),
+        )
+    page_id, page = next(iter(state["pages"].items()))
+    state["pages"][page_id] = {
+        **page,
+        "markdown": page["markdown"].replace(
+            "Auto-generated",
+            "Auto-generated [drifted]",
+        ),
+    }
+
+    report = await run_sync(
+        hass,
+        client,
+        store,
+        1,
+        strings,
+        external_base_url="https://bookstack.example.com",
+    )
+
+    assert report.tampered_page_urls, "expected at least one tampered page URL"
+    assert all(
+        url.startswith("https://bookstack.example.com")
+        for url in report.tampered_page_urls
+        if url
+    )
+    assert client.base_url not in "".join(report.tampered_page_urls)
+
+
+async def test_tampered_page_url_falls_back_to_client_base_url(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """#202: without external_base_url, links keep using client.base_url as before."""
+    from custom_components.bookstack_sync.store import PageMapping  # noqa: PLC0415
+
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    area_reg.async_create("Living Room")
+
+    await run_sync(hass, client, store, 1, strings)
+
+    for key, mapping in store.all().items():
+        store.set(
+            key,
+            PageMapping(
+                page_id=mapping.page_id,
+                auto_block_hash="cafebabe" * 8,
+                last_seen=mapping.last_seen,
+                tombstoned_at=mapping.tombstoned_at,
+                hash_origin="bookstack",
+                slug=mapping.slug,
+            ),
+        )
+    page_id, page = next(iter(state["pages"].items()))
+    state["pages"][page_id] = {
+        **page,
+        "markdown": page["markdown"].replace(
+            "Auto-generated",
+            "Auto-generated [drifted]",
+        ),
+    }
+
+    report = await run_sync(hass, client, store, 1, strings)
+
+    assert report.tampered_page_urls, "expected at least one tampered page URL"
+    assert all(
+        url.startswith(client.base_url) for url in report.tampered_page_urls if url
+    )
 
 
 async def test_resync_single_page_only_touches_the_target_page(

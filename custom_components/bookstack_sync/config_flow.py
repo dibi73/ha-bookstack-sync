@@ -28,6 +28,7 @@ from .const import (
     CONF_BOOK_ID,
     CONF_EXPORT_ENABLED,
     CONF_EXPORT_PATH,
+    CONF_EXTERNAL_BASE_URL,
     CONF_OUTPUT_LANGUAGE,
     CONF_SYNC_INTERVAL,
     CONF_TOKEN_ID,
@@ -413,7 +414,7 @@ class BookStackSyncOptionsFlow(OptionsFlow):
         """Initialise the options flow state."""
         self._books: list[dict[str, Any]] = []
 
-    async def async_step_init(
+    async def async_step_init(  # noqa: PLR0912 - one cohesive form, each field's own validation
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
@@ -447,6 +448,14 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                     ):
                         errors[CONF_EXPORT_ENABLED] = _ERR_EXPORT_ALREADY_ENABLED
                         break
+
+            external_base_url = (user_input.get(CONF_EXTERNAL_BASE_URL) or "").strip()
+            if external_base_url:
+                try:
+                    external_base_url = _validate_base_url(external_base_url)
+                except vol.Invalid as err:
+                    errors[CONF_EXTERNAL_BASE_URL] = str(err)
+
             if not errors:
                 new_book_id = int(user_input[CONF_BOOK_ID])
                 # When the user picks a different book the integration title
@@ -482,6 +491,7 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         ),
                         CONF_EXPORT_ENABLED: export_enabled,
                         CONF_EXPORT_PATH: export_path,
+                        CONF_EXTERNAL_BASE_URL: external_base_url,
                     },
                 )
 
@@ -517,6 +527,10 @@ class BookStackSyncOptionsFlow(OptionsFlow):
         current_export_path = self.config_entry.options.get(
             CONF_EXPORT_PATH,
             self.hass.config.path(DEFAULT_EXPORT_SUBDIR),
+        )
+        current_external_base_url = self.config_entry.options.get(
+            CONF_EXTERNAL_BASE_URL,
+            "",
         )
         return self.async_show_form(
             step_id="init",
@@ -554,6 +568,13 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                     vol.Optional(
                         CONF_EXPORT_PATH,
                         default=current_export_path,
+                    ): selector.TextSelector(),
+                    # #202: optional override for the link embedded in
+                    # repair-issue descriptions - only that link, never used
+                    # for actual API requests (those keep using CONF_BASE_URL).
+                    vol.Optional(
+                        CONF_EXTERNAL_BASE_URL,
+                        default=current_external_base_url,
                     ): selector.TextSelector(),
                 },
             ),
