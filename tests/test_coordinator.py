@@ -670,6 +670,80 @@ async def test_tamper_issue_created_fixable_with_resync_data(
     assert issue.data == {"entry_id": entry_id, "page_key": "device:abc"}
 
 
+async def test_preexisting_tamper_issue_upgraded_to_fixable_on_next_sync(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    Follow-up to #190: a pre-existing (still-tampered) issue gets upgraded too.
+
+    Before this fix, ``_reconcile_tamper_issues`` only called
+    ``ir.async_create_issue`` for NEWLY detected keys - an issue raised
+    before the #190 upgrade (``is_fixable=False``, no ``data``) stayed
+    stuck in that shape forever, since the key was already "existing"
+    on every later sync and therefore never touched again. Worse,
+    since Hassfest requires ``description``/``fix_flow`` to be mutually
+    exclusive per translation_key, that old non-fixable instance also
+    lost its description text once #190 shipped - dead end for the
+    user in the UI. This asserts the fix: an already-registered,
+    still-tampered issue gets is_fixable/data refreshed on the very
+    next sync, without needing the key to look "new".
+    """
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync._strings import get_strings  # noqa: PLC0415
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_TAMPERED,
+    )
+
+    config_entry.add_to_hass(hass)
+    entry_id = config_entry.entry_id
+
+    # Simulate a pre-#190 issue: is_fixable=False, no data, and the
+    # user has dismissed it (as the ignore-tracking screenshot showed).
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_device:abc",
+        is_fixable=False,
+        is_persistent=True,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=REPAIR_ISSUE_TAMPERED,
+        translation_placeholders={"page_title": "Acurite-Rain-25"},
+    )
+    issue_reg = ir.async_get(hass)
+    issue_reg.async_ignore(
+        DOMAIN,
+        f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_device:abc",
+        ignore=True,
+    )
+
+    coord = _make_coordinator(hass, config_entry)
+    report = SyncReport()
+    report.tampered_page_keys.append("device:abc")
+    report.tampered_page_titles.append("Acurite-Rain-25")
+    report.tampered_page_urls.append(
+        "http://bookstack.local/books/hausdoku/page/acurite"
+    )
+    coord._reconcile_tamper_issues(report, get_strings("de"))
+
+    issue = issue_reg.async_get_issue(
+        DOMAIN,
+        f"{REPAIR_ISSUE_TAMPERED}_{entry_id}_device:abc",
+    )
+    assert issue is not None
+    assert issue.is_fixable is True
+    assert issue.data == {"entry_id": entry_id, "page_key": "device:abc"}
+    assert issue.translation_placeholders is not None
+    assert (
+        issue.translation_placeholders["page_url"]
+        == "http://bookstack.local/books/hausdoku/page/acurite"
+    )
+    # The user's "ignore" must survive the upgrade.
+    assert issue.dismissed_version is not None
+
+
 async def test_markers_missing_issue_created_fixable_with_resync_data(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,

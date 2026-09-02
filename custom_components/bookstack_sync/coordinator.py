@@ -151,6 +151,19 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         forever (v0.13.3 follow-up). We now query the registry directly so
         the diff against the current sync's tampered keys produces the
         correct delete-set even right after a restart.
+
+        Issues are upserted for EVERY currently-tampered key, not just
+        newly-detected ones (fix for a #190 follow-up bug): a page that
+        was already tampered before is_fixable/data existed would
+        otherwise keep its stale pre-#190 issue - no Fix button, and no
+        description either, since Hassfest's schema doesn't allow
+        ``description`` and ``fix_flow`` on the same translation_key,
+        so a non-fixable instance of a now-fixable issue type has
+        nothing left to render. ``ir.async_create_issue`` is an upsert
+        (confirmed against HA-core's ``async_get_or_create``): calling
+        it again for an existing issue_id refreshes title/placeholders/
+        is_fixable/data in place WITHOUT touching ``dismissed_version``,
+        so a user's "ignore" stays intact.
         """
         current = {
             key: (title, url)
@@ -168,11 +181,9 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             for (issue_domain, issue_id) in ir.async_get(self.hass).issues
             if issue_domain == DOMAIN and issue_id.startswith(prefix)
         }
-        new_keys = set(current.keys()) - existing
         resolved_keys = existing - set(current.keys())
 
-        for key in new_keys:
-            title, url = current[key]
+        for key, (title, url) in current.items():
             ir.async_create_issue(
                 self.hass,
                 DOMAIN,
@@ -209,7 +220,10 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         Create / auto-resolve ``page_markers_missing`` repair issues.
 
         Same shape as ``_reconcile_tamper_issues`` (issue-registry is the
-        source of truth, in-memory cache only for tests/diagnostics).
+        source of truth, in-memory cache only for tests/diagnostics;
+        issues upserted for every currently-affected key, not just new
+        ones, so pre-#190 issues get the Fix button + description on
+        their next sync instead of staying stuck in the old shape).
         """
         current = {
             key: (title, url)
@@ -227,11 +241,9 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             for (issue_domain, issue_id) in ir.async_get(self.hass).issues
             if issue_domain == DOMAIN and issue_id.startswith(prefix)
         }
-        new_keys = set(current.keys()) - existing
         resolved_keys = existing - set(current.keys())
 
-        for key in new_keys:
-            title, url = current[key]
+        for key, (title, url) in current.items():
             ir.async_create_issue(
                 self.hass,
                 DOMAIN,
