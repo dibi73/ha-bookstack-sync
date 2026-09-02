@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Povezanega konfiguracijskega vnosa ni bilo mogoče najti (morda je bil odstranjen).",
           "page_not_found": "Ustrezna naprava/območje/oznaka v Home Assistant ne obstaja več — ni česa popraviti.",
-          "resync_failed": "Poskus popravila ni uspel. Preverite povezavo z BookStack in poskusite znova."
+          "resync_failed": "Poskus popravila ni uspel. Preverite povezavo z BookStack in poskusite znova.",
+          "sync_in_progress": "Sinhronizacija že poteka. Poskusite znova kmalu."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Povezanega konfiguracijskega vnosa ni bilo mogoče najti (morda je bil odstranjen).",
           "page_not_found": "Ustrezna naprava/območje/oznaka v Home Assistant ne obstaja več — ni česa popraviti.",
-          "resync_failed": "Poskus popravila ni uspel. Preverite povezavo z BookStack in poskusite znova."
+          "resync_failed": "Poskus popravila ni uspel. Preverite povezavo z BookStack in poskusite znova.",
+          "sync_in_progress": "Sinhronizacija že poteka. Poskusite znova kmalu."
         }
       }
     }

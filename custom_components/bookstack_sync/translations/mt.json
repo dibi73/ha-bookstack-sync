@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "L-entrata ta' konfigurazzjoni assoċjata ma nstabitx (jista' jkun li tneħħiet).",
           "page_not_found": "It-tagħmir/żona/tikketta korrispondenti ma jibqax jeżisti f'Home Assistant — m'hemm xejn x'issewwi.",
-          "resync_failed": "It-tentattiv ta' tiswija falla. Iċċekkja l-konnessjoni ma' BookStack u erġa' pprova."
+          "resync_failed": "It-tentattiv ta' tiswija falla. Iċċekkja l-konnessjoni ma' BookStack u erġa' pprova.",
+          "sync_in_progress": "Diġà għaddej sinkronizzazzjoni. Jekk jogħġbok erġa' pprova dalwaqt."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "L-entrata ta' konfigurazzjoni assoċjata ma nstabitx (jista' jkun li tneħħiet).",
           "page_not_found": "It-tagħmir/żona/tikketta korrispondenti ma jibqax jeżisti f'Home Assistant — m'hemm xejn x'issewwi.",
-          "resync_failed": "It-tentattiv ta' tiswija falla. Iċċekkja l-konnessjoni ma' BookStack u erġa' pprova."
+          "resync_failed": "It-tentattiv ta' tiswija falla. Iċċekkja l-konnessjoni ma' BookStack u erġa' pprova.",
+          "sync_in_progress": "Diġà għaddej sinkronizzazzjoni. Jekk jogħġbok erġa' pprova dalwaqt."
         }
       }
     }

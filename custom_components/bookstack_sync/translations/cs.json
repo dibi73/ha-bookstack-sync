@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Přiřazená konfigurační položka nebyla nalezena (možná byla odstraněna).",
           "page_not_found": "Příslušné zařízení/oblast/štítek už v Home Assistant neexistuje — není co opravovat.",
-          "resync_failed": "Pokus o opravu selhal. Zkontrolujte připojení k BookStacku a zkuste to znovu."
+          "resync_failed": "Pokus o opravu selhal. Zkontrolujte připojení k BookStacku a zkuste to znovu.",
+          "sync_in_progress": "Právě již probíhá synchronizace. Zkuste to prosím znovu za chvíli."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Přiřazená konfigurační položka nebyla nalezena (možná byla odstraněna).",
           "page_not_found": "Příslušné zařízení/oblast/štítek už v Home Assistant neexistuje — není co opravovat.",
-          "resync_failed": "Pokus o opravu selhal. Zkontrolujte připojení k BookStacku a zkuste to znovu."
+          "resync_failed": "Pokus o opravu selhal. Zkontrolujte připojení k BookStacku a zkuste to znovu.",
+          "sync_in_progress": "Právě již probíhá synchronizace. Zkuste to prosím znovu za chvíli."
         }
       }
     }

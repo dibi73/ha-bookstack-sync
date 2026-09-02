@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Liittyvää määritysmerkintää ei löytynyt (se on ehkä poistettu).",
           "page_not_found": "Vastaavaa laitetta/aluetta/tunnistetta ei enää ole Home Assistantissa — ei mitään korjattavaa.",
-          "resync_failed": "Korjausyritys epäonnistui. Tarkista BookStack-yhteys ja yritä uudelleen."
+          "resync_failed": "Korjausyritys epäonnistui. Tarkista BookStack-yhteys ja yritä uudelleen.",
+          "sync_in_progress": "Synkronointi on jo käynnissä. Yritä uudelleen hetken kuluttua."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Liittyvää määritysmerkintää ei löytynyt (se on ehkä poistettu).",
           "page_not_found": "Vastaavaa laitetta/aluetta/tunnistetta ei enää ole Home Assistantissa — ei mitään korjattavaa.",
-          "resync_failed": "Korjausyritys epäonnistui. Tarkista BookStack-yhteys ja yritä uudelleen."
+          "resync_failed": "Korjausyritys epäonnistui. Tarkista BookStack-yhteys ja yritä uudelleen.",
+          "sync_in_progress": "Synkronointi on jo käynnissä. Yritä uudelleen hetken kuluttua."
         }
       }
     }

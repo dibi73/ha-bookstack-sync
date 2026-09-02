@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Den tillhörande konfigurationsposten kunde inte hittas (den kan ha tagits bort).",
           "page_not_found": "Den underliggande enheten/området/etiketten finns inte längre i Home Assistant — inget att reparera.",
-          "resync_failed": "Reparationsförsöket misslyckades. Kontrollera BookStack-anslutningen och försök igen."
+          "resync_failed": "Reparationsförsöket misslyckades. Kontrollera BookStack-anslutningen och försök igen.",
+          "sync_in_progress": "En synkronisering pågår redan. Försök igen om en stund."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Den tillhörande konfigurationsposten kunde inte hittas (den kan ha tagits bort).",
           "page_not_found": "Den underliggande enheten/området/etiketten finns inte längre i Home Assistant — inget att reparera.",
-          "resync_failed": "Reparationsförsöket misslyckades. Kontrollera BookStack-anslutningen och försök igen."
+          "resync_failed": "Reparationsförsöket misslyckades. Kontrollera BookStack-anslutningen och försök igen.",
+          "sync_in_progress": "En synkronisering pågår redan. Försök igen om en stund."
         }
       }
     }

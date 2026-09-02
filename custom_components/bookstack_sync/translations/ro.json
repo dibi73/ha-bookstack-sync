@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Intrarea de configurare asociată nu a fost găsită (este posibil să fi fost eliminată).",
           "page_not_found": "Dispozitivul/zona/eticheta corespunzătoare nu mai există în Home Assistant — nimic de reparat.",
-          "resync_failed": "Încercarea de reparare a eșuat. Verificați conexiunea la BookStack și încercați din nou."
+          "resync_failed": "Încercarea de reparare a eșuat. Verificați conexiunea la BookStack și încercați din nou.",
+          "sync_in_progress": "O sincronizare este deja în curs. Încercați din nou în curând."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Intrarea de configurare asociată nu a fost găsită (este posibil să fi fost eliminată).",
           "page_not_found": "Dispozitivul/zona/eticheta corespunzătoare nu mai există în Home Assistant — nimic de reparat.",
-          "resync_failed": "Încercarea de reparare a eșuat. Verificați conexiunea la BookStack și încercați din nou."
+          "resync_failed": "Încercarea de reparare a eșuat. Verificați conexiunea la BookStack și încercați din nou.",
+          "sync_in_progress": "O sincronizare este deja în curs. Încercați din nou în curând."
         }
       }
     }

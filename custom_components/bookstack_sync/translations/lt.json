@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Susijęs konfigūracijos įrašas nerastas (galbūt buvo pašalintas).",
           "page_not_found": "Atitinkamas įrenginys / sritis / žyma nebeegzistuoja Home Assistant — nėra ką taisyti.",
-          "resync_failed": "Bandymas taisyti nepavyko. Patikrinkite BookStack ryšį ir bandykite dar kartą."
+          "resync_failed": "Bandymas taisyti nepavyko. Patikrinkite BookStack ryšį ir bandykite dar kartą.",
+          "sync_in_progress": "Jau vyksta sinchronizavimas. Bandykite dar kartą netrukus."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Susijęs konfigūracijos įrašas nerastas (galbūt buvo pašalintas).",
           "page_not_found": "Atitinkamas įrenginys / sritis / žyma nebeegzistuoja Home Assistant — nėra ką taisyti.",
-          "resync_failed": "Bandymas taisyti nepavyko. Patikrinkite BookStack ryšį ir bandykite dar kartą."
+          "resync_failed": "Bandymas taisyti nepavyko. Patikrinkite BookStack ryšį ir bandykite dar kartą.",
+          "sync_in_progress": "Jau vyksta sinchronizavimas. Bandykite dar kartą netrukus."
         }
       }
     }

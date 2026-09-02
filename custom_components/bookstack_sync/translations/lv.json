@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Saistītais konfigurācijas ieraksts netika atrasts (iespējams, tas tika noņemts).",
           "page_not_found": "Saistītā ierīce/zona/etiķete Home Assistant vairs nepastāv — nav ko labot.",
-          "resync_failed": "Labošanas mēģinājums neizdevās. Pārbaudiet BookStack savienojumu un mēģiniet vēlreiz."
+          "resync_failed": "Labošanas mēģinājums neizdevās. Pārbaudiet BookStack savienojumu un mēģiniet vēlreiz.",
+          "sync_in_progress": "Jau notiek sinhronizācija. Lūdzu, mēģiniet vēlreiz drīzumā."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Saistītais konfigurācijas ieraksts netika atrasts (iespējams, tas tika noņemts).",
           "page_not_found": "Saistītā ierīce/zona/etiķete Home Assistant vairs nepastāv — nav ko labot.",
-          "resync_failed": "Labošanas mēģinājums neizdevās. Pārbaudiet BookStack savienojumu un mēģiniet vēlreiz."
+          "resync_failed": "Labošanas mēģinājums neizdevās. Pārbaudiet BookStack savienojumu un mēģiniet vēlreiz.",
+          "sync_in_progress": "Jau notiek sinhronizācija. Lūdzu, mēģiniet vēlreiz drīzumā."
         }
       }
     }

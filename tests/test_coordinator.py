@@ -806,3 +806,45 @@ async def test_async_fix_single_page_resolves_book_id_and_delegates(
     assert args[2] is fake_store
     assert args[3] == 1  # CONF_BOOK_ID from the config_entry fixture
     assert args[4] == "device:abc"
+    # #203: lock must be released again, not held forever after success.
+    assert not coord._sync_lock.locked()
+
+
+async def test_async_fix_single_page_raises_busy_error_when_lock_held(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    #203: fails fast instead of leaving the Fix dialog spinning for minutes.
+
+    Simulates a full sync already holding ``_sync_lock`` (e.g. a
+    scheduled run in progress) by acquiring it directly before calling
+    ``async_fix_single_page``. With the timeout patched down to
+    something test-fast, the call must give up and raise
+    ``BookStackSyncBusyError`` rather than hang until the lock frees up.
+    """
+    from custom_components.bookstack_sync.coordinator import (  # noqa: PLC0415
+        BookStackSyncBusyError,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": object(), "store": object()},
+    )()
+
+    await coord._sync_lock.acquire()
+    try:
+        with (
+            patch(
+                "custom_components.bookstack_sync.coordinator."
+                "FIX_FLOW_LOCK_TIMEOUT_SECONDS",
+                0.05,
+            ),
+            pytest.raises(BookStackSyncBusyError),
+        ):
+            await coord.async_fix_single_page("device:abc")
+    finally:
+        coord._sync_lock.release()

@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Der zugehörige Config-Eintrag wurde nicht gefunden (evtl. entfernt).",
           "page_not_found": "Das zugrunde liegende Gerät/der Raum/das Label existiert nicht mehr in Home Assistant — nichts zu reparieren.",
-          "resync_failed": "Der Reparatur-Versuch ist fehlgeschlagen. Prüfe die BookStack-Verbindung und versuche es erneut."
+          "resync_failed": "Der Reparatur-Versuch ist fehlgeschlagen. Prüfe die BookStack-Verbindung und versuche es erneut.",
+          "sync_in_progress": "Gerade läuft bereits ein Sync. Bitte versuche es in Kürze erneut."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Der zugehörige Config-Eintrag wurde nicht gefunden (evtl. entfernt).",
           "page_not_found": "Das zugrunde liegende Gerät/der Raum/das Label existiert nicht mehr in Home Assistant — nichts zu reparieren.",
-          "resync_failed": "Der Reparatur-Versuch ist fehlgeschlagen. Prüfe die BookStack-Verbindung und versuche es erneut."
+          "resync_failed": "Der Reparatur-Versuch ist fehlgeschlagen. Prüfe die BookStack-Verbindung und versuche es erneut.",
+          "sync_in_progress": "Gerade läuft bereits ein Sync. Bitte versuche es in Kürze erneut."
         }
       }
     }

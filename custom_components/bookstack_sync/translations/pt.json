@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Não foi possível encontrar a entrada de configuração associada (pode ter sido removida).",
           "page_not_found": "O dispositivo/área/etiqueta correspondente já não existe no Home Assistant — nada a corrigir.",
-          "resync_failed": "A tentativa de correção falhou. Verifique a ligação ao BookStack e tente novamente."
+          "resync_failed": "A tentativa de correção falhou. Verifique a ligação ao BookStack e tente novamente.",
+          "sync_in_progress": "Já está a decorrer uma sincronização. Tente novamente em breve."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Não foi possível encontrar a entrada de configuração associada (pode ter sido removida).",
           "page_not_found": "O dispositivo/área/etiqueta correspondente já não existe no Home Assistant — nada a corrigir.",
-          "resync_failed": "A tentativa de correção falhou. Verifique a ligação ao BookStack e tente novamente."
+          "resync_failed": "A tentativa de correção falhou. Verifique a ligação ao BookStack e tente novamente.",
+          "sync_in_progress": "Já está a decorrer uma sincronização. Tente novamente em breve."
         }
       }
     }

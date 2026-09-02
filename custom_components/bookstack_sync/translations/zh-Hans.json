@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "未找到关联的配置条目（可能已被移除）。",
           "page_not_found": "对应的设备/区域/标签在 Home Assistant 中已不存在——没有可修复的内容。",
-          "resync_failed": "修复尝试失败。请检查 BookStack 连接并重试。"
+          "resync_failed": "修复尝试失败。请检查 BookStack 连接并重试。",
+          "sync_in_progress": "同步已在进行中。请稍后再试。"
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "未找到关联的配置条目（可能已被移除）。",
           "page_not_found": "对应的设备/区域/标签在 Home Assistant 中已不存在——没有可修复的内容。",
-          "resync_failed": "修复尝试失败。请检查 BookStack 连接并重试。"
+          "resync_failed": "修复尝试失败。请检查 BookStack 连接并重试。",
+          "sync_in_progress": "同步已在进行中。请稍后再试。"
         }
       }
     }

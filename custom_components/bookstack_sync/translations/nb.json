@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Den tilknyttede konfigurasjonsoppføringen ble ikke funnet (den kan ha blitt fjernet).",
           "page_not_found": "Den tilhørende enheten/området/merkelappen finnes ikke lenger i Home Assistant — ingenting å reparere.",
-          "resync_failed": "Reparasjonsforsøket mislyktes. Sjekk BookStack-tilkoblingen og prøv igjen."
+          "resync_failed": "Reparasjonsforsøket mislyktes. Sjekk BookStack-tilkoblingen og prøv igjen.",
+          "sync_in_progress": "En synkronisering pågår allerede. Prøv igjen om litt."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Den tilknyttede konfigurasjonsoppføringen ble ikke funnet (den kan ha blitt fjernet).",
           "page_not_found": "Den tilhørende enheten/området/merkelappen finnes ikke lenger i Home Assistant — ingenting å reparere.",
-          "resync_failed": "Reparasjonsforsøket mislyktes. Sjekk BookStack-tilkoblingen og prøv igjen."
+          "resync_failed": "Reparasjonsforsøket mislyktes. Sjekk BookStack-tilkoblingen og prøv igjen.",
+          "sync_in_progress": "En synkronisering pågår allerede. Prøv igjen om litt."
         }
       }
     }
