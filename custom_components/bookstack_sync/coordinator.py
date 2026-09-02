@@ -44,6 +44,17 @@ if TYPE_CHECKING:
     from .data import BookStackSyncConfigEntry
 
 
+# #203: how long the repair-issue Fix flow waits for the shared sync lock
+# before giving up. A full sync can hold the lock for minutes on a large
+# setup - failing fast with a clear "try again shortly" beats leaving the
+# confirm dialog's spinner running with no feedback for that long.
+FIX_FLOW_LOCK_TIMEOUT_SECONDS = 5
+
+
+class BookStackSyncBusyError(Exception):
+    """Raised when the Fix flow couldn't get the sync lock in time (#203)."""
+
+
 class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
     """Triggers sync runs on the configured cadence."""
 
@@ -441,14 +452,32 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         Force-resync exactly one page (#190 repair-issue Fix flow).
 
         Shares ``async_run_sync``'s lock so a Fix click can't race a
-        concurrent scheduled/manual sync. No reconciliation/notification
-        step needed afterwards: the repairs framework deletes the fixed
-        issue itself once the flow completes without aborting (the
-        in-memory tamper/markers-missing caches are diagnostics-only —
-        see ``_reconcile_tamper_issues`` — and get rebuilt from the
-        issue registry on the next full sync regardless).
+        concurrent scheduled/manual sync - but only waits up to
+        ``FIX_FLOW_LOCK_TIMEOUT_SECONDS`` for it (#203). A full sync can
+        hold the lock for minutes on a large setup; rather than leave
+        the Fix flow's confirm dialog spinning that whole time with no
+        feedback, give up quickly and raise ``BookStackSyncBusyError`` so
+        the flow can tell the user to try again shortly instead. Safe to
+        just give up here (not try a narrower lock or steal priority):
+        the single-page write must never race a full sync that could be
+        mid-write on the very same page.
+
+        No reconciliation/notification step needed on success: the
+        repairs framework deletes the fixed issue itself once the flow
+        completes without aborting (the in-memory tamper/markers-missing
+        caches are diagnostics-only — see ``_reconcile_tamper_issues`` —
+        and get rebuilt from the issue registry on the next full sync
+        regardless).
         """
-        async with self._sync_lock:
+        try:
+            await asyncio.wait_for(
+                self._sync_lock.acquire(),
+                timeout=FIX_FLOW_LOCK_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as err:
+            msg = "Timed out waiting for the sync lock"
+            raise BookStackSyncBusyError(msg) from err
+        try:
             runtime = self.config_entry.runtime_data
             options = self.config_entry.options
             data = self.config_entry.data
@@ -463,6 +492,8 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 strings,
                 external_base_url=options.get(CONF_EXTERNAL_BASE_URL) or None,
             )
+        finally:
+            self._sync_lock.release()
 
     async def _maybe_export_after_sync(self) -> None:
         """

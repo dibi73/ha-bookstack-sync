@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Súvisiaca konfiguračná položka sa nenašla (možno bola odstránená).",
           "page_not_found": "Súvisiace zariadenie/oblasť/štítok už v Home Assistant neexistuje — nie je čo opravovať.",
-          "resync_failed": "Pokus o opravu zlyhal. Skontrolujte pripojenie k BookStacku a skúste to znova."
+          "resync_failed": "Pokus o opravu zlyhal. Skontrolujte pripojenie k BookStacku a skúste to znova.",
+          "sync_in_progress": "Synchronizácia už prebieha. Skúste to znova čoskoro."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Súvisiaca konfiguračná položka sa nenašla (možno bola odstránená).",
           "page_not_found": "Súvisiace zariadenie/oblasť/štítok už v Home Assistant neexistuje — nie je čo opravovať.",
-          "resync_failed": "Pokus o opravu zlyhal. Skontrolujte pripojenie k BookStacku a skúste to znova."
+          "resync_failed": "Pokus o opravu zlyhal. Skontrolujte pripojenie k BookStacku a skúste to znova.",
+          "sync_in_progress": "Synchronizácia už prebieha. Skúste to znova čoskoro."
         }
       }
     }

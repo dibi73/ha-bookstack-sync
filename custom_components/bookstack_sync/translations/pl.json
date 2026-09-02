@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Nie znaleziono powiązanego wpisu konfiguracji (mógł zostać usunięty).",
           "page_not_found": "Powiązane urządzenie/obszar/etykieta już nie istnieje w Home Assistant — nie ma nic do naprawy.",
-          "resync_failed": "Próba naprawy nie powiodła się. Sprawdź połączenie z BookStack i spróbuj ponownie."
+          "resync_failed": "Próba naprawy nie powiodła się. Sprawdź połączenie z BookStack i spróbuj ponownie.",
+          "sync_in_progress": "Synchronizacja jest już w toku. Spróbuj ponownie za chwilę."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Nie znaleziono powiązanego wpisu konfiguracji (mógł zostać usunięty).",
           "page_not_found": "Powiązane urządzenie/obszar/etykieta już nie istnieje w Home Assistant — nie ma nic do naprawy.",
-          "resync_failed": "Próba naprawy nie powiodła się. Sprawdź połączenie z BookStack i spróbuj ponownie."
+          "resync_failed": "Próba naprawy nie powiodła się. Sprawdź połączenie z BookStack i spróbuj ponownie.",
+          "sync_in_progress": "Synchronizacja jest już w toku. Spróbuj ponownie za chwilę."
         }
       }
     }

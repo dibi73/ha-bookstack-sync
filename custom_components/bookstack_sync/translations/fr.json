@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "L'entrée de configuration associée est introuvable (elle a peut-être été supprimée).",
           "page_not_found": "L'appareil/la zone/l'étiquette correspondant n'existe plus dans Home Assistant — rien à réparer.",
-          "resync_failed": "La tentative de réparation a échoué. Vérifiez la connexion à BookStack et réessayez."
+          "resync_failed": "La tentative de réparation a échoué. Vérifiez la connexion à BookStack et réessayez.",
+          "sync_in_progress": "Une synchronisation est déjà en cours. Veuillez réessayer sous peu."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "L'entrée de configuration associée est introuvable (elle a peut-être été supprimée).",
           "page_not_found": "L'appareil/la zone/l'étiquette correspondant n'existe plus dans Home Assistant — rien à réparer.",
-          "resync_failed": "La tentative de réparation a échoué. Vérifiez la connexion à BookStack et réessayez."
+          "resync_failed": "La tentative de réparation a échoué. Vérifiez la connexion à BookStack et réessayez.",
+          "sync_in_progress": "Une synchronisation est déjà en cours. Veuillez réessayer sous peu."
         }
       }
     }

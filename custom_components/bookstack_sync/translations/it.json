@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "La voce di configurazione associata non è stata trovata (potrebbe essere stata rimossa).",
           "page_not_found": "Il dispositivo/area/etichetta corrispondente non esiste più in Home Assistant — niente da riparare.",
-          "resync_failed": "Il tentativo di riparazione non è riuscito. Controlla la connessione a BookStack e riprova."
+          "resync_failed": "Il tentativo di riparazione non è riuscito. Controlla la connessione a BookStack e riprova.",
+          "sync_in_progress": "È già in corso una sincronizzazione. Riprova a breve."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "La voce di configurazione associata non è stata trovata (potrebbe essere stata rimossa).",
           "page_not_found": "Il dispositivo/area/etichetta corrispondente non esiste più in Home Assistant — niente da riparare.",
-          "resync_failed": "Il tentativo di riparazione non è riuscito. Controlla la connessione a BookStack e riprova."
+          "resync_failed": "Il tentativo di riparazione non è riuscito. Controlla la connessione a BookStack e riprova.",
+          "sync_in_progress": "È già in corso una sincronizzazione. Riprova a breve."
         }
       }
     }

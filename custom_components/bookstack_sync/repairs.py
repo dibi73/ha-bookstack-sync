@@ -9,6 +9,7 @@ from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 from homeassistant.helpers import issue_registry as ir
 
 from .api import BookStackApiError
+from .coordinator import BookStackSyncBusyError
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -54,6 +55,11 @@ class _SinglePageFixFlow(RepairsFlow):
                 found = await entry.runtime_data.coordinator.async_fix_single_page(
                     self._page_key,
                 )
+            except BookStackSyncBusyError:
+                # #203: a full sync is already holding the lock - fail
+                # fast rather than leave the confirm dialog spinning for
+                # however long that sync takes.
+                return self.async_abort(reason="sync_in_progress")
             except BookStackApiError:
                 return self.async_abort(reason="resync_failed")
             if not found:

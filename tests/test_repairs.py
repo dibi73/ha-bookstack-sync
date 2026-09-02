@@ -156,3 +156,40 @@ async def test_confirm_step_aborts_when_resync_fails(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "resync_failed"
+
+
+async def test_confirm_step_aborts_when_sync_in_progress(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#203: a full sync holding the lock aborts fast with its own reason."""
+    from custom_components.bookstack_sync.coordinator import (  # noqa: PLC0415
+        BookStackSyncBusyError,
+    )
+
+    config_entry.add_to_hass(hass)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {
+            "coordinator": type(
+                "Coord",
+                (),
+                {
+                    "async_fix_single_page": AsyncMock(
+                        side_effect=BookStackSyncBusyError("busy"),
+                    ),
+                },
+            )(),
+        },
+    )()
+
+    flow = _SinglePageFixFlow(entry_id=config_entry.entry_id, page_key="device:abc")
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.issue_id = f"page_tampered_{config_entry.entry_id}_device:abc"
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "sync_in_progress"

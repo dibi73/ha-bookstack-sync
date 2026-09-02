@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "No se encontró la entrada de configuración asociada (puede haber sido eliminada).",
           "page_not_found": "El dispositivo/área/etiqueta subyacente ya no existe en Home Assistant — no hay nada que reparar.",
-          "resync_failed": "El intento de reparación falló. Comprueba la conexión con BookStack e inténtalo de nuevo."
+          "resync_failed": "El intento de reparación falló. Comprueba la conexión con BookStack e inténtalo de nuevo.",
+          "sync_in_progress": "Ya se está ejecutando una sincronización. Inténtalo de nuevo en breve."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "No se encontró la entrada de configuración asociada (puede haber sido eliminada).",
           "page_not_found": "El dispositivo/área/etiqueta subyacente ya no existe en Home Assistant — no hay nada que reparar.",
-          "resync_failed": "El intento de reparación falló. Comprueba la conexión con BookStack e inténtalo de nuevo."
+          "resync_failed": "El intento de reparación falló. Comprueba la conexión con BookStack e inténtalo de nuevo.",
+          "sync_in_progress": "Ya se está ejecutando una sincronización. Inténtalo de nuevo en breve."
         }
       }
     }

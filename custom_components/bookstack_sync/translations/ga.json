@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Níorbh fhéidir an iontráil cumraíochta ghaolmhar a aimsiú (b'fhéidir gur baineadh í).",
           "page_not_found": "Níl an gléas/limistéar/lipéad bunúsach ann a thuilleadh i Home Assistant — níl aon rud le deisiú.",
-          "resync_failed": "Theip ar an iarracht deisithe. Seiceáil an nasc BookStack agus bain triail eile as."
+          "resync_failed": "Theip ar an iarracht deisithe. Seiceáil an nasc BookStack agus bain triail eile as.",
+          "sync_in_progress": "Tá sioncrónú ar siúl cheana féin. Bain triail eile as go luath."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Níorbh fhéidir an iontráil cumraíochta ghaolmhar a aimsiú (b'fhéidir gur baineadh í).",
           "page_not_found": "Níl an gléas/limistéar/lipéad bunúsach ann a thuilleadh i Home Assistant — níl aon rud le deisiú.",
-          "resync_failed": "Theip ar an iarracht deisithe. Seiceáil an nasc BookStack agus bain triail eile as."
+          "resync_failed": "Theip ar an iarracht deisithe. Seiceáil an nasc BookStack agus bain triail eile as.",
+          "sync_in_progress": "Tá sioncrónú ar siúl cheana féin. Bain triail eile as go luath."
         }
       }
     }

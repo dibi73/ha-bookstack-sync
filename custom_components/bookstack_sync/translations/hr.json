@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Povezani konfiguracijski unos nije pronađen (možda je uklonjen).",
           "page_not_found": "Povezani uređaj/područje/oznaka više ne postoji u Home Assistantu — nema se što popraviti.",
-          "resync_failed": "Pokušaj popravka nije uspio. Provjerite vezu s BookStackom i pokušajte ponovno."
+          "resync_failed": "Pokušaj popravka nije uspio. Provjerite vezu s BookStackom i pokušajte ponovno.",
+          "sync_in_progress": "Sinkronizacija je već u tijeku. Pokušajte ponovno uskoro."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Povezani konfiguracijski unos nije pronađen (možda je uklonjen).",
           "page_not_found": "Povezani uređaj/područje/oznaka više ne postoji u Home Assistantu — nema se što popraviti.",
-          "resync_failed": "Pokušaj popravka nije uspio. Provjerite vezu s BookStackom i pokušajte ponovno."
+          "resync_failed": "Pokušaj popravka nije uspio. Provjerite vezu s BookStackom i pokušajte ponovno.",
+          "sync_in_progress": "Sinkronizacija je već u tijeku. Pokušajte ponovno uskoro."
         }
       }
     }

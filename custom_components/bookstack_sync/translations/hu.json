@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "A kapcsolódó konfigurációs bejegyzés nem található (lehet, hogy eltávolították).",
           "page_not_found": "A kapcsolódó eszköz/terület/címke már nem létezik a Home Assistantban — nincs mit javítani.",
-          "resync_failed": "A javítási kísérlet sikertelen volt. Ellenőrizze a BookStack kapcsolatot, és próbálja újra."
+          "resync_failed": "A javítási kísérlet sikertelen volt. Ellenőrizze a BookStack kapcsolatot, és próbálja újra.",
+          "sync_in_progress": "Már fut egy szinkronizálás. Kérjük, próbálja újra hamarosan."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "A kapcsolódó konfigurációs bejegyzés nem található (lehet, hogy eltávolították).",
           "page_not_found": "A kapcsolódó eszköz/terület/címke már nem létezik a Home Assistantban — nincs mit javítani.",
-          "resync_failed": "A javítási kísérlet sikertelen volt. Ellenőrizze a BookStack kapcsolatot, és próbálja újra."
+          "resync_failed": "A javítási kísérlet sikertelen volt. Ellenőrizze a BookStack kapcsolatot, és próbálja újra.",
+          "sync_in_progress": "Már fut egy szinkronizálás. Kérjük, próbálja újra hamarosan."
         }
       }
     }

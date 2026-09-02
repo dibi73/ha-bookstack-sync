@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "The associated config entry could not be found (it may have been removed).",
           "page_not_found": "The underlying device/area/label no longer exists in Home Assistant — nothing left to fix.",
-          "resync_failed": "The resync attempt failed. Check the BookStack connection and try again."
+          "resync_failed": "The resync attempt failed. Check the BookStack connection and try again.",
+          "sync_in_progress": "A sync is already running. Please try again shortly."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "The associated config entry could not be found (it may have been removed).",
           "page_not_found": "The underlying device/area/label no longer exists in Home Assistant — nothing left to fix.",
-          "resync_failed": "The resync attempt failed. Check the BookStack connection and try again."
+          "resync_failed": "The resync attempt failed. Check the BookStack connection and try again.",
+          "sync_in_progress": "A sync is already running. Please try again shortly."
         }
       }
     }

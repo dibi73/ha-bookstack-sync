@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "Seotud seadistuskirjet ei leitud (see võib olla eemaldatud).",
           "page_not_found": "Vastav seade/ala/silt ei ole enam Home Assistantis olemas — pole midagi parandada.",
-          "resync_failed": "Parandamiskatse ebaõnnestus. Kontrolli BookStacki ühendust ja proovi uuesti."
+          "resync_failed": "Parandamiskatse ebaõnnestus. Kontrolli BookStacki ühendust ja proovi uuesti.",
+          "sync_in_progress": "Sünkroonimine juba käib. Palun proovi varsti uuesti."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "Seotud seadistuskirjet ei leitud (see võib olla eemaldatud).",
           "page_not_found": "Vastav seade/ala/silt ei ole enam Home Assistantis olemas — pole midagi parandada.",
-          "resync_failed": "Parandamiskatse ebaõnnestus. Kontrolli BookStacki ühendust ja proovi uuesti."
+          "resync_failed": "Parandamiskatse ebaõnnestus. Kontrolli BookStacki ühendust ja proovi uuesti.",
+          "sync_in_progress": "Sünkroonimine juba käib. Palun proovi varsti uuesti."
         }
       }
     }

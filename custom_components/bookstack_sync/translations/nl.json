@@ -165,7 +165,8 @@
         "abort": {
           "entry_not_found": "De bijbehorende configuratie-item is niet gevonden (mogelijk verwijderd).",
           "page_not_found": "Het onderliggende apparaat/gebied/label bestaat niet meer in Home Assistant — niets te herstellen.",
-          "resync_failed": "De herstelpoging is mislukt. Controleer de BookStack-verbinding en probeer het opnieuw."
+          "resync_failed": "De herstelpoging is mislukt. Controleer de BookStack-verbinding en probeer het opnieuw.",
+          "sync_in_progress": "Er is al een synchronisatie bezig. Probeer het straks opnieuw."
         }
       }
     },
@@ -181,7 +182,8 @@
         "abort": {
           "entry_not_found": "De bijbehorende configuratie-item is niet gevonden (mogelijk verwijderd).",
           "page_not_found": "Het onderliggende apparaat/gebied/label bestaat niet meer in Home Assistant — niets te herstellen.",
-          "resync_failed": "De herstelpoging is mislukt. Controleer de BookStack-verbinding en probeer het opnieuw."
+          "resync_failed": "De herstelpoging is mislukt. Controleer de BookStack-verbinding en probeer het opnieuw.",
+          "sync_in_progress": "Er is al een synchronisatie bezig. Probeer het straks opnieuw."
         }
       }
     }
