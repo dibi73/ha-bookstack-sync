@@ -186,6 +186,22 @@
           "sync_in_progress": "O sincronizare este deja în curs. Încercați din nou în curând."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Mai multe pagini blocate după o actualizare",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Repară toate paginile blocate",
+            "description": "Ultima sincronizare a omis {count} pagini deoarece blocul lor AUTO nu mai corespunde ultimei stări cunoscute. Acest lucru se întâmplă de obicei după o actualizare care schimbă modul de randare a blocurilor AUTO — nu din cauza editărilor manuale.\n\nAceasta suprascrie blocul AUTO al tuturor paginilor afectate cu starea curentă din Home Assistant. Blocul MANUAL este păstrat în orice caz. Continuați?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Intrarea de configurare asociată nu a fost găsită (este posibil să fi fost eliminată).",
+          "resync_failed": "Încercarea de reparare a eșuat. Verificați conexiunea la BookStack și încercați din nou.",
+          "sync_in_progress": "O sincronizare este deja în curs. Încercați din nou în curând."
+        }
+      }
     }
   },
   "exceptions": {

@@ -186,6 +186,22 @@
           "sync_in_progress": "Diġà għaddej sinkronizzazzjoni. Jekk jogħġbok erġa' pprova dalwaqt."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Diversi paġni imblukkati wara aġġornament",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Irranġa l-paġni mblukkati kollha",
+            "description": "L-aħħar sinkronizzazzjoni qabżet {count} paġni għax il-blokk AUTO tagħhom ma jaqbilx aktar mal-aħħar stat magħruf. Dan normalment jiġri wara aġġornament li jbiddel kif jiġu rrenderjati l-blokki AUTO — mhux minħabba modifiki manwali.\n\nDan jiskrivi mill-ġdid il-blokk AUTO tal-paġni kollha affettwati bl-istat attwali minn Home Assistant. Il-blokk MANUAL jinżamm f'kull każ. Tkompli?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "L-entrata ta' konfigurazzjoni assoċjata ma nstabitx (jista' jkun li tneħħiet).",
+          "resync_failed": "It-tentattiv ta' tiswija falla. Iċċekkja l-konnessjoni ma' BookStack u erġa' pprova.",
+          "sync_in_progress": "Diġà għaddej sinkronizzazzjoni. Jekk jogħġbok erġa' pprova dalwaqt."
+        }
+      }
     }
   },
   "exceptions": {

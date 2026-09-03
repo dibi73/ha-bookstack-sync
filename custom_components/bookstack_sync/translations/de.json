@@ -186,6 +186,22 @@
           "sync_in_progress": "Gerade läuft bereits ein Sync. Bitte versuche es in Kürze erneut."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Mehrere Seiten nach einer Änderung blockiert",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Alle blockierten Seiten reparieren",
+            "description": "Beim letzten Sync wurden {count} Seiten übersprungen, weil ihr AUTO-Block vom letzten bekannten Stand abweicht. Das passiert typischerweise nach einem Update, das die Darstellung der AUTO-Blöcke ändert — nicht durch manuelle Bearbeitung.\n\nDadurch wird der AUTO-Block aller betroffenen Seiten mit dem aktuellen Stand aus Home Assistant überschrieben. Der MANUAL-Block bleibt in jedem Fall erhalten. Fortfahren?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Der zugehörige Config-Eintrag wurde nicht gefunden (evtl. entfernt).",
+          "resync_failed": "Der Reparatur-Versuch ist fehlgeschlagen. Prüfe die BookStack-Verbindung und versuche es erneut.",
+          "sync_in_progress": "Gerade läuft bereits ein Sync. Bitte versuche es in Kürze erneut."
+        }
+      }
     }
   },
   "exceptions": {

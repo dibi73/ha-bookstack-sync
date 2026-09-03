@@ -186,6 +186,22 @@
           "sync_in_progress": "Der kører allerede en synkronisering. Prøv venligst igen om lidt."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Flere sider blokeret efter en opdatering",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Reparer alle blokerede sider",
+            "description": "Den seneste synkronisering sprang {count} sider over, fordi deres AUTO-blok ikke længere matcher den sidst kendte tilstand. Dette sker typisk efter en opdatering, der ændrer måden AUTO-blokke gengives på — ikke på grund af manuelle redigeringer.\n\nDette overskriver AUTO-blokken for alle berørte sider med den aktuelle tilstand fra Home Assistant. MANUAL-blokken bevares under alle omstændigheder. Fortsæt?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Den tilknyttede konfigurationspost blev ikke fundet (er muligvis blevet fjernet).",
+          "resync_failed": "Forsøget på reparation mislykkedes. Kontrollér BookStack-forbindelsen, og prøv igen.",
+          "sync_in_progress": "Der kører allerede en synkronisering. Prøv venligst igen om lidt."
+        }
+      }
     }
   },
   "exceptions": {

@@ -26,6 +26,8 @@ from .const import (
     INTERVAL_MANUAL,
     LOGGER,
     OUTPUT_LANGUAGE_AUTO,
+    REPAIR_ISSUE_BULK_CONFLICT,
+    REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD,
     REPAIR_ISSUE_MARKERS_MISSING,
     REPAIR_ISSUE_TAMPERED,
     REPAIR_ISSUE_UNREACHABLE,
@@ -279,6 +281,38 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
 
         self._active_markers_missing_keys = set(current.keys())
 
+    def _reconcile_bulk_conflict_issue(self, report: SyncReport) -> None:
+        """
+        Create / auto-resolve the aggregate ``bulk_page_conflict`` issue.
+
+        Complements ``_reconcile_tamper_issues``/``_reconcile_markers_missing_issues``:
+        those two still fire per-page (useful to see exactly which pages
+        are affected), this one additionally fires ONCE when the total
+        skipped-conflict count crosses ``REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD``
+        - the situation the ``force=true`` service parameter was built
+        for (a version bump reshaping the AUTO block leaves many pages
+        hash-drifted at once), surfaced with a single Fix button instead
+        of requiring a non-developer user to know a hidden service call
+        exists.
+        """
+        entry_id = self.config_entry.entry_id
+        issue_id = f"{REPAIR_ISSUE_BULK_CONFLICT}_{entry_id}"
+        count = len(report.skipped_conflict)
+        if count >= REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD:
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=True,
+                is_persistent=True,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=REPAIR_ISSUE_BULK_CONFLICT,
+                translation_placeholders={"count": str(count)},
+                data={"entry_id": entry_id},
+            )
+        else:
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+
     def _note_failure(self) -> None:
         """Increment the failure streak; raise repair issue at threshold."""
         self._failure_streak += 1
@@ -431,6 +465,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     # repair-issues hang around forever (v0.14.1 fix).
                     self._reconcile_tamper_issues(report, strings)
                     self._reconcile_markers_missing_issues(report, strings)
+                    self._reconcile_bulk_conflict_issue(report)
             finally:
                 # End of sync phase. ``is_syncing`` stays True if we're
                 # about to roll into the export phase below — keeps the
@@ -494,6 +529,27 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             )
         finally:
             self._sync_lock.release()
+
+    async def async_force_resync_all(self) -> SyncReport:
+        """
+        Force-resync every page in one run (bulk-conflict repair Fix).
+
+        Delegates to ``async_run_sync(force=True)``, which already does
+        everything needed (acquires the lock, reconciles all three
+        repair-issue types afterwards, resets the failure streak). Only
+        adds a fast-fail check first, mirroring ``async_fix_single_page``'s
+        #203 discipline: if a sync is already running, abort quickly
+        with ``BookStackSyncBusyError`` instead of leaving the Fix flow's
+        confirm dialog spinning for however long that run takes. A tiny
+        race remains between this check and ``async_run_sync``'s own
+        lock acquisition - worst case this call just queues behind
+        whatever started in that gap, same as pressing the run-now
+        button twice in a row.
+        """
+        if self.is_syncing:
+            msg = "A sync is already in progress"
+            raise BookStackSyncBusyError(msg)
+        return await self.async_run_sync(force=True)
 
     async def _maybe_export_after_sync(self) -> None:
         """

@@ -186,6 +186,22 @@
           "sync_in_progress": "Már fut egy szinkronizálás. Kérjük, próbálja újra hamarosan."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Több oldal blokkolva egy frissítés után",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Minden blokkolt oldal javítása",
+            "description": "A legutóbbi szinkronizálás {count} oldalt hagyott ki, mert az AUTO blokkjuk már nem egyezik az utoljára ismert állapottal. Ez jellemzően egy olyan frissítés után történik, amely megváltoztatja az AUTO blokkok megjelenítését — nem kézi szerkesztés miatt.\n\nEz felülírja az összes érintett oldal AUTO blokkját a Home Assistant jelenlegi állapotával. A MANUAL blokk minden esetben megmarad. Folytatja?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "A kapcsolódó konfigurációs bejegyzés nem található (lehet, hogy eltávolították).",
+          "resync_failed": "A javítási kísérlet sikertelen volt. Ellenőrizze a BookStack kapcsolatot, és próbálja újra.",
+          "sync_in_progress": "Már fut egy szinkronizálás. Kérjük, próbálja újra hamarosan."
+        }
+      }
     }
   },
   "exceptions": {

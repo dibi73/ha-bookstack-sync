@@ -186,6 +186,22 @@
           "sync_in_progress": "È già in corso una sincronizzazione. Riprova a breve."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Più pagine bloccate dopo un aggiornamento",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Ripara tutte le pagine bloccate",
+            "description": "L'ultima sincronizzazione ha saltato {count} pagine perché il loro blocco AUTO non corrisponde più all'ultimo stato noto. Questo accade in genere dopo un aggiornamento che cambia il modo in cui vengono renderizzati i blocchi AUTO, non per modifiche manuali.\n\nQuesto sovrascrive il blocco AUTO di tutte le pagine interessate con lo stato attuale di Home Assistant. Il blocco MANUAL viene comunque preservato. Continuare?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "La voce di configurazione associata non è stata trovata (potrebbe essere stata rimossa).",
+          "resync_failed": "Il tentativo di riparazione non è riuscito. Controlla la connessione a BookStack e riprova.",
+          "sync_in_progress": "È già in corso una sincronizzazione. Riprova a breve."
+        }
+      }
     }
   },
   "exceptions": {

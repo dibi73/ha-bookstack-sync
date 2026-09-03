@@ -186,6 +186,22 @@
           "sync_in_progress": "Jau vyksta sinchronizavimas. Bandykite dar kartą netrukus."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Kelis puslapius blokuoja po atnaujinimo",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Taisyti visus blokuojamus puslapius",
+            "description": "Paskutinė sinchronizacija praleido {count} puslapius, nes jų AUTO blokas nebeatitinka paskutinės žinomos būsenos. Tai paprastai nutinka po atnaujinimo, keičiančio AUTO blokų atvaizdavimą — ne dėl rankinio redagavimo.\n\nTai perrašys visų paveiktų puslapių AUTO bloką dabartine Home Assistant būsena. MANUAL blokas bet kuriuo atveju išsaugomas. Tęsti?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Susijęs konfigūracijos įrašas nerastas (galbūt buvo pašalintas).",
+          "resync_failed": "Bandymas taisyti nepavyko. Patikrinkite BookStack ryšį ir bandykite dar kartą.",
+          "sync_in_progress": "Jau vyksta sinchronizavimas. Bandykite dar kartą netrukus."
+        }
+      }
     }
   },
   "exceptions": {

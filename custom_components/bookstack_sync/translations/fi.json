@@ -186,6 +186,22 @@
           "sync_in_progress": "Synkronointi on jo käynnissä. Yritä uudelleen hetken kuluttua."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Useita sivuja jumissa päivityksen jälkeen",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Korjaa kaikki jumissa olevat sivut",
+            "description": "Viimeisin synkronointi ohitti {count} sivua, koska niiden AUTO-lohko ei enää vastaa viimeksi tunnettua tilaa. Tämä tapahtuu tyypillisesti päivityksen jälkeen, joka muuttaa AUTO-lohkojen renderöintitapaa — ei manuaalisten muokkausten vuoksi.\n\nTämä ylikirjoittaa kaikkien vaikutuksen alaisten sivujen AUTO-lohkon Home Assistantin nykyisellä tilalla. MANUAL-lohko säilyy joka tapauksessa. Jatketaanko?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Liittyvää määritysmerkintää ei löytynyt (se on ehkä poistettu).",
+          "resync_failed": "Korjausyritys epäonnistui. Tarkista BookStack-yhteys ja yritä uudelleen.",
+          "sync_in_progress": "Synkronointi on jo käynnissä. Yritä uudelleen hetken kuluttua."
+        }
+      }
     }
   },
   "exceptions": {
