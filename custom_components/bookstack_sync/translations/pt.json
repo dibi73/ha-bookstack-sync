@@ -186,6 +186,22 @@
           "sync_in_progress": "Já está a decorrer uma sincronização. Tente novamente em breve."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Várias páginas bloqueadas após uma atualização",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Reparar todas as páginas bloqueadas",
+            "description": "A última sincronização ignorou {count} páginas porque o respetivo bloco AUTO já não corresponde ao último estado conhecido. Isto acontece normalmente após uma atualização que altera a forma como os blocos AUTO são renderizados — não devido a edições manuais.\n\nIsto substitui o bloco AUTO de todas as páginas afetadas pelo estado atual do Home Assistant. O bloco MANUAL é sempre preservado. Continuar?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Não foi possível encontrar a entrada de configuração associada (pode ter sido removida).",
+          "resync_failed": "A tentativa de correção falhou. Verifique a ligação ao BookStack e tente novamente.",
+          "sync_in_progress": "Já está a decorrer uma sincronização. Tente novamente em breve."
+        }
+      }
     }
   },
   "exceptions": {

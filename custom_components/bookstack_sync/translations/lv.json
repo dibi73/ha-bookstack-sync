@@ -186,6 +186,22 @@
           "sync_in_progress": "Jau notiek sinhronizācija. Lūdzu, mēģiniet vēlreiz drīzumā."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Vairākas lapas bloķētas pēc atjauninājuma",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Labot visas bloķētās lapas",
+            "description": "Pēdējā sinhronizācija izlaida {count} lapas, jo to AUTO bloks vairs neatbilst pēdējam zināmajam stāvoklim. Tas parasti notiek pēc atjauninājuma, kas maina AUTO bloku attēlošanas veidu — nevis manuālu labojumu dēļ.\n\nTas pārrakstīs visu skarto lapu AUTO bloku ar pašreizējo Home Assistant stāvokli. MANUAL bloks jebkurā gadījumā tiek saglabāts. Turpināt?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Saistītais konfigurācijas ieraksts netika atrasts (iespējams, tas tika noņemts).",
+          "resync_failed": "Labošanas mēģinājums neizdevās. Pārbaudiet BookStack savienojumu un mēģiniet vēlreiz.",
+          "sync_in_progress": "Jau notiek sinhronizācija. Lūdzu, mēģiniet vēlreiz drīzumā."
+        }
+      }
     }
   },
   "exceptions": {

@@ -776,6 +776,133 @@ async def test_markers_missing_issue_created_fixable_with_resync_data(
     assert issue.data == {"entry_id": entry_id, "page_key": "area:living"}
 
 
+async def test_bulk_conflict_issue_created_above_threshold(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """A rendering-only change stranding many pages surfaces one aggregate issue."""
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_BULK_CONFLICT,
+        REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+
+    report = SyncReport()
+    report.skipped_conflict = ["Page A"] * REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD
+    coord._reconcile_bulk_conflict_issue(report)
+
+    entry_id = config_entry.entry_id
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN,
+        f"{REPAIR_ISSUE_BULK_CONFLICT}_{entry_id}",
+    )
+    assert issue is not None
+    assert issue.is_fixable is True
+    assert issue.is_persistent is True
+    assert issue.data == {"entry_id": entry_id}
+    assert issue.translation_placeholders == {
+        "count": str(REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD),
+    }
+
+
+async def test_bulk_conflict_issue_not_created_below_threshold(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """A handful of individually-tampered pages must not also trigger the aggregate."""
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_BULK_CONFLICT,
+        REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+
+    report = SyncReport()
+    report.skipped_conflict = ["Page A"] * (REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD - 1)
+    coord._reconcile_bulk_conflict_issue(report)
+
+    entry_id = config_entry.entry_id
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN,
+        f"{REPAIR_ISSUE_BULK_CONFLICT}_{entry_id}",
+    )
+    assert issue is None
+
+
+async def test_bulk_conflict_issue_auto_resolves_once_below_threshold(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """A subsequent clean-enough run deletes a previously-raised aggregate issue."""
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_BULK_CONFLICT,
+        REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+
+    bad_report = SyncReport()
+    bad_report.skipped_conflict = ["Page A"] * REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD
+    coord._reconcile_bulk_conflict_issue(bad_report)
+
+    good_report = SyncReport()
+    coord._reconcile_bulk_conflict_issue(good_report)
+
+    entry_id = config_entry.entry_id
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN,
+        f"{REPAIR_ISSUE_BULK_CONFLICT}_{entry_id}",
+    )
+    assert issue is None
+
+
+async def test_async_force_resync_all_delegates_with_force_true(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """The bulk-conflict repair's Fix action runs a single force=True sync."""
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    coord.async_run_sync = AsyncMock(return_value=SyncReport())  # type: ignore[method-assign]
+
+    await coord.async_force_resync_all()
+
+    coord.async_run_sync.assert_awaited_once_with(force=True)
+
+
+async def test_async_force_resync_all_raises_busy_error_when_syncing(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """Fails fast rather than leaving the Fix dialog spinning through a live sync."""
+    from custom_components.bookstack_sync.coordinator import (  # noqa: PLC0415
+        BookStackSyncBusyError,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    coord.is_syncing = True
+    coord.async_run_sync = AsyncMock()  # type: ignore[method-assign]
+
+    with pytest.raises(BookStackSyncBusyError):
+        await coord.async_force_resync_all()
+
+    coord.async_run_sync.assert_not_awaited()
+
+
 async def test_async_fix_single_page_resolves_book_id_and_delegates(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,

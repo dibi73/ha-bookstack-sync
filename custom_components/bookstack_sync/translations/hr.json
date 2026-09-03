@@ -186,6 +186,22 @@
           "sync_in_progress": "Sinkronizacija je već u tijeku. Pokušajte ponovno uskoro."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Više stranica blokirano nakon ažuriranja",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Popravi sve blokirane stranice",
+            "description": "Zadnja sinkronizacija preskočila je {count} stranica jer njihov AUTO blok više ne odgovara zadnjem poznatom stanju. To se obično događa nakon ažuriranja koje mijenja način prikazivanja AUTO blokova — ne zbog ručnih izmjena.\n\nOvo prepisuje AUTO blok svih pogođenih stranica trenutnim stanjem iz Home Assistanta. MANUAL blok se u svakom slučaju zadržava. Nastaviti?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Povezani konfiguracijski unos nije pronađen (možda je uklonjen).",
+          "resync_failed": "Pokušaj popravka nije uspio. Provjerite vezu s BookStackom i pokušajte ponovno.",
+          "sync_in_progress": "Sinkronizacija je već u tijeku. Pokušajte ponovno uskoro."
+        }
+      }
     }
   },
   "exceptions": {

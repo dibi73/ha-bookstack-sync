@@ -186,6 +186,22 @@
           "sync_in_progress": "Sünkroonimine juba käib. Palun proovi varsti uuesti."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Mitu lehte blokeeritud pärast värskendust",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Paranda kõik blokeeritud lehed",
+            "description": "Viimane sünkroonimine jättis vahele {count} lehte, kuna nende AUTO-plokk ei vasta enam viimasele teadaolevale olekule. See juhtub tavaliselt pärast värskendust, mis muudab AUTO-plokkide renderdamist — mitte käsitsi tehtud muudatuste tõttu.\n\nSee kirjutab kõigi mõjutatud lehtede AUTO-ploki üle Home Assistanti praeguse olekuga. MANUAL-plokk säilib igal juhul. Kas jätkata?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Seotud seadistuskirjet ei leitud (see võib olla eemaldatud).",
+          "resync_failed": "Parandamiskatse ebaõnnestus. Kontrolli BookStacki ühendust ja proovi uuesti.",
+          "sync_in_progress": "Sünkroonimine juba käib. Palun proovi varsti uuesti."
+        }
+      }
     }
   },
   "exceptions": {

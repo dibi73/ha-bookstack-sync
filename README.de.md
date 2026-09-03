@@ -217,7 +217,13 @@ und überspringt die Page mit einer Warnung im HA-Log.
 > MANUAL-Notizen vorher, sie werden dabei auf den Standard-Platzhalter
 > zurückgesetzt und können nicht automatisch wiederhergestellt werden.
 > Derselbe Button repariert auch ein *page_tampered*-Issue, dort ohne
-> den MANUAL-Block zurückzusetzen.
+> den MANUAL-Block zurückzusetzen. Ein Versions-Update, das die
+> AUTO-Block-Darstellung ändert, kann dadurch viele Pages auf einmal
+> blockieren (Hash-Drift, keine echte Manipulation) — seit v0.24.0
+> erscheint dafür zusätzlich EIN aggregiertes Repair-Issue (sobald mehr
+> als eine Handvoll Pages im selben Lauf betroffen sind) mit eigenem
+> Reparieren-Button, der alle Pages auf einmal per Force-Resync
+> überschreibt, statt jede Page einzeln durchklicken zu müssen.
 
 ## Entwicklung
 

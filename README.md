@@ -427,7 +427,12 @@ moves them to the right chapter automatically.
   notes first, since they reset to the default placeholder and can't
   be recovered automatically. The same button also fixes a
   *page_tampered* issue, without resetting MANUAL content in that
-  case.
+  case. A version bump that changes how the AUTO block is rendered can
+  strand many pages like this at once (hash drift, not real tampering)
+  — since v0.24.0 that also raises one additional aggregate repair
+  issue (once more than a handful of pages are affected in the same
+  run) with its own Fix button that force-resyncs everything in one
+  go, instead of clicking through every page individually.
 - **No bidirectional sync.** Edits in BookStack outside the manual
   block are detected, logged, and the page is skipped — not merged
   back into HA.

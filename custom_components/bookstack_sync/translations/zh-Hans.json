@@ -186,6 +186,22 @@
           "sync_in_progress": "同步已在进行中。请稍后再试。"
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "更新后多个页面被阻止同步",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "修复所有被阻止的页面",
+            "description": "上次同步跳过了 {count} 个页面，因为它们的 AUTO 块与最后已知状态不再匹配。这通常发生在更改 AUTO 块渲染方式的更新之后，而不是由于手动编辑。\n\n这将用 Home Assistant 的当前状态覆盖所有受影响页面的 AUTO 块。MANUAL 块无论如何都会保留。是否继续？"
+          }
+        },
+        "abort": {
+          "entry_not_found": "未找到关联的配置条目（可能已被移除）。",
+          "resync_failed": "修复尝试失败。请检查 BookStack 连接并重试。",
+          "sync_in_progress": "同步已在进行中。请稍后再试。"
+        }
+      }
     }
   },
   "exceptions": {

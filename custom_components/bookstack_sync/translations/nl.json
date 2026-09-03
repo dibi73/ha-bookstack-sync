@@ -186,6 +186,22 @@
           "sync_in_progress": "Er is al een synchronisatie bezig. Probeer het straks opnieuw."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Meerdere pagina's geblokkeerd na een update",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Alle geblokkeerde pagina's repareren",
+            "description": "De laatste synchronisatie sloeg {count} pagina's over omdat hun AUTO-blok niet meer overeenkomt met de laatst bekende status. Dit gebeurt meestal na een update die de weergave van AUTO-blokken verandert — niet door handmatige bewerkingen.\n\nHierdoor wordt het AUTO-blok van alle betrokken pagina's overschreven met de huidige status uit Home Assistant. Het MANUAL-blok blijft in elk geval behouden. Doorgaan?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "De bijbehorende configuratie-item is niet gevonden (mogelijk verwijderd).",
+          "resync_failed": "De herstelpoging is mislukt. Controleer de BookStack-verbinding en probeer het opnieuw.",
+          "sync_in_progress": "Er is al een synchronisatie bezig. Probeer het straks opnieuw."
+        }
+      }
     }
   },
   "exceptions": {

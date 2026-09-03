@@ -186,6 +186,22 @@
           "sync_in_progress": "Synchronizacja jest już w toku. Spróbuj ponownie za chwilę."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Wiele stron zablokowanych po aktualizacji",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Napraw wszystkie zablokowane strony",
+            "description": "Ostatnia synchronizacja pominęła {count} stron, ponieważ ich blok AUTO nie odpowiada już ostatniemu znanemu stanowi. Zwykle dzieje się tak po aktualizacji zmieniającej sposób renderowania bloków AUTO — nie z powodu ręcznej edycji.\n\nSpowoduje to nadpisanie bloku AUTO wszystkich dotkniętych stron aktualnym stanem z Home Assistant. Blok MANUAL zostanie zachowany w każdym przypadku. Kontynuować?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Nie znaleziono powiązanego wpisu konfiguracji (mógł zostać usunięty).",
+          "resync_failed": "Próba naprawy nie powiodła się. Sprawdź połączenie z BookStack i spróbuj ponownie.",
+          "sync_in_progress": "Synchronizacja jest już w toku. Spróbuj ponownie za chwilę."
+        }
+      }
     }
   },
   "exceptions": {

@@ -186,6 +186,22 @@
           "sync_in_progress": "Právě již probíhá synchronizace. Zkuste to prosím znovu za chvíli."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Více stránek zablokováno po aktualizaci",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Opravit všechny zablokované stránky",
+            "description": "Poslední synchronizace přeskočila {count} stránek, protože jejich AUTO blok už neodpovídá poslednímu známému stavu. To se obvykle stává po aktualizaci, která mění způsob vykreslování AUTO bloků — ne kvůli ruční úpravě.\n\nTím se přepíše AUTO blok všech dotčených stránek aktuálním stavem z Home Assistant. MANUAL blok zůstane v každém případě zachován. Pokračovat?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Přiřazená konfigurační položka nebyla nalezena (možná byla odstraněna).",
+          "resync_failed": "Pokus o opravu selhal. Zkontrolujte připojení k BookStacku a zkuste to znovu.",
+          "sync_in_progress": "Právě již probíhá synchronizace. Zkuste to prosím znovu za chvíli."
+        }
+      }
     }
   },
   "exceptions": {

@@ -80,15 +80,17 @@ class _BookStackSyncButtonBase(
             configuration_url=coordinator.config_entry.data.get(CONF_BASE_URL),
         )
 
-    @property
-    def available(self) -> bool:
-        """
-        Disable the button while a sync is in flight.
-
-        Pressing during an active run would just queue behind the
-        coordinator's lock, but greying it out is friendlier UX.
-        """
-        return not self.coordinator.is_syncing
+    # #208: no ``available`` override here on purpose. It used to grey
+    # the button out via ``not coordinator.is_syncing``, but that flag
+    # flips at both sync start and end - two unavailable<->available
+    # transitions per sync. HA's Logbook narrates every such transition
+    # on a button entity as "was pressed" regardless of whether the
+    # underlying press-timestamp actually changed, so every real sync
+    # produced up to 4 phantom "pressed" Logbook entries. Falls back to
+    # ``CoordinatorEntity``'s default (``coordinator.last_update_success``).
+    # A press while a sync is already running still just queues behind
+    # the coordinator's lock - greying out was UX-only, never a
+    # correctness requirement.
 
 
 class BookStackSyncRunNowButton(_BookStackSyncButtonBase):

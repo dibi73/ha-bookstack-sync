@@ -186,6 +186,22 @@
           "sync_in_progress": "A sync is already running. Please try again shortly."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Multiple pages blocked after an update",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Repair all blocked pages",
+            "description": "The last sync skipped {count} pages because their AUTO block no longer matches the last known state. This typically happens after an update that changes how AUTO blocks are rendered — not from manual edits.\n\nThis overwrites the AUTO block of every affected page with the current state from Home Assistant. The MANUAL block is preserved either way. Continue?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "The associated config entry could not be found (it may have been removed).",
+          "resync_failed": "The resync attempt failed. Check the BookStack connection and try again.",
+          "sync_in_progress": "A sync is already running. Please try again shortly."
+        }
+      }
     }
   },
   "exceptions": {

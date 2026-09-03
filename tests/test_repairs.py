@@ -15,8 +15,9 @@ from unittest.mock import AsyncMock
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.bookstack_sync.api import BookStackApiError
-from custom_components.bookstack_sync.const import DOMAIN
+from custom_components.bookstack_sync.const import DOMAIN, REPAIR_ISSUE_BULK_CONFLICT
 from custom_components.bookstack_sync.repairs import (
+    _BulkForceResyncFixFlow,
     _SinglePageFixFlow,
     async_create_fix_flow,
 )
@@ -188,6 +189,136 @@ async def test_confirm_step_aborts_when_sync_in_progress(
     flow.hass = hass
     flow.handler = DOMAIN
     flow.issue_id = f"page_tampered_{config_entry.entry_id}_device:abc"
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "sync_in_progress"
+
+
+async def test_async_create_fix_flow_dispatches_to_bulk_flow(
+    hass: HomeAssistant,
+) -> None:
+    """The aggregate issue's id prefix routes to the bulk flow, not the per-page one."""
+    flow = await async_create_fix_flow(
+        hass,
+        f"{REPAIR_ISSUE_BULK_CONFLICT}_entry1",
+        {"entry_id": "entry1"},
+    )
+    assert isinstance(flow, _BulkForceResyncFixFlow)
+    assert flow._entry_id == "entry1"
+
+
+async def test_bulk_confirm_step_shows_form_first(hass: HomeAssistant) -> None:
+    """No ``user_input`` yet -> a form, not an immediate action."""
+    flow = _BulkForceResyncFixFlow(entry_id="entry1")
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.issue_id = f"{REPAIR_ISSUE_BULK_CONFLICT}_entry1"
+
+    result = await flow.async_step_confirm(None)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "confirm"
+
+
+async def test_bulk_confirm_step_success_force_resyncs_and_creates_entry(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    config_entry.add_to_hass(hass)
+    force_resync = AsyncMock()
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"coordinator": type("Coord", (), {"async_force_resync_all": force_resync})()},
+    )()
+
+    flow = _BulkForceResyncFixFlow(entry_id=config_entry.entry_id)
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.issue_id = f"{REPAIR_ISSUE_BULK_CONFLICT}_{config_entry.entry_id}"
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    force_resync.assert_awaited_once_with()
+
+
+async def test_bulk_confirm_step_aborts_when_entry_removed(hass: HomeAssistant) -> None:
+    """The config entry vanished between the issue firing and the Fix click."""
+    flow = _BulkForceResyncFixFlow(entry_id="does-not-exist")
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.issue_id = f"{REPAIR_ISSUE_BULK_CONFLICT}_does-not-exist"
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "entry_not_found"
+
+
+async def test_bulk_confirm_step_aborts_when_resync_fails(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    config_entry.add_to_hass(hass)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {
+            "coordinator": type(
+                "Coord",
+                (),
+                {
+                    "async_force_resync_all": AsyncMock(
+                        side_effect=BookStackApiError("unreachable"),
+                    ),
+                },
+            )(),
+        },
+    )()
+
+    flow = _BulkForceResyncFixFlow(entry_id=config_entry.entry_id)
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.issue_id = f"{REPAIR_ISSUE_BULK_CONFLICT}_{config_entry.entry_id}"
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "resync_failed"
+
+
+async def test_bulk_confirm_step_aborts_when_sync_in_progress(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    from custom_components.bookstack_sync.coordinator import (  # noqa: PLC0415
+        BookStackSyncBusyError,
+    )
+
+    config_entry.add_to_hass(hass)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {
+            "coordinator": type(
+                "Coord",
+                (),
+                {
+                    "async_force_resync_all": AsyncMock(
+                        side_effect=BookStackSyncBusyError("busy"),
+                    ),
+                },
+            )(),
+        },
+    )()
+
+    flow = _BulkForceResyncFixFlow(entry_id=config_entry.entry_id)
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.issue_id = f"{REPAIR_ISSUE_BULK_CONFLICT}_{config_entry.entry_id}"
 
     result = await flow.async_step_confirm({})
 

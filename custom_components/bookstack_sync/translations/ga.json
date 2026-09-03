@@ -186,6 +186,22 @@
           "sync_in_progress": "Tá sioncrónú ar siúl cheana féin. Bain triail eile as go luath."
         }
       }
+    },
+    "bulk_page_conflict": {
+      "title": "Leathanaigh iomadúla bactha tar éis nuashonraithe",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Deisigh gach leathanach atá bactha",
+            "description": "Scipeáil an sioncrónú deireanach {count} leathanach toisc nach bhfuil a mbloc AUTO ag teacht leis an staid is déanaí is eol dúinn a thuilleadh. Tarlaíonn sé seo de ghnáth tar éis nuashonraithe a athraíonn conas a sholáthraítear bloic AUTO — ní mar gheall ar chuir in eagar de láimh.\n\nForscríobhfaidh sé seo bloc AUTO gach leathanaigh dá ndéantar difear leis an staid reatha ó Home Assistant. Coimeádtar an bloc MANUAL i ngach cás. Leanúint ar aghaidh?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "Níorbh fhéidir an iontráil cumraíochta ghaolmhar a aimsiú (b'fhéidir gur baineadh í).",
+          "resync_failed": "Theip ar an iarracht deisithe. Seiceáil an nasc BookStack agus bain triail eile as.",
+          "sync_in_progress": "Tá sioncrónú ar siúl cheana féin. Bain triail eile as go luath."
+        }
+      }
     }
   },
   "exceptions": {
