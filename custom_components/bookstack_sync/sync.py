@@ -23,6 +23,7 @@ The active output language is passed in via ``strings`` — see
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -135,7 +136,7 @@ def _hash_from_response(
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable, Sequence
 
     from homeassistant.core import HomeAssistant
 
@@ -144,9 +145,94 @@ if TYPE_CHECKING:
     from .store import BookStackSyncStore
 
 
-# BookStack's API rate limit defaults to 180 req/min - we batch with a small
-# pause between page writes to stay well below that even on big setups.
-WRITE_PAUSE_SECONDS = 0.2
+# BookStack's API rate limit defaults to 180 req/min. All concurrent
+# workers in a sync run (see SYNC_CONCURRENCY) share one _RateLimiter
+# instance so bounded concurrency can't push the aggregate request rate
+# over that limit - #210, replaces the old fixed per-page sleep.
+SYNC_RATE_LIMIT_PER_MINUTE = 150
+SYNC_CONCURRENCY = 5
+
+
+class _RateLimiter:
+    """
+    Async token bucket capping the aggregate rate of BookStack requests.
+
+    Unlike a fixed per-page sleep, this scales down automatically when
+    BookStack itself responds slowly (workers simply block on the real
+    network latency) and only adds extra waiting once requests would
+    otherwise outrun the configured rate - so raising SYNC_CONCURRENCY
+    speeds up a sync that's latency-bound without risking 429s from one
+    that's already running at the rate cap.
+    """
+
+    def __init__(self, rate_per_minute: float, burst: int) -> None:
+        """Create a bucket refilling at ``rate_per_minute``, holding up to ``burst``."""
+        self._interval = 60.0 / rate_per_minute
+        self._capacity = float(max(1, burst))
+        self._tokens = self._capacity
+        self._updated = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        """Block until a token is available, then consume one."""
+        async with self._lock:
+            while True:
+                now = time.monotonic()
+                self._tokens = min(
+                    self._capacity,
+                    self._tokens + (now - self._updated) / self._interval,
+                )
+                self._updated = now
+                if self._tokens >= 1:
+                    self._tokens -= 1
+                    return
+                await asyncio.sleep((1 - self._tokens) * self._interval)
+
+
+async def _run_concurrent(
+    jobs: Sequence[Callable[[], Awaitable[None]]],
+    limiter: _RateLimiter,
+    concurrency: int,
+) -> None:
+    """
+    Run ``jobs`` with up to ``concurrency`` in flight at once, paced by ``limiter``.
+
+    Mirrors the sequential loops this replaces (#210): a job that lets an
+    exception escape - ``BookStackApiAuthError``, a cancellation - aborts
+    the whole batch. No further jobs are started once that happens,
+    though jobs already in flight are allowed to finish, and the
+    exception is re-raised once every worker has settled. Any other
+    error is expected to already be handled *inside* the job itself
+    (recorded on the report) - this helper doesn't interpret job
+    failures, it only reacts to ones that propagate.
+    """
+    if not jobs:
+        return
+    queue: asyncio.Queue[Callable[[], Awaitable[None]]] = asyncio.Queue()
+    for job in jobs:
+        queue.put_nowait(job)
+    abort = asyncio.Event()
+
+    async def _worker() -> None:
+        while not abort.is_set():
+            try:
+                job = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            await limiter.acquire()
+            try:
+                await job()
+            except BaseException:
+                abort.set()
+                raise
+
+    workers = [
+        asyncio.ensure_future(_worker()) for _ in range(min(concurrency, len(jobs)))
+    ]
+    results = await asyncio.gather(*workers, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
 
 
 @dataclass
@@ -720,116 +806,72 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         if progress_callback is not None:
             progress_callback(step, total_steps)
 
+    # Shared across every pass below (#210): bounds the *aggregate*
+    # request rate across all concurrent workers, not per-pass, so
+    # running passes back-to-back still can't exceed BookStack's limit.
+    limiter = _RateLimiter(SYNC_RATE_LIMIT_PER_MINUTE, SYNC_CONCURRENCY)
+
+    def _make_sync_job(page: _PlannedPage, index: int) -> Callable[[], Awaitable[None]]:
+        """Build one page's rate-limited, concurrency-safe sync worker."""
+
+        async def _job() -> None:
+            nonlocal step
+            try:
+                page_id = await _sync_one(
+                    client,
+                    store,
+                    book_id,
+                    page,
+                    chapters,
+                    report,
+                    strings,
+                    index=index,
+                    total=total_steps,
+                    dry_run=dry_run,
+                    force=force,
+                    book_slug=book_slug,
+                    external_base_url=external_base_url,
+                )
+                if page_id is not None:
+                    _refresh_url(page.key)
+            except BookStackApiAuthError:
+                raise
+            except BookStackApiError as err:
+                LOGGER.exception("BookStack sync failed for %s", page.key)
+                report.errors.append(f"{page.key}: {err}")
+            except Exception as err:  # noqa: BLE001 - report and continue
+                LOGGER.exception("Unexpected error syncing %s", page.key)
+                report.errors.append(f"{page.key}: {err}")
+            step += 1
+            _emit_progress()
+            if not dry_run:
+                # #127: persist after every page, not just once at the end
+                # of the whole multi-pass run - an interrupted run (HA
+                # restart, BookStack outage) then only loses whichever
+                # pages were still in flight, not every page already
+                # written this run.
+                await store.async_save()
+
+        return _job
+
+    async def _run_pass(pages: list[_PlannedPage], offset: int) -> None:
+        """Sync ``pages`` with bounded concurrency (#210)."""
+        jobs = [_make_sync_job(page, offset + i + 1) for i, page in enumerate(pages)]
+        await _run_concurrent(jobs, limiter, SYNC_CONCURRENCY)
+
     _emit_progress()
-    for page in planned:
-        step += 1
-        try:
-            page_id = await _sync_one(
-                client,
-                store,
-                book_id,
-                page,
-                chapters,
-                report,
-                strings,
-                index=step,
-                total=total_steps,
-                dry_run=dry_run,
-                force=force,
-                book_slug=book_slug,
-                external_base_url=external_base_url,
-            )
-            if page_id is not None:
-                _refresh_url(page.key)
-        except BookStackApiAuthError:
-            raise
-        except BookStackApiError as err:
-            LOGGER.exception("BookStack sync failed for %s", page.key)
-            report.errors.append(f"{page.key}: {err}")
-        except Exception as err:  # noqa: BLE001 - report and continue
-            LOGGER.exception("Unexpected error syncing %s", page.key)
-            report.errors.append(f"{page.key}: {err}")
-        _emit_progress()
-        if not dry_run:
-            # #127: persist after every page, not just once at the end of
-            # the whole multi-pass run - an interrupted run (HA restart,
-            # BookStack outage) then only loses the one in-flight page's
-            # state instead of every page already written this run.
-            await store.async_save()
-            await asyncio.sleep(WRITE_PAUSE_SECONDS)
+    await _run_pass(planned, 0)
 
     # Pass 2: render area pages (now that device URLs exist) and sync them.
     # Re-plan with the populated page_links so each area's auto-body
     # contains real cross-page Markdown links instead of bold-name fallbacks.
     area_planned = _plan_area_pages(snapshot, now, strings, page_links, ha_url=ha_url)
-    for page in area_planned:
-        step += 1
-        try:
-            page_id = await _sync_one(
-                client,
-                store,
-                book_id,
-                page,
-                chapters,
-                report,
-                strings,
-                index=step,
-                total=total_steps,
-                dry_run=dry_run,
-                force=force,
-                book_slug=book_slug,
-                external_base_url=external_base_url,
-            )
-            if page_id is not None:
-                _refresh_url(page.key)
-        except BookStackApiAuthError:
-            raise
-        except BookStackApiError as err:
-            LOGGER.exception("BookStack sync failed for %s", page.key)
-            report.errors.append(f"{page.key}: {err}")
-        except Exception as err:  # noqa: BLE001 - report and continue
-            LOGGER.exception("Unexpected error syncing %s", page.key)
-            report.errors.append(f"{page.key}: {err}")
-        _emit_progress()
-        if not dry_run:
-            await store.async_save()  # #127: incremental persistence
-            await asyncio.sleep(WRITE_PAUSE_SECONDS)
+    await _run_pass(area_planned, len(planned))
 
     # Pass 3: render label pages (now that device + area URLs exist) and
     # sync them. Same re-plan-with-populated-links reasoning as pass 2.
     label_planned = _plan_label_pages(snapshot, now, strings, page_links, ha_url=ha_url)
-    for page in label_planned:
-        step += 1
-        try:
-            page_id = await _sync_one(
-                client,
-                store,
-                book_id,
-                page,
-                chapters,
-                report,
-                strings,
-                index=step,
-                total=total_steps,
-                dry_run=dry_run,
-                force=force,
-                book_slug=book_slug,
-                external_base_url=external_base_url,
-            )
-            if page_id is not None:
-                _refresh_url(page.key)
-        except BookStackApiAuthError:
-            raise
-        except BookStackApiError as err:
-            LOGGER.exception("BookStack sync failed for %s", page.key)
-            report.errors.append(f"{page.key}: {err}")
-        except Exception as err:  # noqa: BLE001 - report and continue
-            LOGGER.exception("Unexpected error syncing %s", page.key)
-            report.errors.append(f"{page.key}: {err}")
-        _emit_progress()
-        if not dry_run:
-            await store.async_save()  # #127: incremental persistence
-            await asyncio.sleep(WRITE_PAUSE_SECONDS)
+    await _run_pass(label_planned, len(planned) + len(area_planned))
 
     # Pass 4: orphaned-pages overview (#166). Built from the store's
     # CURRENT tombstoned mappings — i.e. as of before this run's own
@@ -920,6 +962,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         report,
         now,
         strings,
+        limiter,
         dry_run=dry_run,
     )
 
@@ -1440,17 +1483,14 @@ async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
     report: SyncReport,
     now: datetime,
     strings: dict[str, str],
+    limiter: _RateLimiter,
     *,
     dry_run: bool,
 ) -> None:
     """Mark pages whose HA object vanished as orphaned (one-time, not on repeat)."""
     planned_keys = {p.key for p in planned}
-    # Sorted iteration keeps the report and BookStack revision stream stable.
-    for key, mapping in sorted(store.all().items()):
-        if key in planned_keys:
-            continue
-        if mapping.tombstoned_at is not None:
-            continue
+
+    async def _tombstone_job(key: str, mapping: PageMapping) -> None:
         try:
             await _tombstone_one(
                 client,
@@ -1472,7 +1512,15 @@ async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
             report.errors.append(f"{key} (tombstone): {err}")
         if not dry_run:
             await store.async_save()  # #127: incremental persistence
-            await asyncio.sleep(WRITE_PAUSE_SECONDS)
+
+    # Sorted purely for deterministic job submission order (#210); actual
+    # completion order can interleave once run concurrently below.
+    jobs = [
+        (lambda k=key, m=mapping: _tombstone_job(k, m))
+        for key, mapping in sorted(store.all().items())
+        if key not in planned_keys and mapping.tombstoned_at is None
+    ]
+    await _run_concurrent(jobs, limiter, SYNC_CONCURRENCY)
 
 
 async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step

@@ -352,6 +352,56 @@ class TestRetryOnTransientErrors:
                 await client.get_page(42)
 
 
+class TestRetryOnRateLimit:
+    """#210: a 429 must be retried (honouring Retry-After), not a hard fail."""
+
+    async def test_429_with_retry_after_then_success(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                status=429,
+                headers={"Retry-After": "0"},
+            )
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P"},
+            )
+            page = await client.get_page(42)
+            assert page["id"] == 42
+
+    async def test_429_without_retry_after_falls_back_to_backoff(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        # No Retry-After header at all - must still retry via the same
+        # exponential backoff transient errors use, not fail immediately.
+        with aioresponses() as mocked:
+            mocked.get("http://bookstack.local:6875/api/pages/42", status=429)
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P"},
+            )
+            page = await client.get_page(42)
+            assert page["id"] == 42
+
+    async def test_persistent_429_eventually_raises(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            for _ in range(MAX_REQUEST_ATTEMPTS):
+                mocked.get(
+                    "http://bookstack.local:6875/api/pages/42",
+                    status=429,
+                    headers={"Retry-After": "0"},
+                )
+            with pytest.raises(BookStackApiCommunicationError):
+                await client.get_page(42)
+
+
 class TestUrlScrubbing:
     """The BookStack URL/hostname must not leak into raised error messages."""
 
