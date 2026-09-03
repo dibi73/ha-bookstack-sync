@@ -53,6 +53,23 @@ class BookStackApiNotFoundError(BookStackApiCommunicationError):
     """
 
 
+def _parse_retry_after(value: str | None) -> float | None:
+    """
+    Parse a ``Retry-After`` header (seconds only; no HTTP-date form).
+
+    BookStack never sends the HTTP-date form. Returns ``None`` on
+    anything unparseable so the caller falls back to its own
+    exponential backoff.
+    """
+    if value is None:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        return None
+    return seconds if seconds >= 0 else None
+
+
 def _raise_for_status(response: aiohttp.ClientResponse) -> None:
     if response.status in (401, 403):
         msg = f"BookStack rejected the API token (HTTP {response.status})"
@@ -274,6 +291,39 @@ class BookStackApiClient:
                         json=json,
                         headers=headers,
                     )
+                    if response.status == HTTPStatus.TOO_MANY_REQUESTS:
+                        # #210: parallel sync workers can occasionally brush
+                        # against BookStack's default 180 req/min limit even
+                        # with the shared rate limiter's own headroom -
+                        # honour Retry-After when BookStack sends one,
+                        # otherwise fall back to the same exponential
+                        # backoff as a transient network error.
+                        remaining = MAX_REQUEST_ATTEMPTS - attempt - 1
+                        if remaining > 0:
+                            retry_after = _parse_retry_after(
+                                response.headers.get("Retry-After"),
+                            )
+                            backoff = (
+                                retry_after
+                                if retry_after is not None
+                                else RETRY_BACKOFF_BASE * (2**attempt)
+                            )
+                            LOGGER.warning(
+                                "BookStack %s %s rate-limited (attempt %d/%d); "
+                                "retrying in %.1fs",
+                                method.upper(),
+                                path,
+                                attempt + 1,
+                                MAX_REQUEST_ATTEMPTS,
+                                backoff,
+                            )
+                            await asyncio.sleep(backoff)
+                            continue
+                        msg = (
+                            f"BookStack rate-limited the request after "
+                            f"{MAX_REQUEST_ATTEMPTS} attempts"
+                        )
+                        raise BookStackApiCommunicationError(msg)
                     _raise_for_status(response)
                     if response.status == HTTPStatus.NO_CONTENT:
                         return {}

@@ -347,9 +347,10 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
 
         Called once per managed page; we just store the counts and call
         ``async_update_listeners()`` so the diagnostic status sensor
-        re-renders. ~5 ticks/sec on a typical sync (rate-limited by
-        ``WRITE_PAUSE_SECONDS = 0.2``); fine for a diagnostic-category
-        sensor whose recorder traffic is acceptable.
+        re-renders. Ticks can now arrive in bursts since pages within a
+        pass sync concurrently (``SYNC_CONCURRENCY``, #210) rather than
+        one at a fixed pace; still fine for a diagnostic-category sensor
+        whose recorder traffic is acceptable.
         """
         self.current_step = step
         self.current_total = total

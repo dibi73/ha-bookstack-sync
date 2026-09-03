@@ -24,6 +24,7 @@ from homeassistant.helpers import (
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync._strings import get_strings
+from custom_components.bookstack_sync.api import BookStackApiAuthError
 from custom_components.bookstack_sync.const import (
     CHAPTER_KEY_AREAS,
     CHAPTER_KEY_DEVICES,
@@ -38,11 +39,15 @@ from custom_components.bookstack_sync.store import BookStackSyncStore
 from custom_components.bookstack_sync.sync import (
     _build_absolute_page_url,
     _build_page_url,
+    _RateLimiter,
+    _run_concurrent,
     resync_single_page,
     run_sync,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from homeassistant.core import HomeAssistant
 
 
@@ -1467,6 +1472,131 @@ async def test_progress_callback_is_called_with_step_and_total(
     assert steps[-1] == total, (
         f"final tick must show step==total, got {steps[-1]}/{total}"
     )
+
+
+async def test_device_pages_sync_concurrently(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    #210: pages within a pass run with bounded concurrency, not one at a time.
+
+    Three devices, each create_page call artificially delayed - if pages
+    were still synced strictly sequentially, no two calls would ever
+    overlap and the observed peak concurrency would be 1.
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    real_create_page = client.create_page
+    in_flight = 0
+    peak_in_flight = 0
+
+    async def slow_create_page(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal in_flight, peak_in_flight
+        in_flight += 1
+        peak_in_flight = max(peak_in_flight, in_flight)
+        try:
+            await asyncio.sleep(0.05)
+            return await real_create_page(*args, **kwargs)
+        finally:
+            in_flight -= 1
+
+    client.create_page = AsyncMock(side_effect=slow_create_page)
+
+    entry = MockConfigEntry(domain="mqtt", entry_id="entry1", title="MQTT")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    for name, identifier in (("A", "a"), ("B", "b"), ("C", "c")):
+        device_reg.async_get_or_create(
+            config_entry_id="entry1",
+            identifiers={("mqtt", identifier)},
+            name=name,
+        )
+
+    await run_sync(hass, client, store, 1, strings)
+
+    assert peak_in_flight > 1, (
+        f"expected overlapping page syncs, got peak concurrency {peak_in_flight}"
+    )
+
+
+class TestRateLimiter:
+    """Unit tests for the token-bucket rate limiter backing _run_concurrent (#210)."""
+
+    async def test_acquire_paces_to_configured_rate(self) -> None:
+        # 600/min == 10/sec == one token every 0.1s; burst of 1 means the
+        # 2nd..4th acquire() each have to wait out a full interval.
+        limiter = _RateLimiter(rate_per_minute=600, burst=1)
+        start = asyncio.get_event_loop().time()
+        for _ in range(4):
+            await limiter.acquire()
+        elapsed = asyncio.get_event_loop().time() - start
+        assert elapsed >= 0.28, f"expected ~0.3s for 3 waits, got {elapsed:.3f}s"
+
+    async def test_burst_allows_immediate_first_calls(self) -> None:
+        # A burst of 3 must not make the first 3 acquires wait at all.
+        limiter = _RateLimiter(rate_per_minute=60, burst=3)
+        start = asyncio.get_event_loop().time()
+        for _ in range(3):
+            await limiter.acquire()
+        elapsed = asyncio.get_event_loop().time() - start
+        assert elapsed < 0.1, f"burst capacity should be immediate, got {elapsed:.3f}s"
+
+
+class TestRunConcurrent:
+    """Unit tests for the bounded-concurrency job runner backing run_sync (#210)."""
+
+    async def test_respects_concurrency_limit(self) -> None:
+        limiter = _RateLimiter(rate_per_minute=100_000, burst=100)
+        in_flight = 0
+        peak_in_flight = 0
+
+        async def make_job() -> Callable[[], Any]:
+            async def _job() -> None:
+                nonlocal in_flight, peak_in_flight
+                in_flight += 1
+                peak_in_flight = max(peak_in_flight, in_flight)
+                await asyncio.sleep(0.02)
+                in_flight -= 1
+
+            return _job
+
+        jobs = [await make_job() for _ in range(9)]
+        await _run_concurrent(jobs, limiter, concurrency=3)
+        assert peak_in_flight == 3
+
+    async def test_all_jobs_run_when_no_errors(self) -> None:
+        limiter = _RateLimiter(rate_per_minute=100_000, burst=100)
+        ran: list[int] = []
+
+        def make_job(n: int) -> Callable[[], Any]:
+            async def _job() -> None:
+                ran.append(n)
+
+            return _job
+
+        jobs = [make_job(n) for n in range(5)]
+        await _run_concurrent(jobs, limiter, concurrency=2)
+        assert sorted(ran) == [0, 1, 2, 3, 4]
+
+    async def test_auth_error_aborts_remaining_jobs(self) -> None:
+        # Single worker (concurrency=1) makes this deterministic: job 0
+        # raises, and job 1 - still queued - must never start.
+        limiter = _RateLimiter(rate_per_minute=100_000, burst=100)
+        started: list[int] = []
+
+        async def _failing_job() -> None:
+            started.append(0)
+            msg = "token rejected"
+            raise BookStackApiAuthError(msg)
+
+        async def _never_job() -> None:
+            started.append(1)
+
+        with pytest.raises(BookStackApiAuthError):
+            await _run_concurrent([_failing_job, _never_job], limiter, concurrency=1)
+        assert started == [0]
 
 
 async def test_interrupted_sync_persists_already_written_pages(
