@@ -492,9 +492,15 @@ def _plan_pages(
     # ("Geräte") regardless of area, so the sidebar order needs one
     # counter across the whole flattened area+unassigned list below -
     # numbering per-area would just reproduce area grouping, not the
-    # alphabetical-per-device order the sidebar shows.
+    # alphabetical-per-device order the sidebar shows. Concatenating the
+    # per-area lists (each already alpha-sorted) only sorts within each
+    # area, not globally - a device in an alphabetically later area still
+    # sorts before one in an earlier area, and unassigned devices always
+    # land last regardless of name. Re-sort the flattened list by device
+    # name so the chapter is truly alphabetical end to end.
     all_devices = [d for area in snapshot.areas for d in area.devices]
     all_devices.extend(snapshot.unassigned_devices)
+    all_devices.sort(key=lambda d: (d.name.lower(), d.device_id))
     planned.extend(
         _device_page(
             d,

@@ -381,27 +381,29 @@ async def test_area_and_device_pages_get_sequential_priority(
     strings: dict[str, str],
 ) -> None:
     """
-    Area/device pages get 1-based priority in existing sort order (#185).
+    Area pages get 1-based priority in area sort order; device pages get
+    a GLOBAL alphabetical order across all areas (#212, fixing #185).
 
-    Two areas, alphabetically "Bad" then "Küche" — each area's devices
-    are sorted alphabetically within it (extractor's job, not this
-    test's), so the whole "Geräte" chapter numbers 1..N across both
-    areas in that order (area-grouped, not a fresh global re-sort - see
-    the issue discussion on why that's the intended scope).
+    Areas alphabetically "Arbeitszimmer" then "Bad". Each area has one
+    device, deliberately named so that grouping by area (old behavior)
+    and a true global alphabetical sort disagree: "Arbeitszimmer" sorts
+    before "Bad", but its device "Zeta" sorts after "Bad"'s device
+    "Amboss". The flat "Geräte" chapter has no visible area grouping in
+    BookStack's sidebar, so it must be globally alphabetical by device
+    name, not area-then-device.
     """
     state: dict[str, Any] = {}
     client = _fake_client_with_state(state)
     area_reg = ar.async_get(hass)
+    arbeitszimmer = area_reg.async_create("Arbeitszimmer")
     bad = area_reg.async_create("Bad")
-    kueche = area_reg.async_create("Küche")
 
     entry = MockConfigEntry(domain="mqtt", entry_id="entry1", title="MQTT")
     entry.add_to_hass(hass)
     device_reg = dr.async_get(hass)
     for name, identifier, area_id in (
-        ("Waschmaschine", "waschmaschine", kueche.id),
-        ("Fön", "fon", bad.id),
-        ("Herd", "herd", kueche.id),
+        ("Zeta", "zeta", arbeitszimmer.id),
+        ("Amboss", "amboss", bad.id),
     ):
         dev = device_reg.async_get_or_create(
             config_entry_id="entry1",
@@ -417,19 +419,18 @@ async def test_area_and_device_pages_get_sequential_priority(
         for p in state["pages"].values()
         if p["name"].startswith("Raum: ")
     }
-    assert area_pages == {"Raum: Bad": 1, "Raum: Küche": 2}
+    assert area_pages == {"Raum: Arbeitszimmer": 1, "Raum: Bad": 2}
 
     device_pages = {
         p["name"]: p["priority"]
         for p in state["pages"].values()
         if p["name"].startswith("Gerät: ")
     }
-    # Bad's one device first (priority 1), then Küche's devices
-    # alphabetically (Herd before Waschmaschine).
+    # Global alphabetical by device name: Amboss before Zeta, even
+    # though Amboss's area ("Bad") sorts after Zeta's ("Arbeitszimmer").
     assert device_pages == {
-        "Gerät: Fön": 1,
-        "Gerät: Herd": 2,
-        "Gerät: Waschmaschine": 3,
+        "Gerät: Amboss": 1,
+        "Gerät: Zeta": 2,
     }
 
 
