@@ -276,9 +276,7 @@ async def test_reconfigure_flow_saves_external_base_url(
 
     assert result2["type"] == data_entry_flow.FlowResultType.ABORT
     assert result2["reason"] == "reconfigure_successful"
-    assert (
-        config_entry.data[CONF_EXTERNAL_BASE_URL] == "https://bookstack.example.com"
-    )
+    assert config_entry.data[CONF_EXTERNAL_BASE_URL] == "https://bookstack.example.com"
 
 
 async def test_reconfigure_flow_external_base_url_optional(

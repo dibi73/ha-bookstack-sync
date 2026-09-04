@@ -320,9 +320,7 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except vol.Invalid as err:
                 errors[CONF_BASE_URL] = str(err)
 
-            external_base_url = (
-                user_input.get(CONF_EXTERNAL_BASE_URL) or ""
-            ).strip()
+            external_base_url = (user_input.get(CONF_EXTERNAL_BASE_URL) or "").strip()
             if external_base_url:
                 try:
                     external_base_url = _validate_base_url(external_base_url)
