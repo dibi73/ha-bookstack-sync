@@ -34,7 +34,11 @@
           "base_url": "BookStack URL",
           "token_id": "API token ID",
           "token_secret": "API token μυστικό",
-          "verify_ssl": "Επαλήθευση πιστοποιητικού TLS (απενεργοποιήστε για αυτο-υπογεγραμμένα)"
+          "verify_ssl": "Επαλήθευση πιστοποιητικού TLS (απενεργοποιήστε για αυτο-υπογεγραμμένα)",
+          "external_base_url": "Εξωτερικό URL BookStack (προαιρετικό)"
+        },
+        "data_description": {
+          "external_base_url": "Χρησιμοποιείται μόνο για τον σύνδεσμο στις ειδοποιήσεις επιδιόρθωσης (Ρυθμίσεις → Σύστημα → Επιδιορθώσεις), αν αυτή η διεύθυνση διαφέρει από το URL του BookStack παραπάνω — π.χ. όταν έχετε πρόσβαση στο Home Assistant εκτός δικτύου. Αφήστε κενό για να συνεχίσετε να χρησιμοποιείτε το ίδιο URL όπως παραπάνω."
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "Διάστημα συγχρονισμού",
           "output_language": "Γλώσσα των σελίδων BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "Εξωτερικό URL BookStack (προαιρετικό)"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "Χρησιμοποιείται μόνο για τον σύνδεσμο στις ειδοποιήσεις επιδιόρθωσης (Ρυθμίσεις → Σύστημα → Επιδιορθώσεις), αν αυτή η διεύθυνση διαφέρει από το URL του BookStack παραπάνω — π.χ. όταν έχετε πρόσβαση στο Home Assistant εκτός δικτύου. Αφήστε κενό για να συνεχίσετε να χρησιμοποιείτε το ίδιο URL όπως παραπάνω."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }

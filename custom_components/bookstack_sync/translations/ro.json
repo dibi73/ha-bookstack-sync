@@ -34,7 +34,11 @@
           "base_url": "URL BookStack",
           "token_id": "ID token API",
           "token_secret": "Secret token API",
-          "verify_ssl": "Verifică certificatul TLS (dezactivați pentru autosemnate)"
+          "verify_ssl": "Verifică certificatul TLS (dezactivați pentru autosemnate)",
+          "external_base_url": "URL extern BookStack (opțional)"
+        },
+        "data_description": {
+          "external_base_url": "Folosit doar pentru linkul din notificările de reparație (Setări → Sistem → Reparații), dacă această adresă diferă de URL-ul BookStack de mai sus — de ex. când accesați Home Assistant din afara rețelei dvs. Lăsați gol pentru a continua să folosiți același URL ca mai sus."
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "Interval de sincronizare",
           "output_language": "Limba paginilor BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "URL extern BookStack (opțional)"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "Folosit doar pentru linkul din notificările de reparație (Setări → Sistem → Reparații), dacă această adresă diferă de URL-ul BookStack de mai sus — de ex. când accesați Home Assistant din afara rețelei dvs. Lăsați gol pentru a continua să folosiți același URL ca mai sus."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }

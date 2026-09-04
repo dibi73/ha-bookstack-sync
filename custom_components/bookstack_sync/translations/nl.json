@@ -34,7 +34,11 @@
           "base_url": "BookStack-URL",
           "token_id": "API-token-ID",
           "token_secret": "API-token-geheim",
-          "verify_ssl": "TLS-certificaat verifiëren (uitschakelen voor zelfondertekende)"
+          "verify_ssl": "TLS-certificaat verifiëren (uitschakelen voor zelfondertekende)",
+          "external_base_url": "Externe BookStack-URL (optioneel)"
+        },
+        "data_description": {
+          "external_base_url": "Wordt alleen gebruikt voor de link in reparatiemeldingen (Instellingen → Systeem → Reparaties), als dit adres afwijkt van de BookStack-URL hierboven — bijv. wanneer je Home Assistant van buiten je netwerk benadert. Laat leeg om dezelfde URL als hierboven te blijven gebruiken."
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "Synchronisatie-interval",
           "output_language": "Taal van BookStack-pagina's",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "Externe BookStack-URL (optioneel)"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "Wordt alleen gebruikt voor de link in reparatiemeldingen (Instellingen → Systeem → Reparaties), als dit adres afwijkt van de BookStack-URL hierboven — bijv. wanneer je Home Assistant van buiten je netwerk benadert. Laat leeg om dezelfde URL als hierboven te blijven gebruiken."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }

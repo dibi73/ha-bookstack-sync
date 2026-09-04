@@ -34,7 +34,11 @@
           "base_url": "URL ของ BookStack",
           "token_id": "API token ID",
           "token_secret": "API token secret",
-          "verify_ssl": "ตรวจสอบใบรับรอง TLS (ปิดสำหรับใบรับรองที่ลงนามด้วยตนเอง)"
+          "verify_ssl": "ตรวจสอบใบรับรอง TLS (ปิดสำหรับใบรับรองที่ลงนามด้วยตนเอง)",
+          "external_base_url": "URL BookStack ภายนอก (ไม่บังคับ)"
+        },
+        "data_description": {
+          "external_base_url": "ใช้เฉพาะสำหรับลิงก์ในการแจ้งเตือนการซ่อมแซม (การตั้งค่า → ระบบ → การซ่อมแซม) หากที่อยู่นี้แตกต่างจาก URL ของ BookStack ด้านบน — เช่น เมื่อคุณเข้าถึง Home Assistant จากภายนอกเครือข่ายของคุณ เว้นว่างไว้เพื่อใช้ URL เดียวกับด้านบนต่อไป"
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "ช่วงเวลาการซิงค์",
           "output_language": "ภาษาของหน้า BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "URL BookStack ภายนอก (ไม่บังคับ)"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "ใช้เฉพาะสำหรับลิงก์ในการแจ้งเตือนการซ่อมแซม (การตั้งค่า → ระบบ → การซ่อมแซม) หากที่อยู่นี้แตกต่างจาก URL ของ BookStack ด้านบน — เช่น เมื่อคุณเข้าถึง Home Assistant จากภายนอกเครือข่ายของคุณ เว้นว่างไว้เพื่อใช้ URL เดียวกับด้านบนต่อไป"
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }
