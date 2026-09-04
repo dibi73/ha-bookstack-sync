@@ -34,7 +34,11 @@
           "base_url": "BookStack URL",
           "token_id": "API token ID",
           "token_secret": "API token secret",
-          "verify_ssl": "Verify TLS certificate (disable for self-signed)"
+          "verify_ssl": "Verify TLS certificate (disable for self-signed)",
+          "external_base_url": "External BookStack URL (optional)"
+        },
+        "data_description": {
+          "external_base_url": "Only used for the link in repair-issue notifications (Settings → System → Repairs) if that address differs from the BookStack URL above - e.g. when you access Home Assistant from outside your network. Leave empty to keep using the same URL as above."
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "Sync interval",
           "output_language": "Language of the BookStack pages",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "External BookStack URL (optional)"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "Only used for the link in repair-issue notifications (Settings → System → Repairs) if that address differs from the BookStack URL above - e.g. when you access Home Assistant from outside your network. Leave empty to keep using the same URL as above."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }

@@ -18,6 +18,7 @@ from homeassistant.loader import async_get_loaded_integration
 from .api import BookStackApiClient
 from .const import (
     CONF_BASE_URL,
+    CONF_EXTERNAL_BASE_URL,
     CONF_TOKEN_ID,
     CONF_TOKEN_SECRET,
     CONF_VERIFY_SSL,
@@ -38,11 +39,40 @@ if TYPE_CHECKING:
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
 
 
+def _migrate_external_base_url_to_data(
+    hass: HomeAssistant,
+    entry: BookStackSyncConfigEntry,
+) -> None:
+    """
+    One-time move of ``external_base_url`` from ``options`` to ``data`` (#214).
+
+    It used to live in the options flow (#202), edited in a different
+    dialog than ``base_url`` even though both describe the same "how do
+    I reach BookStack" concern. Now that it's part of the reconfigure
+    flow instead, entries written by the old options flow need their
+    value carried over once so the user doesn't have to re-enter it.
+    """
+    if CONF_EXTERNAL_BASE_URL in entry.data:
+        return
+    old_value = entry.options.get(CONF_EXTERNAL_BASE_URL)
+    if old_value is None:
+        return
+    new_options = {
+        k: v for k, v in entry.options.items() if k != CONF_EXTERNAL_BASE_URL
+    }
+    hass.config_entries.async_update_entry(
+        entry,
+        data={**entry.data, CONF_EXTERNAL_BASE_URL: old_value},
+        options=new_options,
+    )
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: BookStackSyncConfigEntry,
 ) -> bool:
     """Set up a BookStack Sync config entry."""
+    _migrate_external_base_url_to_data(hass, entry)
     verify_ssl = entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
     client = BookStackApiClient(
         base_url=entry.data[CONF_BASE_URL],

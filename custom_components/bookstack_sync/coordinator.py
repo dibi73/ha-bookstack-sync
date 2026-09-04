@@ -436,7 +436,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                         dry_run=dry_run,
                         force=force,
                         progress_callback=self._on_sync_progress,
-                        external_base_url=options.get(CONF_EXTERNAL_BASE_URL) or None,
+                        external_base_url=data.get(CONF_EXTERNAL_BASE_URL) or None,
                     )
                 except BookStackApiAuthError:
                     # Auth failures get their own reauth-flow handling
@@ -526,7 +526,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 book_id,
                 page_key,
                 strings,
-                external_base_url=options.get(CONF_EXTERNAL_BASE_URL) or None,
+                external_base_url=data.get(CONF_EXTERNAL_BASE_URL) or None,
             )
         finally:
             self._sync_lock.release()

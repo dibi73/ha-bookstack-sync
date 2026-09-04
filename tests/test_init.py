@@ -7,8 +7,12 @@ from typing import TYPE_CHECKING
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.bookstack_sync import async_remove_entry
+from custom_components.bookstack_sync import (
+    _migrate_external_base_url_to_data,
+    async_remove_entry,
+)
 from custom_components.bookstack_sync.const import (
+    CONF_EXTERNAL_BASE_URL,
     DOMAIN,
     REPAIR_ISSUE_TAMPERED,
     REPAIR_ISSUE_UNREACHABLE,
@@ -74,3 +78,62 @@ async def test_async_remove_entry_deletes_only_this_entrys_issues(
     assert remaining == {
         f"{REPAIR_ISSUE_TAMPERED}_{other_entry.entry_id}_device:xyz",
     }
+
+
+async def test_migrate_external_base_url_moves_options_value_to_data(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#214: a pre-#214 entry's options value moves to data exactly once."""
+    config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        config_entry,
+        options={
+            **config_entry.options,
+            CONF_EXTERNAL_BASE_URL: "https://bookstack.example.com",
+        },
+    )
+
+    _migrate_external_base_url_to_data(hass, config_entry)
+
+    assert config_entry.data[CONF_EXTERNAL_BASE_URL] == "https://bookstack.example.com"
+    assert CONF_EXTERNAL_BASE_URL not in config_entry.options
+
+
+async def test_migrate_external_base_url_no_op_when_nothing_to_migrate(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """An entry that never used options.external_base_url is left untouched."""
+    config_entry.add_to_hass(hass)
+
+    _migrate_external_base_url_to_data(hass, config_entry)
+
+    assert CONF_EXTERNAL_BASE_URL not in config_entry.data
+    assert CONF_EXTERNAL_BASE_URL not in config_entry.options
+
+
+async def test_migrate_external_base_url_does_not_overwrite_existing_data(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """An entry already migrated (or set via reconfigure) keeps its data value."""
+    config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        config_entry,
+        data={
+            **config_entry.data,
+            CONF_EXTERNAL_BASE_URL: "https://already-migrated.example.com",
+        },
+        options={
+            **config_entry.options,
+            CONF_EXTERNAL_BASE_URL: "https://stale.example.com",
+        },
+    )
+
+    _migrate_external_base_url_to_data(hass, config_entry)
+
+    assert (
+        config_entry.data[CONF_EXTERNAL_BASE_URL]
+        == "https://already-migrated.example.com"
+    )

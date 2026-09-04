@@ -320,6 +320,15 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except vol.Invalid as err:
                 errors[CONF_BASE_URL] = str(err)
 
+            external_base_url = (
+                user_input.get(CONF_EXTERNAL_BASE_URL) or ""
+            ).strip()
+            if external_base_url:
+                try:
+                    external_base_url = _validate_base_url(external_base_url)
+                except vol.Invalid as err:
+                    errors[CONF_EXTERNAL_BASE_URL] = str(err)
+
         if user_input is not None and not errors:
             # Re-pin unique_id; abort if user pointed at a different instance.
             await self.async_set_unique_id(user_input[CONF_BASE_URL].rstrip("/"))
@@ -353,9 +362,11 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_VERIFY_SSL,
                             DEFAULT_VERIFY_SSL,
                         ),
+                        CONF_EXTERNAL_BASE_URL: external_base_url,
                     },
                 )
 
+        current_external_base_url = existing.data.get(CONF_EXTERNAL_BASE_URL, "")
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema(
@@ -377,6 +388,15 @@ class BookStackSyncConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             type=selector.TextSelectorType.PASSWORD,
                         ),
                     ),
+                    # #214: lives here (not the options flow) because it
+                    # describes the same "how do I reach BookStack"
+                    # concern as base_url above, just for a different
+                    # audience (whoever's reading a repair notification
+                    # from outside the LAN).
+                    vol.Optional(
+                        CONF_EXTERNAL_BASE_URL,
+                        default=current_external_base_url,
+                    ): selector.TextSelector(),
                     vol.Required(
                         CONF_VERIFY_SSL,
                         default=existing.data.get(
@@ -414,7 +434,7 @@ class BookStackSyncOptionsFlow(OptionsFlow):
         """Initialise the options flow state."""
         self._books: list[dict[str, Any]] = []
 
-    async def async_step_init(  # noqa: PLR0912 - one cohesive form, each field's own validation
+    async def async_step_init(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
@@ -448,13 +468,6 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                     ):
                         errors[CONF_EXPORT_ENABLED] = _ERR_EXPORT_ALREADY_ENABLED
                         break
-
-            external_base_url = (user_input.get(CONF_EXTERNAL_BASE_URL) or "").strip()
-            if external_base_url:
-                try:
-                    external_base_url = _validate_base_url(external_base_url)
-                except vol.Invalid as err:
-                    errors[CONF_EXTERNAL_BASE_URL] = str(err)
 
             if not errors:
                 new_book_id = int(user_input[CONF_BOOK_ID])
@@ -491,7 +504,6 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         ),
                         CONF_EXPORT_ENABLED: export_enabled,
                         CONF_EXPORT_PATH: export_path,
-                        CONF_EXTERNAL_BASE_URL: external_base_url,
                     },
                 )
 
@@ -527,10 +539,6 @@ class BookStackSyncOptionsFlow(OptionsFlow):
         current_export_path = self.config_entry.options.get(
             CONF_EXPORT_PATH,
             self.hass.config.path(DEFAULT_EXPORT_SUBDIR),
-        )
-        current_external_base_url = self.config_entry.options.get(
-            CONF_EXTERNAL_BASE_URL,
-            "",
         )
         return self.async_show_form(
             step_id="init",
@@ -568,13 +576,6 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                     vol.Optional(
                         CONF_EXPORT_PATH,
                         default=current_export_path,
-                    ): selector.TextSelector(),
-                    # #202: optional override for the link embedded in
-                    # repair-issue descriptions - only that link, never used
-                    # for actual API requests (those keep using CONF_BASE_URL).
-                    vol.Optional(
-                        CONF_EXTERNAL_BASE_URL,
-                        default=current_external_base_url,
                     ): selector.TextSelector(),
                 },
             ),

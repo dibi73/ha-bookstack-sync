@@ -34,7 +34,11 @@
           "base_url": "URL BookStack",
           "token_id": "ID an chomhartha API",
           "token_secret": "Rún an chomhartha API",
-          "verify_ssl": "Fíoraigh teastas TLS (díchumasaigh i gcás féin-shínithe)"
+          "verify_ssl": "Fíoraigh teastas TLS (díchumasaigh i gcás féin-shínithe)",
+          "external_base_url": "URL seachtrach BookStack (roghnach)"
+        },
+        "data_description": {
+          "external_base_url": "Ní úsáidtear é ach don nasc i bhfógraí deisiúcháin (Socruithe → Córas → Deisiúcháin), má tá an seoladh seo difriúil ón URL BookStack thuas — m.sh. nuair a fhaigheann tú rochtain ar Home Assistant lasmuigh de do líonra. Fág folamh chun leanúint ar aghaidh ag baint úsáide as an URL céanna thuas."
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "Eatramh sioncronaithe",
           "output_language": "Teanga na leathanach BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "URL seachtrach BookStack (roghnach)"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "Ní úsáidtear é ach don nasc i bhfógraí deisiúcháin (Socruithe → Córas → Deisiúcháin), má tá an seoladh seo difriúil ón URL BookStack thuas — m.sh. nuair a fhaigheann tú rochtain ar Home Assistant lasmuigh de do líonra. Fág folamh chun leanúint ar aghaidh ag baint úsáide as an URL céanna thuas."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }

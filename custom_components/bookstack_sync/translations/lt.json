@@ -34,7 +34,11 @@
           "base_url": "BookStack URL",
           "token_id": "API rakto ID",
           "token_secret": "API rakto paslaptis",
-          "verify_ssl": "Patikrinti TLS sertifikatą (išjunkite, jei pasirašyta savarankiškai)"
+          "verify_ssl": "Patikrinti TLS sertifikatą (išjunkite, jei pasirašyta savarankiškai)",
+          "external_base_url": "Išorinis BookStack URL (nebūtina)"
+        },
+        "data_description": {
+          "external_base_url": "Naudojamas tik nuorodai taisymo pranešimuose (Nustatymai → Sistema → Taisymai), jei šis adresas skiriasi nuo aukščiau nurodyto BookStack URL — pvz., kai jungiatės prie Home Assistant iš už savo tinklo ribų. Palikite tuščią, kad ir toliau būtų naudojamas tas pats URL kaip aukščiau."
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "Sinchronizavimo intervalas",
           "output_language": "BookStack puslapių kalba",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "Išorinis BookStack URL (nebūtina)"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "Naudojamas tik nuorodai taisymo pranešimuose (Nustatymai → Sistema → Taisymai), jei šis adresas skiriasi nuo aukščiau nurodyto BookStack URL — pvz., kai jungiatės prie Home Assistant iš už savo tinklo ribų. Palikite tuščią, kad ir toliau būtų naudojamas tas pats URL kaip aukščiau."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }

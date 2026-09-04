@@ -34,7 +34,11 @@
           "base_url": "URL adresa BookStack",
           "token_id": "ID API tokenu",
           "token_secret": "Tajný kľúč API tokenu",
-          "verify_ssl": "Overiť TLS certifikát (zakážte pre samopodpísané)"
+          "verify_ssl": "Overiť TLS certifikát (zakážte pre samopodpísané)",
+          "external_base_url": "Externá URL BookStacku (voliteľné)"
+        },
+        "data_description": {
+          "external_base_url": "Používa sa iba pre odkaz v oznámeniach o opravách (Nastavenia → Systém → Opravy), ak sa táto adresa líši od vyššie uvedenej URL BookStacku — napr. keď pristupujete k Home Assistant mimo vašej siete. Ponechajte prázdne, ak chcete naďalej používať rovnakú URL ako vyššie."
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "Interval synchronizácie",
           "output_language": "Jazyk stránok BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "Externá URL BookStacku (voliteľné)"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "Používa sa iba pre odkaz v oznámeniach o opravách (Nastavenia → Systém → Opravy), ak sa táto adresa líši od vyššie uvedenej URL BookStacku — napr. keď pristupujete k Home Assistant mimo vašej siete. Ponechajte prázdne, ak chcete naďalej používať rovnakú URL ako vyššie."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }

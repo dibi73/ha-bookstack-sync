@@ -175,9 +175,21 @@ async def test_reauth_flow_updates_token(
     """Reauth replaces just the token credentials; URL stays."""
     config_entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
-        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    with (
+        patch(
+            "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+            new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+        ),
+        # Like the reconfigure flow, reauth's async_update_reload_and_abort
+        # schedules a real integration reload as a fire-and-forget
+        # background task. Left unmocked it's a pre-existing latent race
+        # (present on main too - reproduced with an unrelated one-line
+        # change to async_setup_entry, #214) that occasionally lets a
+        # real BookStack sync attempt run during this test's teardown and
+        # blow up on this environment's neutered DNS resolver.
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_schedule_reload",
+        ),
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
@@ -215,65 +227,102 @@ def _options_submission(**overrides: object) -> dict[str, object]:
     return base
 
 
-async def test_options_flow_saves_external_base_url(
+def _reconfigure_submission(**overrides: object) -> dict[str, object]:
+    """Minimal valid reconfigure-flow submission matching ``config_entry``'s URL."""
+    base: dict[str, object] = {
+        CONF_BASE_URL: "http://bookstack.local:6875",
+        CONF_TOKEN_ID: "tid",
+        CONF_TOKEN_SECRET: "tsec",
+        CONF_VERIFY_SSL: True,
+    }
+    base.update(overrides)
+    return base
+
+
+async def _start_reconfigure(hass: HomeAssistant, entry_id: str) -> dict[str, object]:
+    return await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_RECONFIGURE, "entry_id": entry_id},
+    )
+
+
+async def test_reconfigure_flow_saves_external_base_url(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
 ) -> None:
-    """#202: a valid external URL is persisted as-is."""
+    """#214: a valid external URL is persisted as-is, alongside base_url."""
     config_entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
-        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    with (
+        patch(
+            "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+            new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+        ),
+        # async_update_reload_and_abort schedules a real integration
+        # reload as a fire-and-forget background task - irrelevant to
+        # what this test checks (the persisted config-entry data), and
+        # left unmocked it hits the network for a real BookStack sync.
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_schedule_reload",
+        ),
     ):
-        result = await hass.config_entries.options.async_init(config_entry.entry_id)
-        result2 = await hass.config_entries.options.async_configure(
+        result = await _start_reconfigure(hass, config_entry.entry_id)
+        result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input=_options_submission(
+            user_input=_reconfigure_submission(
                 **{CONF_EXTERNAL_BASE_URL: "https://bookstack.example.com"},
             ),
         )
 
-    assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result2["data"][CONF_EXTERNAL_BASE_URL] == "https://bookstack.example.com"
+    assert result2["type"] == data_entry_flow.FlowResultType.ABORT
+    assert result2["reason"] == "reconfigure_successful"
+    assert (
+        config_entry.data[CONF_EXTERNAL_BASE_URL] == "https://bookstack.example.com"
+    )
 
 
-async def test_options_flow_external_base_url_optional(
+async def test_reconfigure_flow_external_base_url_optional(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
 ) -> None:
-    """#202: leaving it blank keeps the previous client.base_url-only behaviour."""
+    """#214: leaving it blank keeps the previous client.base_url-only behaviour."""
     config_entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
-        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    with (
+        patch(
+            "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+            new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+        ),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_schedule_reload",
+        ),
     ):
-        result = await hass.config_entries.options.async_init(config_entry.entry_id)
-        result2 = await hass.config_entries.options.async_configure(
+        result = await _start_reconfigure(hass, config_entry.entry_id)
+        result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input=_options_submission(),
+            user_input=_reconfigure_submission(),
         )
 
-    assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result2["data"][CONF_EXTERNAL_BASE_URL] == ""
+    assert result2["type"] == data_entry_flow.FlowResultType.ABORT
+    assert result2["reason"] == "reconfigure_successful"
+    assert config_entry.data[CONF_EXTERNAL_BASE_URL] == ""
 
 
-async def test_options_flow_rejects_invalid_external_base_url(
+async def test_reconfigure_flow_rejects_invalid_external_base_url(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
 ) -> None:
-    """#202: a scheme-less value is rejected the same way CONF_BASE_URL is."""
+    """#214: a scheme-less value is rejected the same way CONF_BASE_URL is."""
     config_entry.add_to_hass(hass)
 
     with patch(
         "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
         new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
     ):
-        result = await hass.config_entries.options.async_init(config_entry.entry_id)
-        result2 = await hass.config_entries.options.async_configure(
+        result = await _start_reconfigure(hass, config_entry.entry_id)
+        result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input=_options_submission(
+            user_input=_reconfigure_submission(
                 **{CONF_EXTERNAL_BASE_URL: "not-a-url"},
             ),
         )

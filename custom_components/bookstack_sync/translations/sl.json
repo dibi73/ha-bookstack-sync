@@ -34,7 +34,11 @@
           "base_url": "URL BookStack",
           "token_id": "ID API žetona",
           "token_secret": "Skrivnost API žetona",
-          "verify_ssl": "Preveri TLS potrdilo (onemogočite za samopodpisana)"
+          "verify_ssl": "Preveri TLS potrdilo (onemogočite za samopodpisana)",
+          "external_base_url": "Zunanji URL BookStack (neobvezno)"
+        },
+        "data_description": {
+          "external_base_url": "Uporablja se samo za povezavo v obvestilih o popravilih (Nastavitve → Sistem → Popravila), če se ta naslov razlikuje od zgornjega URL-ja BookStack — npr. ko do Home Assistant dostopate zunaj svojega omrežja. Pustite prazno, če želite še naprej uporabljati enak URL kot zgoraj."
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "Interval sinhronizacije",
           "output_language": "Jezik strani BookStack",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "Zunanji URL BookStack (neobvezno)"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "Uporablja se samo za povezavo v obvestilih o popravilih (Nastavitve → Sistem → Popravila), če se ta naslov razlikuje od zgornjega URL-ja BookStack — npr. ko do Home Assistant dostopate zunaj svojega omrežja. Pustite prazno, če želite še naprej uporabljati enak URL kot zgoraj."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }

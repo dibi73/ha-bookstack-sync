@@ -34,7 +34,11 @@
           "base_url": "BookStack URL",
           "token_id": "API 令牌 ID",
           "token_secret": "API 令牌密钥",
-          "verify_ssl": "验证 TLS 证书（自签名证书请禁用）"
+          "verify_ssl": "验证 TLS 证书（自签名证书请禁用）",
+          "external_base_url": "外部 BookStack URL（可选）"
+        },
+        "data_description": {
+          "external_base_url": "仅用于修复通知中的链接（设置 → 系统 → 修复），如果此地址与上方的 BookStack URL 不同——例如从家庭网络外部访问 Home Assistant 时。留空则继续使用与上方相同的 URL。"
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "同步间隔",
           "output_language": "BookStack 页面语言",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "外部 BookStack URL（可选）"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "仅用于修复通知中的链接（设置 → 系统 → 修复），如果此地址与上方的 BookStack URL 不同——例如从家庭网络外部访问 Home Assistant 时。留空则继续使用与上方相同的 URL。"
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }

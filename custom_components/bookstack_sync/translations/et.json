@@ -34,7 +34,11 @@
           "base_url": "BookStacki URL",
           "token_id": "API-tokeni ID",
           "token_secret": "API-tokeni saladus",
-          "verify_ssl": "Kontrolli TLS-sertifikaati (lülita välja iseallkirjastatute korral)"
+          "verify_ssl": "Kontrolli TLS-sertifikaati (lülita välja iseallkirjastatute korral)",
+          "external_base_url": "Väline BookStacki URL (valikuline)"
+        },
+        "data_description": {
+          "external_base_url": "Kasutatakse ainult remondimärguannete lingi jaoks (Seaded → Süsteem → Remont), kui see aadress erineb ülaltoodud BookStacki URL-ist — nt kui pääsete Home Assistantile ligi väljastpoolt oma võrku. Jäta tühjaks, et kasutada jätkuvalt sama URL-i nagu ülal."
         }
       }
     },
@@ -64,13 +68,11 @@
           "sync_interval": "Sünkroonimisintervall",
           "output_language": "BookStacki lehtede keel",
           "export_enabled": "Enable Markdown back-export (off by default)",
-          "export_path": "Export folder (absolute path)",
-          "external_base_url": "Väline BookStacki URL (valikuline)"
+          "export_path": "Export folder (absolute path)"
         },
         "data_description": {
           "export_enabled": "Off by default. When on, BookStack pages are written back as plain Markdown files for use as RAG / LLM input. Costs disk space and CPU on every export run, which is why it must be enabled consciously.",
-          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist.",
-          "external_base_url": "Kasutatakse ainult remondimärguannete lingi jaoks (Seaded → Süsteem → Remont), kui see aadress erineb ülaltoodud BookStacki URL-ist — nt kui pääsete Home Assistantile ligi väljastpoolt oma võrku. Jäta tühjaks, et kasutada jätkuvalt sama URL-i nagu ülal."
+          "export_path": "Where to write the Markdown files. Must be absolute and the parent directory must exist."
         }
       }
     }
