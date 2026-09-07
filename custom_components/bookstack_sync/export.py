@@ -93,7 +93,13 @@ def _chapter_slug(chapter_id: int | None, chapter_lookup: dict[int, str]) -> str
 
 
 def _atomic_write(path: Path, content: str) -> None:
-    """Write to ``<path>.tmp`` then rename — never leaves a half-written file."""
+    """
+    Write to ``<path>.tmp`` then rename — never leaves a half-written file.
+
+    Blocking I/O — call via ``hass.async_add_executor_job``, never directly
+    from the event loop (see ``extractor.py``'s ``_read_energy_storage_blocking``
+    for the established pattern in this codebase).
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")
@@ -282,12 +288,12 @@ async def export(  # noqa: PLR0912, PLR0915 — single linear orchestration is c
         if prev and prev.filename != rel:
             old_path = target_root / prev.filename
             if not dry_run:
-                _delete_if_exists(old_path)
+                await hass.async_add_executor_job(_delete_if_exists, old_path)
             deleted_old += 1
 
         if not dry_run:
             try:
-                _atomic_write(target_path, full)
+                await hass.async_add_executor_job(_atomic_write, target_path, full)
             except OSError as err:
                 LOGGER.warning("Failed to write %s: %s", target_path, err)
                 errors += 1
@@ -316,7 +322,7 @@ async def export(  # noqa: PLR0912, PLR0915 — single linear orchestration is c
         index_content = _render_index(rendered, target_root)
         index_path = target_root / "_index.md"
         try:
-            _atomic_write(index_path, index_content)
+            await hass.async_add_executor_job(_atomic_write, index_path, index_content)
         except OSError as err:
             LOGGER.warning("Failed to write _index.md: %s", err)
             errors += 1
