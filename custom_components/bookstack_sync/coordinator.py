@@ -14,11 +14,15 @@ from ._strings import get_strings
 from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     CONF_BOOK_ID,
+    CONF_EXCLUDED_DEVICES,
+    CONF_EXCLUDED_INTEGRATIONS,
     CONF_EXPORT_ENABLED,
     CONF_EXPORT_PATH,
     CONF_EXTERNAL_BASE_URL,
     CONF_OUTPUT_LANGUAGE,
     CONF_SYNC_INTERVAL,
+    DEFAULT_EXCLUDED_DEVICES,
+    DEFAULT_EXCLUDED_INTEGRATIONS,
     DEFAULT_EXPORT_ENABLED,
     DEFAULT_INTERVAL,
     DEFAULT_OUTPUT_LANGUAGE,
@@ -437,6 +441,14 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                         force=force,
                         progress_callback=self._on_sync_progress,
                         external_base_url=data.get(CONF_EXTERNAL_BASE_URL) or None,
+                        excluded_integrations=options.get(
+                            CONF_EXCLUDED_INTEGRATIONS,
+                            DEFAULT_EXCLUDED_INTEGRATIONS,
+                        ),
+                        excluded_devices=options.get(
+                            CONF_EXCLUDED_DEVICES,
+                            DEFAULT_EXCLUDED_DEVICES,
+                        ),
                     )
                 except BookStackApiAuthError:
                     # Auth failures get their own reauth-flow handling
@@ -527,6 +539,14 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 page_key,
                 strings,
                 external_base_url=data.get(CONF_EXTERNAL_BASE_URL) or None,
+                excluded_integrations=options.get(
+                    CONF_EXCLUDED_INTEGRATIONS,
+                    DEFAULT_EXCLUDED_INTEGRATIONS,
+                ),
+                excluded_devices=options.get(
+                    CONF_EXCLUDED_DEVICES,
+                    DEFAULT_EXCLUDED_DEVICES,
+                ),
             )
         finally:
             self._sync_lock.release()

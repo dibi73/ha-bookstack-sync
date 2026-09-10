@@ -859,8 +859,15 @@ def render_integrations_auto_block(
         )
         domain_url = _ha_url_for(ha_url, "integration", i.domain)
         domain_cell = f"[`{i.domain}`]({domain_url})" if domain_url else f"`{i.domain}`"
+        title_cell = _md_escape(i.title)
+        if i.excluded:
+            # Issue #221: excluded integrations still get a row here (a
+            # complete inventory of what's installed) even though their
+            # devices/entities never make it into the snapshot - this
+            # badge is what tells the reader the omission is intentional.
+            title_cell += f" {strings['integration_excluded_badge']}"
         lines.append(
-            f"| {domain_cell} | {_md_escape(i.title)} | {i.state} | {i.source} "
+            f"| {domain_cell} | {title_cell} | {i.state} | {i.source} "
             f"| {i.device_count} | {i.entity_count} | {docs_cell} |",
         )
     return "\n".join(lines).rstrip() + "\n"

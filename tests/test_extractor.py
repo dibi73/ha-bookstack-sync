@@ -1739,6 +1739,143 @@ async def test_reverse_usage_resolves_groups_transitively(
     ), f"transitive resolution failed: {leaf_refs!r}"
 
 
+# --- excluded_integrations / excluded_devices (issue #221) ---------------
+
+
+async def test_excluded_integration_drops_its_device_entirely(
+    hass: HomeAssistant,
+) -> None:
+    """A device whose only integration is excluded never reaches the snapshot."""
+    entry = MockConfigEntry(domain="vicunja", entry_id="entry_vicunja", title="Vikunja")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    device_reg.async_get_or_create(
+        config_entry_id="entry_vicunja",
+        identifiers={("vicunja", "list1")},
+        name="Groceries",
+    )
+
+    snap = extract_snapshot(hass, excluded_integrations=["vicunja"])
+    assert not any(d.name == "Groceries" for d in snap.unassigned_devices)
+
+
+async def test_non_excluded_integration_device_still_shows_up(
+    hass: HomeAssistant,
+) -> None:
+    """Excluding one domain must not affect devices from other integrations."""
+    entry = MockConfigEntry(domain="vicunja", entry_id="entry_vicunja")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    device_reg.async_get_or_create(
+        config_entry_id="entry_vicunja",
+        identifiers={("vicunja", "list1")},
+        name="Groceries",
+    )
+
+    snap = extract_snapshot(hass, excluded_integrations=["some_other_domain"])
+    assert any(d.name == "Groceries" for d in snap.unassigned_devices)
+
+
+async def test_excluded_device_id_drops_only_that_device(
+    hass: HomeAssistant,
+) -> None:
+    """excluded_devices targets one device_id, independent of its integration."""
+    entry = MockConfigEntry(domain="mqtt", entry_id="entry_mqtt")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    kept = device_reg.async_get_or_create(
+        config_entry_id="entry_mqtt",
+        identifiers={("mqtt", "kept")},
+        name="Kept Plug",
+    )
+    dropped = device_reg.async_get_or_create(
+        config_entry_id="entry_mqtt",
+        identifiers={("mqtt", "dropped")},
+        name="Dropped Plug",
+    )
+
+    snap = extract_snapshot(hass, excluded_devices=[dropped.id])
+    names = {d.name for d in snap.unassigned_devices}
+    assert "Kept Plug" in names
+    assert "Dropped Plug" not in names
+    assert kept.id in {d.device_id for d in snap.unassigned_devices}
+
+
+async def test_merged_device_kept_when_only_one_of_two_integrations_excluded(
+    hass: HomeAssistant,
+) -> None:
+    """
+    A device discovered by two integrations only drops once BOTH are excluded.
+
+    Mirrors the tuya/tuya_local merge scenario: excluding just one of the
+    two linked integrations must not remove the whole device - it should
+    only drop that integration's "also_known_as" entry.
+    """
+    entry_a = MockConfigEntry(domain="tuya", entry_id="entry_a")
+    entry_b = MockConfigEntry(domain="tuya_local", entry_id="entry_b")
+    entry_a.add_to_hass(hass)
+    entry_b.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+
+    device_reg.async_get_or_create(
+        config_entry_id="entry_a",
+        identifiers={("tuya", "shared-value")},
+        name="Lamp",
+    )
+    device_reg.async_get_or_create(
+        config_entry_id="entry_b",
+        identifiers={("tuya_local", "shared-value")},
+        name="Lamp",
+    )
+
+    snap = extract_snapshot(hass, excluded_integrations=["tuya_local"])
+    lamp = next(d for d in snap.unassigned_devices if d.name == "Lamp")
+    assert lamp.also_known_as == ()
+
+    # Excluding BOTH integrations drops the device entirely.
+    snap_both = extract_snapshot(hass, excluded_integrations=["tuya", "tuya_local"])
+    assert not any(d.name == "Lamp" for d in snap_both.unassigned_devices)
+
+
+async def test_excluded_integration_drops_device_less_entity_via_platform(
+    hass: HomeAssistant,
+) -> None:
+    """A device-less entity (Vikunja's todo.* lists) is excluded via its platform."""
+    entity_reg = er.async_get(hass)
+    entry = entity_reg.async_get_or_create(
+        domain="todo",
+        platform="vicunja",
+        unique_id="groceries_unique",
+        suggested_object_id="groceries",
+    )
+    hass.states.async_set(entry.entity_id, "0", {"friendly_name": "Groceries"})
+
+    snap = extract_snapshot(hass, excluded_integrations=["vicunja"])
+    all_orphans = [e.entity_id for a in snap.areas for e in a.orphan_entities]
+    assert entry.entity_id not in all_orphans
+
+
+async def test_extract_integrations_marks_excluded_but_keeps_it_listed(
+    hass: HomeAssistant,
+) -> None:
+    """
+    An excluded integration stays on the overview page, flagged excluded.
+
+    So the doc stays a complete inventory and the omission reads as
+    intentional (issue #221), not as a sync bug.
+    """
+    entry = MockConfigEntry(domain="vicunja", entry_id="entry_vicunja", title="Vikunja")
+    entry.add_to_hass(hass)
+
+    snap = extract_snapshot(hass, excluded_integrations=["vicunja"])
+    vicunja = next(i for i in snap.integrations if i.domain == "vicunja")
+    assert vicunja.excluded is True
+
+    snap_kept = extract_snapshot(hass)
+    vicunja_kept = next(i for i in snap_kept.integrations if i.domain == "vicunja")
+    assert vicunja_kept.excluded is False
+
+
 def test_package_modules_all_parse() -> None:
     """
     Regression guard: every Python file in the package must parse cleanly.

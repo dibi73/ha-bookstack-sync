@@ -198,9 +198,14 @@ The config flow asks two screens of questions:
 
 After setup the **Options** dialog (gear icon on the integration card)
 adds:
-- Excluded areas (multi-select; their devices skip the wiki entirely)
 - Output language (`Auto` follows HA, or pick `German` / `English`
   explicitly)
+- Markdown back-export (off by default) + export folder
+- Exclude entire integrations from the documentation (multi-select,
+  e.g. a task-list integration like Vikunja - their devices/entities
+  skip the wiki entirely, but the integration itself stays listed on
+  the Integrations page, marked as excluded)
+- Also exclude individual devices, regardless of integration
 
 ## Page structure with marker blocks
 

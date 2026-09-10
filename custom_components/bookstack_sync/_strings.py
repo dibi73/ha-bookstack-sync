@@ -249,6 +249,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "integration_col_entities": "Entities",
         "integration_col_docs": "Doku",
         "integration_docs_link_label": "Doku",
+        # Issue #221: appended to the title cell of an excluded integration.
+        "integration_excluded_badge": "_(von der Dokumentation ausgeschlossen)_",
         # HA-Frontend deep-links (v0.14.5+)
         "link_open_in_ha": "In Home Assistant öffnen",
         "link_helpers_in_ha": "Helper-Konfiguration in Home Assistant öffnen",
@@ -492,6 +494,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "integration_col_entities": "Entities",
         "integration_col_docs": "Docs",
         "integration_docs_link_label": "Docs",
+        "integration_excluded_badge": "_(excluded from documentation)_",
         "link_open_in_ha": "Open in Home Assistant",
         "link_helpers_in_ha": "Open helper configuration in Home Assistant",
         "sensor_state_syncing_progress_template": "Syncing {step}/{total}",

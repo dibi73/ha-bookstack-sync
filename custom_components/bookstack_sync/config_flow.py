@@ -26,6 +26,8 @@ from .api import (
 from .const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
+    CONF_EXCLUDED_DEVICES,
+    CONF_EXCLUDED_INTEGRATIONS,
     CONF_EXPORT_ENABLED,
     CONF_EXPORT_PATH,
     CONF_EXTERNAL_BASE_URL,
@@ -34,6 +36,8 @@ from .const import (
     CONF_TOKEN_ID,
     CONF_TOKEN_SECRET,
     CONF_VERIFY_SSL,
+    DEFAULT_EXCLUDED_DEVICES,
+    DEFAULT_EXCLUDED_INTEGRATIONS,
     DEFAULT_EXPORT_ENABLED,
     DEFAULT_EXPORT_SUBDIR,
     DEFAULT_INTERVAL,
@@ -88,6 +92,40 @@ def _output_language_selector() -> selector.SelectSelector:
             translation_key="output_language",
             options=[OUTPUT_LANGUAGE_AUTO, "de", "en"],
         ),
+    )
+
+
+def _excluded_integrations_selector(
+    entries: list[config_entries.ConfigEntry],
+) -> selector.SelectSelector:
+    """
+    Issue #221: pick whole integrations to leave out of the documentation.
+
+    ``ConfigEntrySelector`` (the natural fit) has no multi-select support
+    in this HA version — it validates against a single string. A
+    ``SelectSelector`` built from the currently-installed entries is the
+    closest native equivalent that does support ``multiple``.
+    ``async_step_init`` converts the picked entry_ids to/from the domain
+    strings actually persisted in ``CONF_EXCLUDED_INTEGRATIONS``.
+    """
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            mode=selector.SelectSelectorMode.DROPDOWN,
+            multiple=True,
+            options=[
+                selector.SelectOptionDict(
+                    value=entry.entry_id,
+                    label=f"{entry.title} ({entry.domain})",
+                )
+                for entry in sorted(entries, key=lambda e: (e.domain, e.title))
+            ],
+        ),
+    )
+
+
+def _excluded_devices_selector() -> selector.DeviceSelector:
+    return selector.DeviceSelector(
+        selector.DeviceSelectorConfig(multiple=True),
     )
 
 
@@ -468,6 +506,23 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         break
 
             if not errors:
+                # Issue #221: the picker works in entry_ids; persist the
+                # more durable integration *domain* instead (survives a
+                # remove/re-add of the integration, where the entry_id
+                # changes but the domain doesn't).
+                excluded_entry_ids = user_input.get(CONF_EXCLUDED_INTEGRATIONS) or []
+                excluded_domains = sorted(
+                    {
+                        entry.domain
+                        for entry_id in excluded_entry_ids
+                        if (
+                            entry := self.hass.config_entries.async_get_entry(
+                                entry_id,
+                            )
+                        )
+                        is not None
+                    },
+                )
                 new_book_id = int(user_input[CONF_BOOK_ID])
                 # When the user picks a different book the integration title
                 # (= visible name on the integration card and the device name)
@@ -502,6 +557,11 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         ),
                         CONF_EXPORT_ENABLED: export_enabled,
                         CONF_EXPORT_PATH: export_path,
+                        CONF_EXCLUDED_INTEGRATIONS: excluded_domains,
+                        CONF_EXCLUDED_DEVICES: user_input.get(
+                            CONF_EXCLUDED_DEVICES,
+                            DEFAULT_EXCLUDED_DEVICES,
+                        ),
                     },
                 )
 
@@ -537,6 +597,28 @@ class BookStackSyncOptionsFlow(OptionsFlow):
         current_export_path = self.config_entry.options.get(
             CONF_EXPORT_PATH,
             self.hass.config.path(DEFAULT_EXPORT_SUBDIR),
+        )
+        # Issue #221: the picker works in entry_ids, but only domains are
+        # persisted (see the submit handler above) - resolve the current
+        # domains back to whichever entries currently have that domain so
+        # the form shows the right pre-selected chips. An excluded domain
+        # with no currently-configured entry (integration removed since)
+        # just shows nothing selected for it - the domain itself stays in
+        # storage either way, ready to match again if it's re-added.
+        current_excluded_domains = set(
+            self.config_entry.options.get(
+                CONF_EXCLUDED_INTEGRATIONS,
+                DEFAULT_EXCLUDED_INTEGRATIONS,
+            ),
+        )
+        current_excluded_integration_entries = [
+            entry.entry_id
+            for entry in self.hass.config_entries.async_entries()
+            if entry.domain in current_excluded_domains
+        ]
+        current_excluded_devices = self.config_entry.options.get(
+            CONF_EXCLUDED_DEVICES,
+            DEFAULT_EXCLUDED_DEVICES,
         )
         return self.async_show_form(
             step_id="init",
@@ -575,6 +657,20 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         CONF_EXPORT_PATH,
                         default=current_export_path,
                     ): selector.TextSelector(),
+                    vol.Optional(
+                        CONF_EXCLUDED_INTEGRATIONS,
+                        default=current_excluded_integration_entries,
+                    ): _excluded_integrations_selector(
+                        [
+                            entry
+                            for entry in self.hass.config_entries.async_entries()
+                            if entry.entry_id != self.config_entry.entry_id
+                        ],
+                    ),
+                    vol.Optional(
+                        CONF_EXCLUDED_DEVICES,
+                        default=current_excluded_devices,
+                    ): _excluded_devices_selector(),
                 },
             ),
             errors=errors,
