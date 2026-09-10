@@ -237,6 +237,11 @@ class IntegrationSnapshot:
     device_count: int
     entity_count: int
     documentation_url: str | None = None
+    # Issue #221: True when this integration's domain is in the user's
+    # excluded_integrations option. Still listed here (unlike its devices,
+    # which are filtered out entirely) so the page stays a complete
+    # inventory and the omission reads as intentional, not a sync bug.
+    excluded: bool = False
 
 
 @dataclass
@@ -514,13 +519,15 @@ def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]
     return groups
 
 
-def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
+def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry walk
     hass: HomeAssistant,
     *,
     energy_config: EnergyConfig | None = None,
     backup_status: BackupStatusSnapshot | None = None,
     addons: list[AddonSnapshot] | None = None,
     known_device_pages: dict[str, bool] | None = None,
+    excluded_integrations: list[str] | None = None,
+    excluded_devices: list[str] | None = None,
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
@@ -551,10 +558,21 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
     device that already has a BookStack page (from ``sync.py``'s store,
     loaded before this call). Used to make merged-device primary
     selection sticky — see the comment at ``primary_id`` below for why.
+
+    ``excluded_integrations`` (domains) and ``excluded_devices``
+    (device_ids) implement issue #221: devices/entities they match never
+    enter the snapshot at all, so nothing downstream (renderer, sync)
+    needs to know exclusion exists. A merged device (see
+    ``_compute_device_groups``) is only dropped once *every* linked
+    integration is excluded — one excluded integration on an otherwise
+    kept device just removes its "auch bekannt als" entry, see the
+    ``member_entries`` filter below.
     """
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
     entity_reg = er.async_get(hass)
+    excluded_domains = set(excluded_integrations or ())
+    excluded_device_ids = set(excluded_devices or ())
 
     areas: dict[str, AreaSnapshot] = {
         area.id: AreaSnapshot(area_id=area.id, name=area.name)
@@ -622,6 +640,23 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
             for member_id in members
             if (entry := device_reg.async_get(member_id)) is not None
         ]
+        # Issue #221: drop members every one of whose linked integrations
+        # is excluded, or whose device_id was explicitly excluded, before
+        # naming/primary selection. A member split across an excluded and
+        # a kept integration is NOT dropped here - only "all excluded"
+        # drops it, matching the whole-device rule in the docstring above.
+        member_entries = [
+            (member_id, entry)
+            for member_id, entry in member_entries
+            if member_id not in excluded_device_ids
+            and not (
+                entry.config_entries
+                and all(
+                    entry_domains.get(eid) in excluded_domains
+                    for eid in entry.config_entries
+                )
+            )
+        ]
         named_members = [
             (member_id, entry, name)
             for member_id, entry in member_entries
@@ -683,6 +718,12 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         if entity.device_id and target_device_id is None:
             # Device was filtered out (whole group unnamed) -> skip its
             # entities too.
+            continue
+        # Issue #221: a device-less entity (e.g. Vikunja's todo.* lists)
+        # is excluded via its platform (= integration domain), same as a
+        # device would be. Entities attached to a device are already
+        # covered above once their device gets filtered out.
+        if not entity.device_id and entity.platform in excluded_domains:
             continue
         state_obj = hass.states.get(entity.entity_id)
         attrs = dict(state_obj.attributes) if state_obj else {}
@@ -756,7 +797,9 @@ def extract_snapshot(  # noqa: PLR0912, PLR0915 - cohesive registry walk
         automations=automations,
         scripts=scripts,
         scenes=scenes,
-        integrations=_extract_integrations(hass, device_reg, entity_reg),
+        integrations=_extract_integrations(
+            hass, device_reg, entity_reg, excluded_domains=excluded_domains
+        ),
         addons=addons or [],
         unknown_unifi_clients=_extract_unknown_unifi_clients(hass, entity_reg),
     )
@@ -923,6 +966,8 @@ def _extract_integrations(
     hass: HomeAssistant,
     device_reg: dr.DeviceRegistry,
     entity_reg: er.EntityRegistry,
+    *,
+    excluded_domains: set[str] | None = None,
 ) -> list[IntegrationSnapshot]:
     devices_per_entry: dict[str, int] = {}
     # Whole-registry scan (#146) - see _compute_device_groups for why
@@ -954,6 +999,7 @@ def _extract_integrations(
                 device_count=devices_per_entry.get(entry.entry_id, 0),
                 entity_count=entities_per_entry.get(entry.entry_id, 0),
                 documentation_url=_documentation_url_for(hass, entry.domain),
+                excluded=entry.domain in (excluded_domains or ()),
             ),
         )
     integrations.sort(key=lambda i: (i.domain, i.title.lower(), i.entry_id))

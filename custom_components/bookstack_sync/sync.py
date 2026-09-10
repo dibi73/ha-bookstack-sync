@@ -711,6 +711,8 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     force: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
     external_base_url: str | None = None,
+    excluded_integrations: list[str] | None = None,
+    excluded_devices: list[str] | None = None,
 ) -> SyncReport:
     """
     Execute one full sync cycle and return a report.
@@ -721,6 +723,9 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     even when ``client.base_url`` (how bookstack-sync itself reaches the
     BookStack API) isn't. ``None`` keeps the previous behaviour of using
     ``client.base_url`` for both.
+
+    ``excluded_integrations``/``excluded_devices`` (issue #221) are
+    passed straight through to ``extract_snapshot`` - see its docstring.
     """
     report = SyncReport(dry_run=dry_run)
     now = datetime.now(tz=UTC)
@@ -751,6 +756,8 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         backup_status=backup_status,
         addons=addons,
         known_device_pages=known_device_pages,
+        excluded_integrations=excluded_integrations,
+        excluded_devices=excluded_devices,
     )
     # v0.14.5: HA-frontend deep-links use this base. ``external_url``
     # wins over ``internal_url`` because the same Markdown lands in
@@ -999,6 +1006,8 @@ async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params 
     page_key: str,
     strings: dict[str, str],
     external_base_url: str | None = None,
+    excluded_integrations: list[str] | None = None,
+    excluded_devices: list[str] | None = None,
 ) -> bool:
     """
     Force-resync exactly one page's AUTO block (#190 repair-issue Fix flow).
@@ -1038,6 +1047,8 @@ async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params 
         backup_status=backup_status,
         addons=addons,
         known_device_pages=known_device_pages,
+        excluded_integrations=excluded_integrations,
+        excluded_devices=excluded_devices,
     )
     now = datetime.now(tz=UTC)
     ha_url = (hass.config.external_url or hass.config.internal_url or "").rstrip("/")

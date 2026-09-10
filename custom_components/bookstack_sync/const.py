@@ -21,8 +21,18 @@ CONF_OUTPUT_LANGUAGE = "output_language"
 # they're reading HA's repair notifications. Empty/unset keeps the old
 # behaviour of reusing CONF_BASE_URL for those links too.
 CONF_EXTERNAL_BASE_URL = "external_base_url"
+# Issue #221: integrations/devices to leave out of the documentation
+# entirely. CONF_EXCLUDED_INTEGRATIONS stores integration *domains*
+# (e.g. "vicunja"), not config-entry ids - entry ids get reissued on
+# re-auth/re-add, domains don't. Modeled on the core `recorder`
+# integration's `exclude: domains:` option. CONF_EXCLUDED_DEVICES stores
+# device_ids for one-off exclusions independent of integration.
+CONF_EXCLUDED_INTEGRATIONS = "excluded_integrations"
+CONF_EXCLUDED_DEVICES = "excluded_devices"
 
 DEFAULT_VERIFY_SSL = True
+DEFAULT_EXCLUDED_INTEGRATIONS: list[str] = []
+DEFAULT_EXCLUDED_DEVICES: list[str] = []
 # "auto" follows hass.config.language; explicit codes ("de", "en") override it
 OUTPUT_LANGUAGE_AUTO = "auto"
 DEFAULT_OUTPUT_LANGUAGE = OUTPUT_LANGUAGE_AUTO

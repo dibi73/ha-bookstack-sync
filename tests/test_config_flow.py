@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.config_entries import SOURCE_REAUTH
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync.api import (
     BookStackApiAuthError,
@@ -19,6 +20,8 @@ from custom_components.bookstack_sync.api import (
 from custom_components.bookstack_sync.const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
+    CONF_EXCLUDED_DEVICES,
+    CONF_EXCLUDED_INTEGRATIONS,
     CONF_EXPORT_ENABLED,
     CONF_EXTERNAL_BASE_URL,
     CONF_OUTPUT_LANGUAGE,
@@ -32,7 +35,6 @@ from custom_components.bookstack_sync.const import (
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 async def test_user_step_happy_path_to_book_step(hass: HomeAssistant) -> None:
@@ -327,3 +329,118 @@ async def test_reconfigure_flow_rejects_invalid_external_base_url(
 
     assert result2["type"] == data_entry_flow.FlowResultType.FORM
     assert result2["errors"][CONF_EXTERNAL_BASE_URL] == "base_url_invalid_scheme"
+
+
+async def _start_options(hass: HomeAssistant, entry_id: str) -> dict[str, object]:
+    return await hass.config_entries.options.async_init(entry_id)
+
+
+async def test_options_flow_persists_excluded_integrations_as_domains(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    Issue #221: the picker submits entry_ids, storage keeps domains.
+
+    Domains survive a remove/re-add of the integration (a fresh entry_id
+    each time); entry_ids wouldn't.
+    """
+    config_entry.add_to_hass(hass)
+    vicunja_entry = MockConfigEntry(domain="vicunja", entry_id="entry_vicunja")
+    vicunja_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    ):
+        result = await _start_options(hass, config_entry.entry_id)
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input=_options_submission(
+                **{CONF_EXCLUDED_INTEGRATIONS: ["entry_vicunja"]},
+            ),
+        )
+
+    assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result2["data"][CONF_EXCLUDED_INTEGRATIONS] == ["vicunja"]
+
+
+async def test_options_flow_excluded_devices_persist_as_device_ids(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """excluded_devices needs no conversion - stored exactly as submitted."""
+    config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    ):
+        result = await _start_options(hass, config_entry.entry_id)
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input=_options_submission(
+                **{CONF_EXCLUDED_DEVICES: ["device_abc123"]},
+            ),
+        )
+
+    assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result2["data"][CONF_EXCLUDED_DEVICES] == ["device_abc123"]
+
+
+async def test_options_flow_defaults_to_empty_exclusions(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """Leaving both pickers untouched keeps exclusions off (no behaviour change)."""
+    config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    ):
+        result = await _start_options(hass, config_entry.entry_id)
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input=_options_submission(),
+        )
+
+    assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result2["data"][CONF_EXCLUDED_INTEGRATIONS] == []
+    assert result2["data"][CONF_EXCLUDED_DEVICES] == []
+
+
+async def test_options_flow_preselects_currently_excluded_integration(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    The form shows the right pre-selected entry for an already-excluded domain.
+
+    Storage keeps the domain; the picker needs an entry_id - the form
+    must resolve back to whichever currently-configured entry has that
+    domain (see the submit-side conversion this mirrors).
+    """
+    config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        config_entry,
+        options={
+            **config_entry.options,
+            CONF_EXCLUDED_INTEGRATIONS: ["vicunja"],
+        },
+    )
+    vicunja_entry = MockConfigEntry(domain="vicunja", entry_id="entry_vicunja")
+    vicunja_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    ):
+        result = await _start_options(hass, config_entry.entry_id)
+
+    marker = next(
+        key
+        for key in result["data_schema"].schema
+        if str(key) == CONF_EXCLUDED_INTEGRATIONS
+    )
+    assert marker.default() == ["entry_vicunja"]
