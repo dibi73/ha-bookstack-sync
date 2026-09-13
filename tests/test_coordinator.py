@@ -16,18 +16,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync.api import (
     BookStackApiAuthError,
     BookStackApiCommunicationError,
 )
-from custom_components.bookstack_sync.const import DOMAIN
+from custom_components.bookstack_sync.const import CONF_EXTERNAL_BASE_URL, DOMAIN
 from custom_components.bookstack_sync.coordinator import BookStackSyncCoordinator
 from custom_components.bookstack_sync.sync import SyncReport
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 def _make_coordinator(
@@ -636,6 +636,34 @@ async def test_sensor_state_shows_progress_string_while_syncing(
     coord.last_report = SyncReport()
     coord.last_run = None  # last_run gets stamped only after successful sync
     assert sensor.native_value == "ok"
+
+
+async def test_sensor_device_info_visit_link_prefers_external_base_url(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    #224: the device card's Visit ("Besuchen") link must use external_base_url
+    when configured, not the internal base_url bookstack-sync itself uses to
+    reach the BookStack API - mirrors the button fix, same underlying cause.
+    """
+    from custom_components.bookstack_sync.sensor import (  # noqa: PLC0415
+        BookStackSyncStatusSensor,
+    )
+
+    entry = MockConfigEntry(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        unique_id=config_entry.unique_id,
+        data={**config_entry.data, CONF_EXTERNAL_BASE_URL: "https://bookstack.example.com"},
+        options=config_entry.options,
+    )
+    entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, entry)
+    sensor = BookStackSyncStatusSensor(coord)
+
+    assert sensor.device_info is not None
+    assert sensor.device_info["configuration_url"] == "https://bookstack.example.com"
 
 
 async def test_tamper_issue_created_fixable_with_resync_data(

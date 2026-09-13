@@ -13,6 +13,7 @@ from .const import (
     ATTRIBUTION,
     CONF_BASE_URL,
     CONF_EXPORT_ENABLED,
+    CONF_EXTERNAL_BASE_URL,
     DEFAULT_EXPORT_ENABLED,
     DOMAIN,
 )
@@ -58,13 +59,18 @@ class BookStackSyncStatusSensor(
         """Bind to the coordinator and seed identifiers."""
         super().__init__(coordinator)
         entry_id = coordinator.config_entry.entry_id
+        entry_data = coordinator.config_entry.data
         self._attr_unique_id = f"{entry_id}_sync_status"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry_id)},
             name=coordinator.config_entry.title,
             manufacturer="BookStack Sync",
             entry_type=None,
-            configuration_url=coordinator.config_entry.data.get(CONF_BASE_URL),
+            # #224: prefer external_base_url (reachable from wherever the
+            # user actually opens the "Visit" link) over the internal
+            # base_url bookstack-sync itself uses to reach the API.
+            configuration_url=entry_data.get(CONF_EXTERNAL_BASE_URL)
+            or entry_data.get(CONF_BASE_URL),
         )
 
     @property
