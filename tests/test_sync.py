@@ -866,6 +866,65 @@ async def test_force_overwrites_tampered_pages(
     assert report_force.tampered_page_keys == []
 
 
+async def test_force_overwrites_tampered_tombstone_pages(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """
+    ``force=True`` must also bypass the tamper-skip path when tombstoning
+    an orphaned page, not just on the regular update path.
+
+    ``_tombstone_one`` never received a ``force`` parameter at all, so
+    orphaned pages with a hash-drifted AUTO block stayed stuck in
+    ``skipped_conflict`` forever, even when the caller explicitly asked
+    for force=True (see ``test_force_overwrites_tampered_pages`` above
+    for the equivalent, already-covered update-path case).
+    """
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    living = area_reg.async_create("Living Room")
+
+    # First run creates the page cleanly.
+    await run_sync(hass, client, store, 1, strings)
+
+    # Remove the area so the next sync routes it through the tombstone
+    # path, and corrupt the stored hash so it looks tampered once there.
+    area_reg.async_delete(living.id)
+    area_keys = [k for k in store.all() if k.startswith("area:")]
+    assert area_keys, "test setup expected at least one area mapping"
+    target_key = area_keys[0]
+
+    from custom_components.bookstack_sync.store import PageMapping  # noqa: PLC0415
+
+    target_mapping = store.get(target_key)
+    store.set(
+        target_key,
+        PageMapping(
+            page_id=target_mapping.page_id,
+            auto_block_hash="cafebabe" * 8,
+            last_seen=target_mapping.last_seen,
+            tombstoned_at=target_mapping.tombstoned_at,
+            hash_origin="bookstack",
+        ),
+    )
+
+    # Without force: tombstone is skipped.
+    report_skip = await run_sync(hass, client, store, 1, strings)
+    assert report_skip.skipped_conflict == [f"{target_key} (tombstone)"], (
+        f"expected tamper-skip on tombstone without force, "
+        f"got {report_skip.skipped_conflict!r}"
+    )
+
+    # With force=True: tombstoned anyway, no skip.
+    report_force = await run_sync(hass, client, store, 1, strings, force=True)
+    assert report_force.skipped_conflict == [], (
+        f"force=True should bypass tombstone tamper-skip too, "
+        f"got {report_force.skipped_conflict!r}"
+    )
+
+
 async def test_tampered_page_url_uses_external_base_url_when_configured(
     hass: HomeAssistant,
     store: BookStackSyncStore,

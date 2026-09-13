@@ -977,6 +977,7 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         strings,
         limiter,
         dry_run=dry_run,
+        force=force,
     )
 
     if not dry_run:
@@ -1503,6 +1504,7 @@ async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
     limiter: _RateLimiter,
     *,
     dry_run: bool,
+    force: bool = False,
 ) -> None:
     """Mark pages whose HA object vanished as orphaned (one-time, not on repeat)."""
     planned_keys = {p.key for p in planned}
@@ -1518,6 +1520,7 @@ async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
                 now,
                 strings,
                 dry_run=dry_run,
+                force=force,
             )
         except BookStackApiAuthError:
             raise
@@ -1550,6 +1553,7 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
     strings: dict[str, str],
     *,
     dry_run: bool,
+    force: bool = False,
 ) -> None:
     auto_body = render_tombstone_auto_block(strings, now)
 
@@ -1583,6 +1587,18 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
             LOGGER.info(
                 "BookStack page id=%s (%s): write-origin hash, "
                 "tombstoning anyway (migration to bookstack-origin).",
+                mapping.page_id,
+                key,
+            )
+        elif force:
+            # Mirror the update-path force override (run_sync) - #211:
+            # force=true was documented as overriding tamper checks
+            # everywhere, but this tombstone path never received the
+            # flag at all, so orphaned pages with a hash-drifted AUTO
+            # block stayed stuck in skipped_conflict even with force=true.
+            LOGGER.warning(
+                "BookStack page id=%s (%s): force=True — overriding "
+                "tamper check, tombstoning anyway.",
                 mapping.page_id,
                 key,
             )
