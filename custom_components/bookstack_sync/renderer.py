@@ -92,7 +92,7 @@ def _slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", ascii_text).strip("-")
 
 
-def _md_escape(value: str) -> str:
+def _md_escape(value: object) -> str:
     """
     Escape characters that would break a markdown table or inject HTML.
 
@@ -108,8 +108,10 @@ def _md_escape(value: str) -> str:
     """
     if not value:
         return value
+    # Device registry fields such as sw_version can arrive as ints.
     return (
-        value.replace("\\", "\\\\")
+        str(value)
+        .replace("\\", "\\\\")
         .replace("|", "\\|")
         .replace("[", "\\[")
         .replace("]", "\\]")

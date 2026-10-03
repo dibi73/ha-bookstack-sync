@@ -125,6 +125,9 @@ class TestMdEscape:
     def test_newline_replaced_with_space(self) -> None:
         assert _md_escape("a\nb") == "a b"
 
+    def test_non_string_coerced(self) -> None:
+        assert _md_escape(1234) == "1234"
+
     def test_empty_input(self) -> None:
         assert _md_escape("") == ""
 
