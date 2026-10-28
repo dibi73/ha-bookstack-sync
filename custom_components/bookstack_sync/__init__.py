@@ -11,8 +11,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
+from homeassistant.core import callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.start import async_at_started
 from homeassistant.loader import async_get_loaded_integration
 
 from .api import BookStackApiClient
@@ -100,15 +102,23 @@ async def async_setup_entry(
     await async_register_services(hass)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    # Trigger the initial sync in the background so the integration finishes
-    # setup quickly. The status sensor, per-page log lines and the persistent
-    # notification let the user follow progress without blocking HA's UI.
+    # Initial sync (#259): wait until HA has fully started, then run it as a
+    # real background task. ``async_request_refresh`` must not be used here:
+    # it hands the refresh to the coordinator's debouncer, which schedules
+    # it as a *tracked* task, and HA's bootstrap waits for tracked tasks -
+    # a multi-minute sync then held up HA's startup until the 5-minute
+    # bootstrap timeout. On a reload (HA already running) this fires at once.
     if coordinator.update_interval is not None:
-        entry.async_create_background_task(
-            hass,
-            coordinator.async_request_refresh(),
-            "bookstack_sync_initial_refresh",
-        )
+
+        @callback
+        def _start_initial_sync(_hass: HomeAssistant) -> None:
+            entry.async_create_background_task(
+                hass,
+                coordinator.async_refresh(),
+                "bookstack_sync_initial_refresh",
+            )
+
+        entry.async_on_unload(async_at_started(hass, _start_initial_sync))
 
     return True
 
