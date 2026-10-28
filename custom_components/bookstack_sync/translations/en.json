@@ -151,6 +151,9 @@
       },
       "preview": {
         "name": "Sync preview (dry-run)"
+      },
+      "force_sync": {
+        "name": "Force sync"
       }
     }
   },

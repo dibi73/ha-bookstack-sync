@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Aperçu de synchronisation (à blanc)"
+      },
+      "force_sync": {
+        "name": "Forcer la synchronisation"
       }
     }
   },

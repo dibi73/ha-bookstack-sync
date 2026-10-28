@@ -151,6 +151,9 @@
       },
       "preview": {
         "name": "Sync-Vorschau (Dry-Run)"
+      },
+      "force_sync": {
+        "name": "Sync erzwingen"
       }
     }
   },

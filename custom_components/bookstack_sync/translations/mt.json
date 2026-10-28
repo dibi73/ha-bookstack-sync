@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Anteprima ta' sinkronizzazzjoni (eżekuzzjoni xotta)"
+      },
+      "force_sync": {
+        "name": "Sinkronizzazzjoni sfurzata"
       }
     }
   },

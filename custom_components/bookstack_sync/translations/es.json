@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Vista previa de sincronización (simulación)"
+      },
+      "force_sync": {
+        "name": "Forzar sincronización"
       }
     }
   },

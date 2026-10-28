@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Náhled synchronizace (zkušební)"
+      },
+      "force_sync": {
+        "name": "Vynutit synchronizaci"
       }
     }
   },

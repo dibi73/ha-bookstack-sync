@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Pregled sinkronizacije (suho pokretanje)"
+      },
+      "force_sync": {
+        "name": "Prisilna sinkronizacija"
       }
     }
   },

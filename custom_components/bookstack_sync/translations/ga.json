@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Réamhamharc sioncronaithe (rith tirim)"
+      },
+      "force_sync": {
+        "name": "Sioncronú éigeantach"
       }
     }
   },
