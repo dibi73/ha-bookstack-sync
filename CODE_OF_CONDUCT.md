@@ -36,7 +36,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement via GitHub: use the **Report content** option (⋯ menu) on the comment, issue or pull request in question, which reaches the maintainer ([@dibi73](https://github.com/dibi73)) without posting publicly. See [GitHub's guide on reporting abuse](https://docs.github.com/en/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam). All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement via GitHub: use the **Report content** option (⋯ menu) on the comment, issue or pull request in question. This sends the report privately to GitHub's Trust & Safety team, see [GitHub's guide on reporting abuse](https://docs.github.com/en/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam). To make the maintainer ([@dibi73](https://github.com/dibi73)) aware of a problem without discussing it in public, open a minimal issue titled "Code of Conduct report" without details; the maintainer will then get in touch about a private channel. All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 
