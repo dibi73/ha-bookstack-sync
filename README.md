@@ -206,6 +206,10 @@ adds:
   skip the wiki entirely, but the integration itself stays listed on
   the Integrations page, marked as excluded)
 - Also exclude individual devices, regardless of integration
+- Leave out everything HA has disabled: disabled entities, disabled
+  devices, and (because HA disables their devices and entities too)
+  disabled integrations. Off by default; useful when an integration
+  creates thousands of disabled entities and its device pages get huge
 
 ## Page structure with marker blocks
 

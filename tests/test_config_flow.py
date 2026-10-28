@@ -20,6 +20,7 @@ from custom_components.bookstack_sync.api import (
 from custom_components.bookstack_sync.const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
+    CONF_EXCLUDE_DISABLED,
     CONF_EXCLUDED_DEVICES,
     CONF_EXCLUDED_INTEGRATIONS,
     CONF_EXPORT_ENABLED,
@@ -408,6 +409,29 @@ async def test_options_flow_defaults_to_empty_exclusions(
     assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
     assert result2["data"][CONF_EXCLUDED_INTEGRATIONS] == []
     assert result2["data"][CONF_EXCLUDED_DEVICES] == []
+    # Issue #237: off unless the user opts in.
+    assert result2["data"][CONF_EXCLUDE_DISABLED] is False
+
+
+async def test_options_flow_persists_exclude_disabled(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#237: the opt-in for leaving out disabled objects is stored as given."""
+    config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bookstack_sync.config_flow.BookStackApiClient.list_books",
+        new=AsyncMock(return_value=[{"id": 1, "name": "Hausdokumentation"}]),
+    ):
+        result = await _start_options(hass, config_entry.entry_id)
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input=_options_submission(**{CONF_EXCLUDE_DISABLED: True}),
+        )
+
+    assert result2["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result2["data"][CONF_EXCLUDE_DISABLED] is True
 
 
 async def test_options_flow_preselects_currently_excluded_integration(

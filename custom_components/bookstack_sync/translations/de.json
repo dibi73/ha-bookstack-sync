@@ -70,13 +70,15 @@
           "export_enabled": "Markdown-Rückexport aktivieren (standardmäßig aus)",
           "export_path": "Export-Ordner (absoluter Pfad)",
           "excluded_integrations": "Ganze Integrationen von der Dokumentation ausschließen",
-          "excluded_devices": "Einzelne Geräte zusätzlich ausschließen"
+          "excluded_devices": "Einzelne Geräte zusätzlich ausschließen",
+          "exclude_disabled": "Deaktivierte Integrationen, Geräte und Entities nicht dokumentieren"
         },
         "data_description": {
           "export_enabled": "Standardmäßig aus. Wenn aktiv, werden BookStack-Pages zusätzlich als reine Markdown-Dateien zurückgeschrieben — als Eingabe für RAG/LLM-Pipelines. Verbraucht Speicherplatz und CPU bei jedem Lauf, daher bewusst zu aktivieren.",
           "export_path": "Wohin die Markdown-Dateien geschrieben werden. Muss absolut sein, das Eltern­verzeichnis muss bereits existieren.",
           "excluded_integrations": "Geräte und Entities dieser Integrationen werden nie dokumentiert (z. B. Aufgabenlisten-Integrationen wie Vikunja). Die Integration selbst bleibt auf der Integrationen-Übersichtsseite sichtbar, aber als ausgeschlossen markiert.",
-          "excluded_devices": "Zusätzlich zu den oben ausgeschlossenen Integrationen können hier einzelne Geräte gezielt von der Dokumentation ausgenommen werden, unabhängig davon, zu welcher Integration sie gehören."
+          "excluded_devices": "Zusätzlich zu den oben ausgeschlossenen Integrationen können hier einzelne Geräte gezielt von der Dokumentation ausgenommen werden, unabhängig davon, zu welcher Integration sie gehören.",
+          "exclude_disabled": "Lässt alles weg, was in Home Assistant deaktiviert ist. Deaktivierte Integrationen sind darin enthalten, weil Home Assistant ihre Geräte und Entities mit deaktiviert. Bestehende Seiten werden wie bei ausgeschlossenen Geräten als verwaist markiert, nicht gelöscht."
         }
       }
     }

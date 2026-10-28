@@ -9,7 +9,7 @@ produces the expected sorted, filtered structure.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.helpers import (
@@ -1853,6 +1853,79 @@ async def test_excluded_integration_drops_device_less_entity_via_platform(
     snap = extract_snapshot(hass, excluded_integrations=["vicunja"])
     all_orphans = [e.entity_id for a in snap.areas for e in a.orphan_entities]
     assert entry.entity_id not in all_orphans
+
+
+async def _seed_disabled_objects(hass: HomeAssistant) -> tuple[str, str]:
+    """One enabled device with an enabled and a disabled entity, one disabled device."""
+    entry = MockConfigEntry(domain="synology_dsm", entry_id="entry_nas")
+    entry.add_to_hass(hass)
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+    nas = device_reg.async_get_or_create(
+        config_entry_id="entry_nas",
+        identifiers={("synology_dsm", "nas")},
+        name="NAS",
+    )
+    old_disk = device_reg.async_get_or_create(
+        config_entry_id="entry_nas",
+        identifiers={("synology_dsm", "disk9")},
+        name="Removed Disk",
+    )
+    device_reg.async_update_device(
+        old_disk.id,
+        disabled_by=dr.DeviceEntryDisabler.USER,
+    )
+    entity_reg.async_get_or_create(
+        "sensor",
+        "synology_dsm",
+        "nas_cpu",
+        device_id=nas.id,
+        suggested_object_id="nas_cpu",
+    )
+    entity_reg.async_get_or_create(
+        "sensor",
+        "synology_dsm",
+        "nas_disk9_temp",
+        device_id=nas.id,
+        suggested_object_id="nas_disk9_temp",
+        disabled_by=er.RegistryEntryDisabler.INTEGRATION,
+    )
+    return nas.id, old_disk.id
+
+
+def _all_snapshot_devices(snap: Any) -> list[Any]:
+    devices = list(snap.unassigned_devices)
+    for area in snap.areas:
+        devices.extend(area.devices)
+    return devices
+
+
+async def test_disabled_objects_kept_by_default(hass: HomeAssistant) -> None:
+    """#237: without the opt-in, disabled devices/entities stay documented."""
+    await _seed_disabled_objects(hass)
+
+    snap = extract_snapshot(hass)
+
+    devices = {d.name: d for d in _all_snapshot_devices(snap)}
+    assert "Removed Disk" in devices
+    assert {e.entity_id for e in devices["NAS"].entities} == {
+        "sensor.nas_cpu",
+        "sensor.nas_disk9_temp",
+    }
+
+
+async def test_exclude_disabled_drops_disabled_devices_and_entities(
+    hass: HomeAssistant,
+) -> None:
+    """#237: with the opt-in, disabled devices and entities are left out."""
+    await _seed_disabled_objects(hass)
+
+    snap = extract_snapshot(hass, exclude_disabled=True)
+
+    devices = {d.name: d for d in _all_snapshot_devices(snap)}
+    assert "Removed Disk" not in devices
+    # The NAS itself is enabled and stays, minus its disabled entity.
+    assert {e.entity_id for e in devices["NAS"].entities} == {"sensor.nas_cpu"}
 
 
 async def test_extract_integrations_marks_excluded_but_keeps_it_listed(

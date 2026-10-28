@@ -14,6 +14,7 @@ from ._strings import get_strings
 from .api import BookStackApiAuthError, BookStackApiError
 from .const import (
     CONF_BOOK_ID,
+    CONF_EXCLUDE_DISABLED,
     CONF_EXCLUDED_DEVICES,
     CONF_EXCLUDED_INTEGRATIONS,
     CONF_EXPORT_ENABLED,
@@ -21,6 +22,7 @@ from .const import (
     CONF_EXTERNAL_BASE_URL,
     CONF_OUTPUT_LANGUAGE,
     CONF_SYNC_INTERVAL,
+    DEFAULT_EXCLUDE_DISABLED,
     DEFAULT_EXCLUDED_DEVICES,
     DEFAULT_EXCLUDED_INTEGRATIONS,
     DEFAULT_EXPORT_ENABLED,
@@ -455,6 +457,10 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                             CONF_EXCLUDED_DEVICES,
                             DEFAULT_EXCLUDED_DEVICES,
                         ),
+                        exclude_disabled=options.get(
+                            CONF_EXCLUDE_DISABLED,
+                            DEFAULT_EXCLUDE_DISABLED,
+                        ),
                     )
                 except BookStackApiAuthError:
                     # Auth failures get their own reauth-flow handling
@@ -552,6 +558,10 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                 excluded_devices=options.get(
                     CONF_EXCLUDED_DEVICES,
                     DEFAULT_EXCLUDED_DEVICES,
+                ),
+                exclude_disabled=options.get(
+                    CONF_EXCLUDE_DISABLED,
+                    DEFAULT_EXCLUDE_DISABLED,
                 ),
             )
         finally:
