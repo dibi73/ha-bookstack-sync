@@ -16,6 +16,8 @@ ignore = [
     "RUF001", # German strings legitimately use en-dash/umlauts/non-ASCII chars
     "RUF002", # same, for docstrings
     "RUF003", # same, for comments
+    "CPY001", # no per-file copyright headers in this repo; LICENSE covers it
+    "PLR0917", # positional-arg count; same tolerance as the existing PLR0913 noqas
 ]
 
 [lint.flake8-pytest-style]
