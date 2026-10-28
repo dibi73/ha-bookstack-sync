@@ -50,6 +50,24 @@ def _all_devices(device_reg: dr.DeviceRegistry) -> Iterable[dr.DeviceEntry]:
     return cast("Iterable[dr.DeviceEntry]", devices)
 
 
+def _device_entry_ids(device: dr.DeviceEntry) -> set[str]:
+    """
+    Return the config entry IDs a registry device belongs to (#261).
+
+    HA 2026.8 gave every device a single ``config_entry_id``; since 2026.10
+    reading the old ``config_entries`` set logs a deprecation warning
+    (breaks in 2027.10). Releases before 2026.8 only have
+    ``config_entries``, and this integration declares no minimum HA
+    version, so fall back to it there.
+    """
+    entry_id = getattr(device, "config_entry_id", None)
+    if entry_id is not None:
+        return {entry_id}
+    if hasattr(device, "config_entry_id"):
+        return set()
+    return set(device.config_entries)
+
+
 # Common attribute names that Tasmota / Shelly / generic MQTT integrations
 # use to expose the topic, in priority order.
 _MQTT_TOPIC_KEYS = ("topic", "state_topic", "command_topic", "mqtt_topic")
@@ -675,11 +693,8 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
             if member_id not in excluded_device_ids
             and not (exclude_disabled and entry.disabled_by is not None)
             and not (
-                entry.config_entries
-                and all(
-                    entry_domains.get(eid) in excluded_domains
-                    for eid in entry.config_entries
-                )
+                (entry_ids := _device_entry_ids(entry))
+                and all(entry_domains.get(eid) in excluded_domains for eid in entry_ids)
             )
         ]
         named_members = [
@@ -703,14 +718,14 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
         )
 
         device_refs = tuple(
-            _domain_ref(eid) for eid in sorted(primary_device.config_entries)
+            _domain_ref(eid) for eid in sorted(_device_entry_ids(primary_device))
         )
         also_known_as = tuple(
             AkaEntry(
                 name=name,
                 domain=", ".join(
                     sorted(
-                        {entry_domains.get(eid, eid) for eid in dev.config_entries},
+                        {entry_domains.get(eid, eid) for eid in _device_entry_ids(dev)},
                     ),
                 )
                 or "?",
@@ -1002,7 +1017,7 @@ def _extract_integrations(
     for device in _all_devices(device_reg):
         # device_reg's devices iterate the raw HA registry here (not our
         # filtered DeviceSnapshots), so the values are still entry_id strings.
-        for entry_id in device.config_entries:
+        for entry_id in _device_entry_ids(device):
             devices_per_entry[entry_id] = devices_per_entry.get(entry_id, 0) + 1
 
     entities_per_entry: dict[str, int] = {}
