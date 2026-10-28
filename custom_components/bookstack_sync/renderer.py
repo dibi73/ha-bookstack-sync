@@ -691,8 +691,10 @@ def render_label_auto_block(  # noqa: PLR0913 - cohesive renderer, mirrors rende
                 count=len(label.devices),
             ),
             "",
-            f"| {strings['label_col_device']} | {strings['field_manufacturer']} "
-            f"| {strings['field_model']} | {strings['field_area']} |",
+            (
+                f"| {strings['label_col_device']} | {strings['field_manufacturer']} "
+                f"| {strings['field_model']} | {strings['field_area']} |"
+            ),
             "| --- | --- | --- | --- |",
         ],
     )
@@ -733,9 +735,11 @@ def render_addons_auto_block(
 
     lines.extend(
         [
-            f"| {strings['addon_col_name']} | {strings['addon_col_slug']} "
-            f"| {strings['addon_col_version']} | {strings['addon_col_state']} "
-            f"| {strings['addon_col_update']} |",
+            (
+                f"| {strings['addon_col_name']} | {strings['addon_col_slug']} "
+                f"| {strings['addon_col_version']} | {strings['addon_col_state']} "
+                f"| {strings['addon_col_update']} |"
+            ),
             "| --- | --- | --- | --- | --- |",
         ],
     )
@@ -987,10 +991,12 @@ def render_network_auto_block(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive ren
                 "",
                 strings["section_unknown_clients_intro"],
                 "",
-                f"| {strings['network_col_hostname']} "
-                f"| {strings['network_col_mac']} "
-                f"| {strings['network_col_ip']} "
-                f"| {strings['network_col_last_seen']} |",
+                (
+                    f"| {strings['network_col_hostname']} "
+                    f"| {strings['network_col_mac']} "
+                    f"| {strings['network_col_ip']} "
+                    f"| {strings['network_col_last_seen']} |"
+                ),
                 "| --- | --- | --- | --- |",
             ],
         )
@@ -1326,10 +1332,12 @@ def render_bluetooth_auto_block(
 
     lines.extend(
         [
-            f"| {strings['bt_col_name']} "
-            f"| {strings['bt_col_address']} "
-            f"| {strings['bt_col_status']} "
-            f"| {strings['bt_col_last_seen']} |",
+            (
+                f"| {strings['bt_col_name']} "
+                f"| {strings['bt_col_address']} "
+                f"| {strings['bt_col_status']} "
+                f"| {strings['bt_col_last_seen']} |"
+            ),
             "| --- | --- | --- | --- |",
         ],
     )
@@ -1403,8 +1411,10 @@ def render_recorder_auto_block(
         "",
         f"- {strings['recorder_field_engine']}: {_md_escape(config.db_engine or '—')}",
         f"- {strings['recorder_field_url']}: `{config.db_url_redacted or '—'}`",
-        f"- {strings['recorder_field_keep_days']}: "
-        f"{config.purge_keep_days if config.purge_keep_days is not None else '—'}",
+        (
+            f"- {strings['recorder_field_keep_days']}: "
+            f"{config.purge_keep_days if config.purge_keep_days is not None else '—'}"
+        ),
     ]
     for label_key, items in (
         ("section_recorder_excluded_domains", config.excluded_domains),
@@ -1544,9 +1554,11 @@ def render_backup_auto_block(
 
     lines.extend(
         [
-            f"| {strings['backup_col_name']} | {strings['backup_col_date']} "
-            f"| {strings['backup_col_version']} | {strings['backup_col_targets']} "
-            f"| {strings['backup_col_location']} |",
+            (
+                f"| {strings['backup_col_name']} | {strings['backup_col_date']} "
+                f"| {strings['backup_col_version']} | {strings['backup_col_targets']} "
+                f"| {strings['backup_col_location']} |"
+            ),
             "| --- | --- | --- | --- | --- |",
         ],
     )
