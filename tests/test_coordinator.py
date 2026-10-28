@@ -655,7 +655,10 @@ async def test_sensor_device_info_visit_link_prefers_external_base_url(
         domain=config_entry.domain,
         title=config_entry.title,
         unique_id=config_entry.unique_id,
-        data={**config_entry.data, CONF_EXTERNAL_BASE_URL: "https://bookstack.example.com"},
+        data={
+            **config_entry.data,
+            CONF_EXTERNAL_BASE_URL: "https://bookstack.example.com",
+        },
         options=config_entry.options,
     )
     entry.add_to_hass(hass)

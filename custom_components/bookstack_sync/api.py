@@ -5,17 +5,28 @@ from __future__ import annotations
 import asyncio
 import socket
 from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import aiohttp
 
 from .const import LOGGER
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
 REQUEST_TIMEOUT = 15
 PAGE_SIZE = 500
 MAX_REQUEST_ATTEMPTS = 3
 RETRY_BACKOFF_BASE = 0.5
+
+# #236: BookStack renders and stores the HTML of every page write
+# server-side, so a multi-MB page can take far longer than a read of the
+# same page. Writes get a timeout that grows with the body size instead
+# of the flat REQUEST_TIMEOUT.
+WRITE_TIMEOUT_BASE = 30.0
+WRITE_TIMEOUT_PER_MB = 15.0
+WRITE_TIMEOUT_MAX = 180.0
 
 # Connection-level errors that BookStack's reverse proxy or aiohttp's
 # keep-alive pool can hand us mid-flight on long sync runs. They are
@@ -68,6 +79,12 @@ def _parse_retry_after(value: str | None) -> float | None:
     except ValueError:
         return None
     return seconds if seconds >= 0 else None
+
+
+def _write_timeout(markdown: str) -> float:
+    """Return the client-side timeout for writing a page of this size (#236)."""
+    size_mb = len(markdown.encode()) / 1_000_000
+    return min(WRITE_TIMEOUT_BASE + WRITE_TIMEOUT_PER_MB * size_mb, WRITE_TIMEOUT_MAX)
 
 
 def _raise_for_status(response: aiohttp.ClientResponse) -> None:
@@ -128,6 +145,44 @@ class BookStackApiClient:
         if host:
             text = text.replace(host, "<bookstack>")
         return text
+
+    def _describe(self, err: Exception, timeout: float) -> str:
+        """
+        Return a scrubbed, never-empty description of a transient error.
+
+        ``TimeoutError`` stringifies to ``""``, which left the retry
+        warnings reading ``transient error (attempt 1/3): ;`` (#236).
+        """
+        if isinstance(err, TimeoutError) and not str(err):
+            return f"no response within {timeout:.0f}s"
+        return self._scrub(err) or type(err).__name__
+
+    async def _verify_write(
+        self,
+        method: str,
+        path: str,
+        verify: Callable[[], Awaitable[dict[str, Any] | None]],
+    ) -> dict[str, Any] | None:
+        """Run a post-timeout write check; ``None`` if unconfirmed (#236)."""
+        try:
+            written = await verify()
+        except BookStackApiError as err:
+            LOGGER.warning(
+                "BookStack %s %s timed out and the follow-up check failed "
+                "too (%s); treating the write as not applied",
+                method.upper(),
+                path,
+                err,
+            )
+            return None
+        if written is not None:
+            LOGGER.info(
+                "BookStack %s %s timed out on the client side, but BookStack "
+                "had already applied the write; not retrying",
+                method.upper(),
+                path,
+            )
+        return written
 
     async def list_books(self) -> list[dict[str, Any]]:
         """Return all books visible to the configured token."""
@@ -209,7 +264,35 @@ class BookStackApiClient:
             body["tags"] = tags
         if priority is not None:
             body["priority"] = priority
-        return await self._request("post", "/api/pages", json=body)
+
+        async def _find_created_page() -> dict[str, Any] | None:
+            # #236: a timed-out POST may still have created the page.
+            # Retrying blindly would create a duplicate, so look for a
+            # page with the same name and body in the same parent first.
+            # Matching on content rather than timestamps keeps this
+            # independent of clock skew between HA and BookStack.
+            parent = (
+                {"filter[chapter_id]": str(chapter_id)}
+                if chapter_id is not None
+                else {"filter[book_id]": str(book_id)}
+            )
+            candidates = await self._list_paginated(
+                "/api/pages",
+                params={"filter[name]": name, **parent},
+            )
+            for candidate in sorted(candidates, key=lambda p: p["id"], reverse=True):
+                page = await self.get_page(candidate["id"])
+                if page.get("markdown") == markdown:
+                    return page
+            return None
+
+        return await self._request(
+            "post",
+            "/api/pages",
+            json=body,
+            request_timeout=_write_timeout(markdown),
+            verify_after_timeout=_find_created_page,
+        )
 
     async def update_page(  # noqa: PLR0913 - all keyword-only, one per BookStack field
         self,
@@ -246,7 +329,23 @@ class BookStackApiClient:
             body["tags"] = tags
         if priority is not None:
             body["priority"] = priority
-        return await self._request("put", f"/api/pages/{page_id}", json=body)
+
+        async def _page_already_written() -> dict[str, Any] | None:
+            # #236: BookStack usually finishes a timed-out PUT anyway. If
+            # the page already holds what we sent, the write went through
+            # and re-sending the full body would only add another revision.
+            page = await self.get_page(page_id)
+            if page.get("name") == name and page.get("markdown") == markdown:
+                return page
+            return None
+
+        return await self._request(
+            "put",
+            f"/api/pages/{page_id}",
+            json=body,
+            request_timeout=_write_timeout(markdown),
+            verify_after_timeout=_page_already_written,
+        )
 
     async def _list_paginated(
         self,
@@ -267,14 +366,26 @@ class BookStackApiClient:
             offset += PAGE_SIZE
         return items
 
-    async def _request(
+    async def _request(  # noqa: PLR0913 - keyword-only request options
         self,
         method: str,
         path: str,
         *,
         params: dict[str, str] | None = None,
         json: dict[str, Any] | None = None,
+        request_timeout: float = REQUEST_TIMEOUT,
+        verify_after_timeout: Callable[[], Awaitable[dict[str, Any] | None]]
+        | None = None,
     ) -> dict[str, Any]:
+        """
+        Send one request, retrying transient errors with backoff.
+
+        ``verify_after_timeout`` (#236) is for writes: after a timeout it
+        checks whether BookStack applied the write anyway and returns the
+        resulting page if so, which then counts as success instead of a
+        retry. Returning ``None`` means the write did not happen and the
+        normal retry continues.
+        """
         url = f"{self._base_url}{path}"
         headers = {
             "Authorization": f"Token {self._token_id}:{self._token_secret}",
@@ -283,7 +394,7 @@ class BookStackApiClient:
         last_err: Exception | None = None
         for attempt in range(MAX_REQUEST_ATTEMPTS):
             try:
-                async with asyncio.timeout(REQUEST_TIMEOUT):
+                async with asyncio.timeout(request_timeout):
                     response = await self._session.request(
                         method=method,
                         url=url,
@@ -336,6 +447,13 @@ class BookStackApiClient:
                 raise
             except _TRANSIENT_ERRORS as err:
                 last_err = err
+                reason = self._describe(err, request_timeout)
+                if isinstance(err, TimeoutError) and verify_after_timeout:
+                    written = await self._verify_write(
+                        method, path, verify_after_timeout
+                    )
+                    if written is not None:
+                        return written
                 remaining = MAX_REQUEST_ATTEMPTS - attempt - 1
                 if remaining > 0:
                     backoff = RETRY_BACKOFF_BASE * (2**attempt)
@@ -346,14 +464,14 @@ class BookStackApiClient:
                         path,
                         attempt + 1,
                         MAX_REQUEST_ATTEMPTS,
-                        self._scrub(err),
+                        reason,
                         backoff,
                     )
                     await asyncio.sleep(backoff)
                     continue
                 msg = (
                     f"BookStack request failed after {MAX_REQUEST_ATTEMPTS} "
-                    f"attempts: {self._scrub(err)}"
+                    f"attempts: {reason}"
                 )
                 raise BookStackApiCommunicationError(msg) from err
             except (aiohttp.ClientError, socket.gaierror) as err:

@@ -10,6 +10,7 @@ Two real bugs we shipped to users hide here as regression tests:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import aiohttp
@@ -18,12 +19,28 @@ from aioresponses import aioresponses
 
 from custom_components.bookstack_sync.api import (
     MAX_REQUEST_ATTEMPTS,
+    WRITE_TIMEOUT_BASE,
+    WRITE_TIMEOUT_MAX,
     BookStackApiAuthError,
     BookStackApiClient,
     BookStackApiCommunicationError,
     BookStackApiError,
     BookStackApiNotFoundError,
+    _write_timeout,
 )
+
+PAGES_LIST_BY_NAME = re.compile(
+    r"^http://bookstack\.local:6875/api/pages\?.*filter%5Bname%5D=P.*$",
+)
+
+
+def _calls(mocked: aioresponses, method: str) -> int:
+    """Count the requests ``mocked`` saw for one HTTP method."""
+    return sum(
+        len(calls)
+        for (m, _), calls in mocked.requests.items()
+        if m.upper() == method.upper()
+    )
 
 
 @pytest.fixture
@@ -400,6 +417,154 @@ class TestRetryOnRateLimit:
                 )
             with pytest.raises(BookStackApiCommunicationError):
                 await client.get_page(42)
+
+
+class TestWriteTimeout:
+    """#236: large page writes get more time and are not blindly retried."""
+
+    def test_timeout_scales_with_body_size(self) -> None:
+        assert _write_timeout("") == WRITE_TIMEOUT_BASE
+        # The 2.2 MB page from #236 gets roughly a minute.
+        assert 60 < _write_timeout("x" * 2_200_000) < 70
+        assert _write_timeout("x" * 50_000_000) == WRITE_TIMEOUT_MAX
+
+    async def test_put_timeout_but_page_written_is_success(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.put(
+                "http://bookstack.local:6875/api/pages/42",
+                exception=TimeoutError(),
+            )
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P", "markdown": "body"},
+            )
+            page = await client.update_page(42, "P", "body")
+            assert page["id"] == 42
+            # The full body must not be sent a second time.
+            assert _calls(mocked, "PUT") == 1
+
+    async def test_put_timeout_and_page_unchanged_retries(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.put(
+                "http://bookstack.local:6875/api/pages/42",
+                exception=TimeoutError(),
+            )
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P", "markdown": "old body"},
+            )
+            mocked.put(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P"},
+            )
+            page = await client.update_page(42, "P", "body")
+            assert page["id"] == 42
+            assert _calls(mocked, "PUT") == 2
+
+    async def test_put_timeout_with_failing_check_still_retries(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.put(
+                "http://bookstack.local:6875/api/pages/42",
+                exception=TimeoutError(),
+            )
+            mocked.get("http://bookstack.local:6875/api/pages/42", status=500)
+            mocked.put(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P"},
+            )
+            page = await client.update_page(42, "P", "body")
+            assert page["id"] == 42
+
+    async def test_post_timeout_but_page_created_is_not_duplicated(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.post(
+                "http://bookstack.local:6875/api/pages",
+                exception=TimeoutError(),
+            )
+            mocked.get(
+                PAGES_LIST_BY_NAME,
+                payload={"data": [{"id": 11, "name": "P"}], "total": 1},
+            )
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/11",
+                payload={"id": 11, "name": "P", "markdown": "body"},
+            )
+            page = await client.create_page("P", "body", book_id=5)
+            assert page["id"] == 11
+            assert _calls(mocked, "POST") == 1
+
+    async def test_post_timeout_ignores_same_name_page_with_other_body(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.post(
+                "http://bookstack.local:6875/api/pages",
+                exception=TimeoutError(),
+            )
+            mocked.get(
+                PAGES_LIST_BY_NAME,
+                payload={"data": [{"id": 3, "name": "P"}], "total": 1},
+            )
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/3",
+                payload={"id": 3, "name": "P", "markdown": "someone else's page"},
+            )
+            mocked.post(
+                "http://bookstack.local:6875/api/pages",
+                payload={"id": 12, "name": "P"},
+            )
+            page = await client.create_page("P", "body", book_id=5)
+            assert page["id"] == 12
+            assert _calls(mocked, "POST") == 2
+
+    async def test_get_timeout_is_retried_without_check(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        # Reads have nothing to verify - plain retry, as before #236.
+        with aioresponses() as mocked:
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                exception=TimeoutError(),
+            )
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P"},
+            )
+            page = await client.get_page(42)
+            assert page["id"] == 42
+            assert _calls(mocked, "GET") == 2
+
+    async def test_timeout_warning_names_the_cause(
+        self,
+        client: BookStackApiClient,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # Pre-#236 the warning read "transient error (attempt 1/3): ;".
+        with aioresponses() as mocked:
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                exception=TimeoutError(),
+            )
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P"},
+            )
+            await client.get_page(42)
+        assert "no response within 15s" in caplog.text
 
 
 class TestUrlScrubbing:

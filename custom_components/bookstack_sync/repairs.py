@@ -9,7 +9,7 @@ from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 from homeassistant.helpers import issue_registry as ir
 
 from .api import BookStackApiError
-from .const import REPAIR_ISSUE_BULK_CONFLICT
+from .const import LOGGER, REPAIR_ISSUE_BULK_CONFLICT
 from .coordinator import BookStackSyncBusyError
 
 if TYPE_CHECKING:
@@ -61,7 +61,10 @@ class _SinglePageFixFlow(RepairsFlow):
                 # fast rather than leave the confirm dialog spinning for
                 # however long that sync takes.
                 return self.async_abort(reason="sync_in_progress")
-            except BookStackApiError:
+            except BookStackApiError as err:
+                # #227/#236: the abort dialog only says "failed"; the log
+                # is the only place the actual cause shows up.
+                LOGGER.warning("Resync of %s failed: %s", self._page_key, err)
                 return self.async_abort(reason="resync_failed")
             if not found:
                 # The device/area/label behind this page vanished from HA
@@ -118,7 +121,8 @@ class _BulkForceResyncFixFlow(RepairsFlow):
                 await entry.runtime_data.coordinator.async_force_resync_all()
             except BookStackSyncBusyError:
                 return self.async_abort(reason="sync_in_progress")
-            except BookStackApiError:
+            except BookStackApiError as err:
+                LOGGER.warning("Forced resync of all pages failed: %s", err)
                 return self.async_abort(reason="resync_failed")
             return self.async_create_entry(title="", data={})
 

@@ -23,6 +23,7 @@ from custom_components.bookstack_sync.repairs import (
 )
 
 if TYPE_CHECKING:
+    import pytest
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -130,6 +131,7 @@ async def test_confirm_step_aborts_when_page_gone(
 async def test_confirm_step_aborts_when_resync_fails(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     config_entry.add_to_hass(hass)
     config_entry.runtime_data = type(
@@ -157,6 +159,8 @@ async def test_confirm_step_aborts_when_resync_fails(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "resync_failed"
+    # #227/#236: the cause must reach the log, the dialog only says "failed".
+    assert "Resync of device:abc failed: unreachable" in caplog.text
 
 
 async def test_confirm_step_aborts_when_sync_in_progress(
@@ -261,6 +265,7 @@ async def test_bulk_confirm_step_aborts_when_entry_removed(hass: HomeAssistant) 
 async def test_bulk_confirm_step_aborts_when_resync_fails(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     config_entry.add_to_hass(hass)
     config_entry.runtime_data = type(
@@ -288,6 +293,7 @@ async def test_bulk_confirm_step_aborts_when_resync_fails(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "resync_failed"
+    assert "Forced resync of all pages failed: unreachable" in caplog.text
 
 
 async def test_bulk_confirm_step_aborts_when_sync_in_progress(
