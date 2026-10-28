@@ -22,7 +22,11 @@ from custom_components.bookstack_sync.api import (
     BookStackApiAuthError,
     BookStackApiCommunicationError,
 )
-from custom_components.bookstack_sync.const import CONF_EXTERNAL_BASE_URL, DOMAIN
+from custom_components.bookstack_sync.const import (
+    CONF_EXTERNAL_BASE_URL,
+    DOMAIN,
+    REPAIR_ISSUE_UNREACHABLE,
+)
 from custom_components.bookstack_sync.coordinator import BookStackSyncCoordinator
 from custom_components.bookstack_sync.sync import SyncReport
 
@@ -248,6 +252,39 @@ async def test_async_run_sync_notes_success_on_clean_run(
         await coord.async_run_sync()
 
     coord._note_success.assert_called_once()
+
+
+async def test_note_success_clears_unreachable_issue_after_restart(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    A persistent unreachable issue from before a restart must clear on success.
+
+    The failure streak is in-memory only, so after a restart it is 0 while
+    the persistent issue is still in the registry. ``_note_success`` used
+    to return early on a 0 streak and never deleted it.
+    """
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    config_entry.add_to_hass(hass)
+    issue_id = f"{REPAIR_ISSUE_UNREACHABLE}_{config_entry.entry_id}"
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        is_persistent=True,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=REPAIR_ISSUE_UNREACHABLE,
+        translation_placeholders={"count": "14"},
+    )
+    coord = _make_coordinator(hass, config_entry)
+    assert coord._failure_streak == 0
+
+    coord._note_success()
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
 
 
 async def test_is_syncing_flag_set_during_run(

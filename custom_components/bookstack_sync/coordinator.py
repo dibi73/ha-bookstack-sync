@@ -335,9 +335,15 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             )
 
     def _note_success(self) -> None:
-        """Reset the failure streak and auto-resolve the repair issue."""
-        if self._failure_streak == 0:
-            return
+        """
+        Reset the failure streak and auto-resolve the repair issue.
+
+        Deletes unconditionally: the issue is persistent, but the streak
+        only lives in memory and starts at 0 after a restart or reload.
+        Gating on the streak left an issue raised before the restart in
+        place forever, even after successful syncs. Deleting an issue
+        that does not exist is a no-op.
+        """
         self._failure_streak = 0
         ir.async_delete_issue(
             self.hass,
