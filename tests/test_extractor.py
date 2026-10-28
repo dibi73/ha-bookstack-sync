@@ -30,6 +30,7 @@ from custom_components.bookstack_sync.extractor import (
     _all_devices,
     _classify_unifi_role,
     _compute_device_groups,
+    _device_entry_ids,
     _extract_bluetooth_network,
     _parse_energy_payload,
     async_extract_addons,
@@ -2074,3 +2075,34 @@ async def test_all_devices_matches_real_registry(hass: HomeAssistant) -> None:
     ids = {d.id for d in _all_devices(device_reg)}
     assert ids
     assert all(device_reg.async_get(i) is not None for i in ids)
+
+
+class _NewStyleDevice:
+    """HA 2026.10+: single config_entry_id; reading config_entries is deprecated."""
+
+    def __init__(self, entry_id: str | None) -> None:
+        self.config_entry_id = entry_id
+
+    @property
+    def config_entries(self) -> set[str]:
+        msg = "DeviceEntry.config_entries is deprecated (#261)"
+        raise AssertionError(msg)
+
+
+def test_device_entry_ids_uses_config_entry_id() -> None:
+    """#261: on current HA the single config_entry_id is used."""
+    assert _device_entry_ids(_NewStyleDevice("entry1")) == {"entry1"}
+    assert _device_entry_ids(_NewStyleDevice(None)) == set()
+
+
+def test_device_entry_ids_falls_back_before_2026_8() -> None:
+    """#261: devices without config_entry_id still report their entries."""
+    old = type("OldDevice", (), {"config_entries": {"a", "b"}})()
+    assert _device_entry_ids(old) == {"a", "b"}
+
+
+async def test_device_entry_ids_matches_real_registry(hass: HomeAssistant) -> None:
+    """Against the HA version under test, every device keeps its entry."""
+    await _seed_minimal_registry(hass)
+    for device in _all_devices(dr.async_get(hass)):
+        assert _device_entry_ids(device) <= {"entry1", "entry2"}
