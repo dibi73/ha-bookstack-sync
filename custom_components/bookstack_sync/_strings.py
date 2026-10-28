@@ -280,6 +280,15 @@ _STRINGS: dict[str, dict[str, str]] = {
             "- {skipped} mit Konflikt übersprungen\n"
             "- {errors} Fehler"
         ),
+        # #225: affected pages listed below the counts
+        "notification_section_conflicts": "Mit Konflikt übersprungen:",
+        "notification_section_orphaned": "Verwaist:",
+        "notification_open_in_ha": "in Home Assistant öffnen",
+        "notification_more_template": "- … und {count} weitere",
+        "notification_repairs_hint": (
+            "Überschreiben lassen sich diese Seiten unter "
+            "[Einstellungen → Reparaturen](/config/repairs)."
+        ),
     },
     LANG_EN: {
         "heading_auto_generated": "Automatic Documentation",
@@ -517,6 +526,14 @@ _STRINGS: dict[str, dict[str, str]] = {
             "- {tombstoned} tombstoned\n"
             "- {skipped} skipped (conflict)\n"
             "- {errors} errors"
+        ),
+        # #225: affected pages listed below the counts
+        "notification_section_conflicts": "Skipped because of a conflict:",
+        "notification_section_orphaned": "Orphaned:",
+        "notification_open_in_ha": "open in Home Assistant",
+        "notification_more_template": "- … and {count} more",
+        "notification_repairs_hint": (
+            "You can overwrite these pages under [Settings → Repairs](/config/repairs)."
         ),
     },
 }

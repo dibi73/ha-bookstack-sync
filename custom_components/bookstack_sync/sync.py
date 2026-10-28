@@ -79,6 +79,7 @@ from .merge import (
 )
 from .renderer import (
     OrphanedPageEntry,
+    _md_escape,
     render_addons_auto_block,
     render_area_auto_block,
     render_automations_auto_block,
@@ -261,6 +262,9 @@ class SyncReport:
     markers_missing_page_keys: list[str] = field(default_factory=list)
     markers_missing_page_titles: list[str] = field(default_factory=list)
     markers_missing_page_urls: list[str] = field(default_factory=list)
+    # BookStack slugs of the pages in ``tombstoned`` (same length, same
+    # order; "" when unknown). Lets the notification link them (#225).
+    tombstoned_page_slugs: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     dry_run: bool = False
 
@@ -995,7 +999,13 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         " (dry-run)" if dry_run else "",
     )
     if not dry_run:
-        _post_sync_notification(hass, report, strings)
+        _post_sync_notification(
+            hass,
+            report,
+            strings,
+            link_base_url=external_base_url or client.base_url,
+            book_slug=book_slug,
+        )
     return report
 
 
@@ -1092,10 +1102,56 @@ async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params 
     return True
 
 
+# How many affected pages the notification lists per kind (#225) before
+# summarising the rest as "... and N more".
+NOTIFICATION_MAX_ITEMS = 10
+
+
+def _ha_object_path(page_key: str) -> str | None:
+    """
+    Return the HA frontend path for the object behind a page key (#225).
+
+    Root-relative on purpose: the notification is read inside HA's own UI,
+    which resolves it against whatever address the user opened HA with.
+    """
+    kind, _, object_id = page_key.partition(":")
+    if not object_id:
+        return None
+    if kind == PAGE_KIND_DEVICE:
+        return f"/config/devices/device/{object_id}"
+    if kind == PAGE_KIND_AREA:
+        return f"/config/areas/area/{object_id}"
+    return None
+
+
+def _notification_item_lines(
+    items: Sequence[tuple[str, str | None, str | None]],
+    strings: dict[str, str],
+) -> list[str]:
+    """Render ``(title, bookstack_url, ha_path)`` rows as a capped bullet list."""
+    lines = []
+    for title, url, ha_path in items[:NOTIFICATION_MAX_ITEMS]:
+        label = _md_escape(title)
+        line = f"- [{label}]({url})" if url else f"- {label}"
+        if ha_path:
+            line += f" · [{strings['notification_open_in_ha']}]({ha_path})"
+        lines.append(line)
+    if len(items) > NOTIFICATION_MAX_ITEMS:
+        lines.append(
+            strings["notification_more_template"].format(
+                count=len(items) - NOTIFICATION_MAX_ITEMS,
+            ),
+        )
+    return lines
+
+
 def _post_sync_notification(
     hass: HomeAssistant,
     report: SyncReport,
     strings: dict[str, str],
+    *,
+    link_base_url: str = "",
+    book_slug: str = "",
 ) -> None:
     """
     Surface a persistent notification only when something needs attention.
@@ -1104,6 +1160,12 @@ def _post_sync_notification(
     show "ok", and a green-bell-every-night spam is more noise than value.
     Errors and tampering-related skips do warrant a notification, because
     those are exactly the cases the user has to act on.
+
+    Below the counts, the affected pages are listed with a link to the
+    BookStack page and, where there is one, to the device or area in HA
+    (#225), so the user does not have to hunt for them.
+    ``link_base_url`` is the external BookStack URL if configured, else
+    the API base URL, same as for repair issues.
     """
     has_errors = bool(report.errors)
     has_skipped = bool(report.skipped_conflict)
@@ -1117,9 +1179,58 @@ def _post_sync_notification(
         skipped=len(report.skipped_conflict),
         errors=len(report.errors),
     )
+    conflicts = [
+        (title, url or None, _ha_object_path(key))
+        for key, title, url in [
+            *zip(
+                report.tampered_page_keys,
+                report.tampered_page_titles,
+                report.tampered_page_urls,
+                strict=True,
+            ),
+            *zip(
+                report.markers_missing_page_keys,
+                report.markers_missing_page_titles,
+                report.markers_missing_page_urls,
+                strict=True,
+            ),
+        ]
+    ]
+    orphaned = [
+        (
+            name,
+            _build_absolute_page_url(link_base_url, book_slug, slug) if slug else None,
+            None,
+        )
+        for name, slug in zip(
+            report.tombstoned,
+            report.tombstoned_page_slugs,
+            strict=False,
+        )
+    ]
+    sections = [body]
+    if conflicts:
+        sections.append(
+            "\n".join(
+                [
+                    f"**{strings['notification_section_conflicts']}**",
+                    *_notification_item_lines(conflicts, strings),
+                    strings["notification_repairs_hint"],
+                ],
+            ),
+        )
+    if orphaned:
+        sections.append(
+            "\n".join(
+                [
+                    f"**{strings['notification_section_orphaned']}**",
+                    *_notification_item_lines(orphaned, strings),
+                ],
+            ),
+        )
     async_create_notification(
         hass,
-        body,
+        "\n\n".join(sections),
         title=strings["notification_title"],
         notification_id="bookstack_sync_last_run",
     )
@@ -1613,9 +1724,11 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
             return
 
     existing_name = existing.get("name") or key
+    existing_slug = str(existing.get("slug") or "")
 
     if dry_run:
         report.tombstoned.append(existing_name)
+        report.tombstoned_page_slugs.append(existing_slug)
         return
 
     saved = await client.update_page(
@@ -1636,6 +1749,7 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
         ),
     )
     report.tombstoned.append(existing_name)
+    report.tombstoned_page_slugs.append(existing_slug)
 
 
 def _devices_with_network(snapshot: HASnapshot) -> list[DeviceSnapshot]:

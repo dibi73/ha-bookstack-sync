@@ -37,8 +37,11 @@ from custom_components.bookstack_sync.extractor import (
 )
 from custom_components.bookstack_sync.store import BookStackSyncStore
 from custom_components.bookstack_sync.sync import (
+    NOTIFICATION_MAX_ITEMS,
+    SyncReport,
     _build_absolute_page_url,
     _build_page_url,
+    _post_sync_notification,
     _RateLimiter,
     _run_concurrent,
     resync_single_page,
@@ -755,6 +758,66 @@ async def test_sync_with_skipped_conflict_emits_notification(
         pytest.fail(
             "Expected tamper detection to produce skipped_conflict; got none",
         )
+
+
+async def test_notification_links_conflicted_pages_to_bookstack_and_ha(
+    hass: HomeAssistant,
+    strings: dict[str, str],
+) -> None:
+    """#225: a skipped page is listed with its BookStack page and its HA device."""
+    report = SyncReport(
+        skipped_conflict=["Gerät: Lampe"],
+        tampered_page_keys=["device:abc123"],
+        tampered_page_titles=["Gerät: Lampe"],
+        tampered_page_urls=["https://wiki.example.com/books/b/page/lampe"],
+    )
+
+    with patch(
+        "custom_components.bookstack_sync.sync.async_create_notification",
+    ) as notify:
+        _post_sync_notification(
+            hass,
+            report,
+            strings,
+            link_base_url="https://wiki.example.com",
+            book_slug="b",
+        )
+
+    body = notify.call_args.args[1]
+    assert "[Gerät: Lampe](https://wiki.example.com/books/b/page/lampe)" in body
+    assert "(/config/devices/device/abc123)" in body
+    assert "(/config/repairs)" in body
+
+
+async def test_notification_lists_orphaned_pages_and_caps_the_list(
+    hass: HomeAssistant,
+    strings: dict[str, str],
+) -> None:
+    """#225: orphaned pages get BookStack links; long lists are cut off."""
+    extra = 3
+    names = [f"Gerät {i}" for i in range(NOTIFICATION_MAX_ITEMS + extra)]
+    report = SyncReport(
+        errors=["something failed"],
+        tombstoned=names,
+        tombstoned_page_slugs=[f"gerat-{i}" for i in range(len(names))],
+    )
+
+    with patch(
+        "custom_components.bookstack_sync.sync.async_create_notification",
+    ) as notify:
+        _post_sync_notification(
+            hass,
+            report,
+            strings,
+            link_base_url="http://192.168.0.16:2665",
+            book_slug="hausdoku",
+        )
+
+    body = notify.call_args.args[1]
+    assert "[Gerät 0](http://192.168.0.16:2665/books/hausdoku/page/gerat-0)" in body
+    assert f"Gerät {NOTIFICATION_MAX_ITEMS - 1}]" in body
+    assert f"Gerät {NOTIFICATION_MAX_ITEMS}]" not in body
+    assert str(extra) in body.rsplit("\n", 1)[-1]
 
 
 async def test_drifted_stored_hash_does_not_trigger_tampering(
