@@ -1,8 +1,13 @@
 # BookStack Sync for Home Assistant
 
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz/)
+[![GitHub release](https://img.shields.io/github/v/release/dibi73/ha-bookstack-sync)](https://github.com/dibi73/ha-bookstack-sync/releases)
+[![Tests](https://github.com/dibi73/ha-bookstack-sync/actions/workflows/test.yml/badge.svg)](https://github.com/dibi73/ha-bookstack-sync/actions/workflows/test.yml)
+[![Lint](https://github.com/dibi73/ha-bookstack-sync/actions/workflows/lint.yml/badge.svg)](https://github.com/dibi73/ha-bookstack-sync/actions/workflows/lint.yml)
+
 > Available in: **English** · [Deutsch](README.de.md)
 >
-> *(The integration's HA UI itself is localised in 28 languages since v0.12.0 — this README exists in DE + EN.)*
+> *(The integration's HA UI itself is localised in 28 languages — this README exists in DE + EN, both kept in sync.)*
 
 A Home Assistant custom integration (installable via HACS) that
 documents your entire HA setup as markdown pages inside an existing
@@ -14,6 +19,28 @@ across syncs.** Every page is split into an auto-generated section and
 a manual section by markdown markers. The integration only ever
 rewrites the auto block — your notes, quirks, password references and
 "why we set option X" comments live in the manual block forever.
+
+**Contents:**
+[What gets documented](#what-gets-documented) ·
+[Why use it](#why-use-it) ·
+[Status](#status) ·
+[Requirements](#requirements) ·
+[Installation](#installation) ·
+[Configuration](#configuration) ·
+[How syncing works](#how-syncing-works) ·
+[Page structure](#page-structure-with-marker-blocks) ·
+[Services](#services) ·
+[Markdown export](#markdown-export-for-rag-opt-in) ·
+[Entities, repairs and notifications](#entities-repairs-and-notifications) ·
+[Use cases](#use-cases) ·
+[Examples](#examples) ·
+[Troubleshooting](#troubleshooting) ·
+[Known limitations](#known-limitations) ·
+[Removing the integration](#removing-the-integration) ·
+[Non-goals](#non-goals) ·
+[Development](#development) ·
+[Security](#security) ·
+[License](#license)
 
 ## What gets documented
 
@@ -117,12 +144,15 @@ avoids that false alarm and lets you judge for yourself.
   deleted. Instead the auto block is replaced with an "orphaned —
   device gone since YYYY-MM-DD" notice; the manual block stays.
 - **Survives BookStack restarts and HA migrations**. Mapping between
-  HA-IDs and BookStack page IDs is persisted in HA's storage.
+  HA-IDs and BookStack page IDs is persisted in HA's storage
+  (`.storage/bookstack_sync.<entry_id>.mapping`).
 
 ## Status
 
-Production-ready for personal use. **V0.16** as of this README,
-targeting the HA Quality Scale **Platinum** tier:
+Production-ready, listed in the HACS default store. See the
+[releases](https://github.com/dibi73/ha-bookstack-sync/releases) for the
+current version and the changes in each release. Targets the HA Quality
+Scale **Platinum** tier:
 
 - Full HA-data extraction (areas, devices, entities, automations,
   scripts, scenes, integrations, add-ons, network, Bluetooth, recorder,
@@ -131,13 +161,17 @@ targeting the HA Quality Scale **Platinum** tier:
   integrations (HA 2026.8+)
 - Marker-block merge with hash-based tampering detection
 - Multi-pass overview render with internal page links
-- Status sensor, persistent notifications, structured services
+- Status sensor with live progress, buttons for sync / preview / forced
+  sync, persistent notifications with links to the affected pages,
+  repair issues with one-click fixes
+- Exclude whole integrations, single devices, or everything disabled in
+  HA from the documentation
 - Reauth flow + user-initiated reconfigure flow (URL / token / TLS)
 - Diagnostics endpoint (redacted dump for bug reports)
 - TLS-verify toggle, MQTT-topic display, UI localised in 28 languages
 - Admin-only services (`run_now`, `preview`, `export_markdown`)
-- 260+ tests covering merge logic, renderer determinism, API client,
-  config flow, coordinator, sync orchestrator
+- Extensive test suite covering merge logic, renderer determinism, API
+  client, config flow, coordinator, sync orchestrator
 
 ### Quality Scale
 
@@ -162,16 +196,33 @@ validate Gold/Platinum rules for custom integrations:
   self-rolled session), `async-dependency` (N/A — `requirements: []`,
   no external PyPI dependency to check)
 
+## Requirements
+
+- **Home Assistant**: CI tests run against Home Assistant 2026.8; the
+  integration is used day to day on current releases (2026.10). It
+  adapts to the device-registry change in 2026.9, so older and newer
+  releases both work.
+- **BookStack** with its REST API reachable from Home Assistant. Known
+  to work with the BookStack Home Assistant add-on (5.0.x) and with
+  standalone installs, also behind a NAS reverse proxy.
+- **A BookStack book** to write into, and an **API token** with read
+  and write access to it (*My Profile → API Tokens*; the user needs the
+  "Access system API" permission).
+- Optional: Supervisor (HAOS / Supervised) for the Add-ons page.
+
 ## Installation
 
 ### Via HACS (recommended)
 
-1. HACS → top-right **⋮** → **Custom repositories**
-2. **Repository**: `https://github.com/dibi73/ha-bookstack-sync`
-3. **Type**: `Integration`
-4. Click **Add**, then **Download** on the BookStack Sync card
-5. Restart Home Assistant
-6. **Settings → Devices & Services → Add Integration → "BookStack Sync"**
+BookStack Sync is in the HACS default store:
+
+1. **HACS** → search for **BookStack Sync** → **Download**
+2. Restart Home Assistant
+3. **Settings → Devices & Services → Add Integration → "BookStack Sync"**
+
+If the search does not find it (very old HACS), add it as a custom
+repository instead: HACS → top-right **⋮** → **Custom repositories** →
+`https://github.com/dibi73/ha-bookstack-sync`, type **Integration**.
 
 ### Manual install
 
@@ -196,8 +247,18 @@ The config flow asks two screens of questions:
 - Pick the book to sync into (dropdown of all readable books)
 - Sync interval: hourly / daily / manual only
 
-After setup the **Options** dialog (gear icon on the integration card)
-adds:
+**Reconfigure** (integration card → **⋮** → *Reconfigure*) changes the
+connection later without removing the integration:
+- **BookStack URL**, **API Token ID + Secret**, **Verify TLS
+  certificate** — as in step 1
+- **External BookStack URL** (optional): the address people use to open
+  BookStack, if it differs from the URL above (e.g. a public domain
+  while the integration talks to a LAN address). Used for links that
+  are read outside BookStack: repair issues, notifications, the
+  device card's *Visit* link and the "Orphaned pages" list.
+
+The **Options** dialog (integration card → *Configure*) covers:
+- Book and sync interval — as in step 2
 - Output language (`Auto` follows HA, or pick `German` / `English`
   explicitly)
 - Markdown back-export (off by default) + export folder
@@ -210,6 +271,33 @@ adds:
   devices, and (because HA disables their devices and entities too)
   disabled integrations. Off by default; useful when an integration
   creates thousands of disabled entities and its device pages get huge
+
+## How syncing works
+
+**When a sync runs**
+- On the configured interval (hourly or daily; `manual` disables it)
+- When you press *Sync now* or *Force sync*, or call `run_now`
+- For a single page, when you click *Fix* on a repair issue
+- *Sync preview* and `preview` only log what would change
+
+**What a sync does**
+1. Reads Home Assistant's registries (areas, devices, entities,
+   labels, automations, …) and builds every page's auto block.
+2. Compares each page with what it last wrote. Unchanged pages are not
+   written, so BookStack gets no empty revisions.
+3. Writes changed pages, up to 5 at a time, staying below BookStack's
+   default limit of 180 API requests per minute. Network hiccups and
+   rate-limit answers are retried with backoff; writes of very large
+   pages get a longer timeout and are checked before a retry so they
+   are never sent twice.
+4. Marks pages whose HA object is gone as orphaned (see *Known
+   limitations*) and refreshes the "Orphaned pages" list.
+5. If the Markdown export is enabled, writes the export files.
+6. Updates the status sensor; on errors or conflicts it also posts a
+   persistent notification.
+
+A sync only reads from Home Assistant and only writes to BookStack.
+Nothing in Home Assistant is changed.
 
 ## Page structure with marker blocks
 
@@ -234,9 +322,13 @@ skipped with a warning rather than clobbered.
 ## Services
 
 - **`bookstack_sync.run_now`** — kick off a sync immediately. Useful
-  after adding a new device.
+  after adding a new device. Parameter **`force`** (default `false`):
+  also overwrite pages whose auto block was edited in BookStack; the
+  manual block is kept. Same as the *Force sync* button.
 - **`bookstack_sync.preview`** — dry run. Logs to the HA log what
   would be created / updated, but writes nothing to BookStack.
+  Accepts the same **`force`** parameter, to see what a forced sync
+  would overwrite.
 - **`bookstack_sync.export_markdown`** — opt-in: write every managed
   BookStack page back to a folder of plain Markdown files for use as
   RAG / LLM input. **Disabled by default** — see *Markdown export for
@@ -318,15 +410,41 @@ automation:
 Full schema and stack-specific snippets in
 [docs/EXPORT.md](docs/EXPORT.md).
 
-## Status sensor
+## Entities, repairs and notifications
 
-Each configured BookStack instance gets a sensor:
+Each configured BookStack instance gets one device with these entities:
 
-- **State**: `ok` / `error` / `never_run` / `syncing`
+**Status sensor**
+- **State**: `ok` / `error` / `never_run`, and while a run is in
+  progress the live progress, e.g. `Sync läuft 33/453` and then
+  `Export läuft 120/486` (falls back to `syncing` for a moment at the
+  start)
 - **Attributes**: `last_run`, `created`, `updated`, `unchanged`,
-  `tombstoned`, `skipped_conflict`, `errors`, `total_pages`
+  `tombstoned`, `skipped_conflict`, `errors`, `total_pages`, plus the
+  export counters when the Markdown export is enabled
 
-Drop it on a dashboard or feed it into automations.
+**Buttons**
+- **Sync now** — a full sync, same as `run_now`
+- **Sync preview (dry-run)** — logs what would change, writes nothing
+- **Force sync** — a full sync that also overwrites pages whose auto
+  block was edited in BookStack (the manual block stays). **Disabled by
+  default**, so it can't be pressed by accident; enable it in the
+  entity's settings when you need it.
+
+**Repair issues** (*Settings → System → Repairs*)
+- *Page edited outside Home Assistant* — one per page, with a **Fix**
+  button that overwrites just that page's auto block
+- *Marker comments missing* — the page was opened in the WYSIWYG
+  editor; **Fix** recreates the page (save your manual notes first)
+- *Many pages in conflict* — after an update that changes how pages
+  are rendered; **Fix** force-syncs all pages at once
+- *BookStack unreachable* — after three failed syncs in a row; clears
+  itself after the next successful sync
+
+**Persistent notification** — only after a run with errors or
+conflicts. It lists the counts and below them the affected pages, each
+linked to the BookStack page and, for devices and areas, to the object
+in Home Assistant.
 
 ## Use cases
 
@@ -425,9 +543,9 @@ moves them to the right chapter automatically.
   which is auto-generated. Since v0.14.9 the integration detects this
   and refuses to overwrite affected pages — you'll see a *Marker-Kommentare
   einer Page fehlen* repair issue in HA. Recovery: open the page in
-  the markdown editor, save your manual notes elsewhere, and re-run
-  *Sync now* with *Force overwrite tampered pages* enabled to recreate
-  the page with fresh markers. The integration also pins
+  the markdown editor, save your manual notes elsewhere, and press
+  *Force sync* (or call `run_now` with `force: true`) to recreate the
+  page with fresh markers. The integration also pins
   `editor: "markdown"` on every write to deter the WYSIWYG toggle, but
   BookStack treats that field as advisory in older versions.
   Since v0.22.0 the repair issue itself has a one-click **Fix** button
@@ -466,6 +584,26 @@ moves them to the right chapter automatically.
 > is keyed by base URL and gets its own coordinator, storage and
 > status sensor.
 
+## Removing the integration
+
+1. **Settings → Devices & Services → BookStack Sync** → **⋮** next to
+   the entry → **Delete**. Repeat for every configured BookStack
+   instance.
+2. If you installed via HACS: **HACS → BookStack Sync → ⋮ → Remove**,
+   then restart Home Assistant. For a manual install, delete
+   `config/custom_components/bookstack_sync/` and restart.
+
+What happens to your data:
+- **BookStack pages stay** where they are, including your manual
+  notes. Delete them in BookStack if you no longer want them; the
+  integration's pages carry the tag `bookstack_sync`, so the tag search
+  `[bookstack_sync]` finds them.
+- **Repair issues** of the deleted entry are removed automatically.
+- **The Markdown export folder** (default `config/bookstack_export/`)
+  stays; delete it by hand if you enabled the export.
+- **The API token** stays valid in BookStack; revoke it under *My
+  Profile → API Tokens*.
+
 ## Non-goals
 
 - **No password storage** in BookStack — keep credentials in a proper
@@ -487,7 +625,16 @@ scripts/lint         # ruff check + format
 pytest tests/        # full test suite
 ```
 
-CI runs hassfest, HACS validation, ruff and pytest on every push and PR.
+CI runs hassfest, HACS validation, ruff, `mypy --strict` and pytest on
+every push and PR. Contributions are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+Please report security problems privately via GitHub's
+[private vulnerability reporting](https://github.com/dibi73/ha-bookstack-sync/security/advisories/new),
+not in a public issue. See [SECURITY.md](SECURITY.md).
 
 ## License
 
