@@ -26,6 +26,7 @@ from .api import (
 from .const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
+    CONF_EXCLUDE_DISABLED,
     CONF_EXCLUDED_DEVICES,
     CONF_EXCLUDED_INTEGRATIONS,
     CONF_EXPORT_ENABLED,
@@ -36,6 +37,7 @@ from .const import (
     CONF_TOKEN_ID,
     CONF_TOKEN_SECRET,
     CONF_VERIFY_SSL,
+    DEFAULT_EXCLUDE_DISABLED,
     DEFAULT_EXCLUDED_DEVICES,
     DEFAULT_EXCLUDED_INTEGRATIONS,
     DEFAULT_EXPORT_ENABLED,
@@ -562,6 +564,10 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                             CONF_EXCLUDED_DEVICES,
                             DEFAULT_EXCLUDED_DEVICES,
                         ),
+                        CONF_EXCLUDE_DISABLED: user_input.get(
+                            CONF_EXCLUDE_DISABLED,
+                            DEFAULT_EXCLUDE_DISABLED,
+                        ),
                     },
                 )
 
@@ -620,6 +626,10 @@ class BookStackSyncOptionsFlow(OptionsFlow):
             CONF_EXCLUDED_DEVICES,
             DEFAULT_EXCLUDED_DEVICES,
         )
+        current_exclude_disabled = self.config_entry.options.get(
+            CONF_EXCLUDE_DISABLED,
+            DEFAULT_EXCLUDE_DISABLED,
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -671,6 +681,12 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                         CONF_EXCLUDED_DEVICES,
                         default=current_excluded_devices,
                     ): _excluded_devices_selector(),
+                    # Issue #237. Off by default: an update must not make
+                    # pages for disabled devices disappear unasked.
+                    vol.Required(
+                        CONF_EXCLUDE_DISABLED,
+                        default=current_exclude_disabled,
+                    ): selector.BooleanSelector(),
                 },
             ),
             errors=errors,

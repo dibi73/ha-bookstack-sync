@@ -546,6 +546,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     known_device_pages: dict[str, bool] | None = None,
     excluded_integrations: list[str] | None = None,
     excluded_devices: list[str] | None = None,
+    exclude_disabled: bool = False,
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
@@ -585,6 +586,11 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     integration is excluded — one excluded integration on an otherwise
     kept device just removes its "auch bekannt als" entry, see the
     ``member_entries`` filter below.
+
+    ``exclude_disabled`` (issue #237) additionally drops devices and
+    entities that HA has disabled (``disabled_by`` set). Disabling a config
+    entry cascades ``disabled_by`` to its devices and entities in HA
+    itself, so disabled integrations are covered without a separate check.
     """
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
@@ -667,6 +673,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
             (member_id, entry)
             for member_id, entry in member_entries
             if member_id not in excluded_device_ids
+            and not (exclude_disabled and entry.disabled_by is not None)
             and not (
                 entry.config_entries
                 and all(
@@ -742,6 +749,9 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
         # device would be. Entities attached to a device are already
         # covered above once their device gets filtered out.
         if not entity.device_id and entity.platform in excluded_domains:
+            continue
+        # Issue #237: drop disabled entities, also on devices that stay.
+        if exclude_disabled and entity.disabled_by is not None:
             continue
         state_obj = hass.states.get(entity.entity_id)
         attrs = dict(state_obj.attributes) if state_obj else {}

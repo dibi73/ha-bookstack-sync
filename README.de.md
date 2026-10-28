@@ -177,7 +177,11 @@ Im Config-Flow werden zwei Schritte durchlaufen:
    Sync-Intervall (stündlich / täglich / nur manuell).
 
 Spätere Anpassungen (anderes Book, anderes Intervall) gehen über
-*Konfigurieren* in der Integrationskachel.
+*Konfigurieren* in der Integrationskachel. Dort lassen sich auch ganze
+Integrationen oder einzelne Geräte von der Dokumentation ausschließen,
+und mit *Deaktivierte Integrationen, Geräte und Entities nicht
+dokumentieren* alles weglassen, was in Home Assistant deaktiviert ist
+(standardmäßig aus).
 
 ## Manuelle Notizen pflegen
 
