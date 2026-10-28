@@ -1,14 +1,17 @@
 """
 Button entities for BookStack Sync (issue #57).
 
-Two buttons land on the integration's device card:
+Three buttons land on the integration's device card:
 
 - ``Jetzt synchronisieren`` — fires ``coordinator.async_run_sync(dry_run=False)``
 - ``Sync-Vorschau``        — fires ``coordinator.async_run_sync(dry_run=True)``
+- ``Sync erzwingen``       — fires ``coordinator.async_run_sync(force=True)``
+  (#231, disabled by default)
 
 These mirror the ``bookstack_sync.run_now`` / ``bookstack_sync.preview``
-services but show up directly on the device card so the user doesn't
-have to walk through Developer Tools to trigger a sync.
+services (the last one ``run_now`` with ``force: true``) but show up
+directly on the device card so the user doesn't have to walk through
+Developer Tools to trigger a sync.
 """
 
 from __future__ import annotations
@@ -35,12 +38,13 @@ async def async_setup_entry(
     entry: BookStackSyncConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Register the run-now and preview buttons for this entry."""
+    """Register the run-now, preview and force-sync buttons for this entry."""
     coordinator = entry.runtime_data.coordinator
     async_add_entities(
         [
             BookStackSyncRunNowButton(coordinator),
             BookStackSyncPreviewButton(coordinator),
+            BookStackSyncForceButton(coordinator),
         ],
     )
 
@@ -130,3 +134,29 @@ class BookStackSyncPreviewButton(_BookStackSyncButtonBase):
     async def async_press(self) -> None:
         """Trigger a dry-run sync — logs to HA log, writes nothing."""
         await self.coordinator.async_run_sync(dry_run=True)
+
+
+class BookStackSyncForceButton(_BookStackSyncButtonBase):
+    """
+    Pressing this button runs a full sync that overwrites conflicted pages (#231).
+
+    Same as the ``run_now`` service with ``force: true``: AUTO blocks that
+    were edited in BookStack get overwritten, MANUAL blocks stay. Disabled
+    by default so it can't be pressed by accident; the user enables it in
+    the entity settings when they need it.
+    """
+
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: BookStackSyncCoordinator) -> None:
+        """Wire the force-sync button to the coordinator."""
+        super().__init__(
+            coordinator,
+            translation_key="force_sync",
+            unique_suffix="force_sync",
+            icon="mdi:sync-alert",
+        )
+
+    async def async_press(self) -> None:
+        """Trigger a full sync that overwrites tampered AUTO blocks."""
+        await self.coordinator.async_run_sync(dry_run=False, force=True)

@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync.button import (
+    BookStackSyncForceButton,
     BookStackSyncPreviewButton,
     BookStackSyncRunNowButton,
 )
@@ -91,6 +92,33 @@ async def test_preview_button_press_triggers_dry_run(
     await button.async_press()
 
     coordinator.async_run_sync.assert_awaited_once_with(dry_run=True)
+
+
+async def test_force_button_press_triggers_forced_sync(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#231: the force button runs a real sync with force=True."""
+    config_entry.add_to_hass(hass)
+    coordinator = _make_coordinator(hass, config_entry)
+    coordinator.async_run_sync = AsyncMock()  # type: ignore[method-assign]
+    button = BookStackSyncForceButton(coordinator)
+
+    await button.async_press()
+
+    coordinator.async_run_sync.assert_awaited_once_with(dry_run=False, force=True)
+
+
+async def test_force_button_disabled_by_default(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#231: overwriting edited pages must not be one accidental click away."""
+    config_entry.add_to_hass(hass)
+    button = BookStackSyncForceButton(_make_coordinator(hass, config_entry))
+
+    assert button.entity_registry_enabled_default is False
+    assert button.unique_id == f"{config_entry.entry_id}_force_sync"
 
 
 async def test_device_info_visit_link_falls_back_to_base_url(

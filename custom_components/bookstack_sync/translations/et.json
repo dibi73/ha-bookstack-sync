@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Sünkroonimise eelvaade (proovikäik)"
+      },
+      "force_sync": {
+        "name": "Sunnitud sünkroonimine"
       }
     }
   },

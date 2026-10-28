@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Szinkronizálási előnézet (próbafutás)"
+      },
+      "force_sync": {
+        "name": "Szinkronizálás kényszerítése"
       }
     }
   },

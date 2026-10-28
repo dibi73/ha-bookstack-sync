@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Synkroniseringsforhåndsvisning (tør-kørsel)"
+      },
+      "force_sync": {
+        "name": "Gennemtving synkronisering"
       }
     }
   },

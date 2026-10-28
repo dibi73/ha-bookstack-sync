@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Previzualizare sincronizare (rulare de probă)"
+      },
+      "force_sync": {
+        "name": "Forțează sincronizarea"
       }
     }
   },

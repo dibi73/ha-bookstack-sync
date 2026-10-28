@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Predogled sinhronizacije (preizkusni zagon)"
+      },
+      "force_sync": {
+        "name": "Vsili sinhronizacijo"
       }
     }
   },

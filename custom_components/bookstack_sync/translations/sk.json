@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Náhľad synchronizácie (skúšobný beh)"
+      },
+      "force_sync": {
+        "name": "Vynútiť synchronizáciu"
       }
     }
   },

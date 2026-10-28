@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Sinchronizavimo peržiūra (bandomasis paleidimas)"
+      },
+      "force_sync": {
+        "name": "Priverstinis sinchronizavimas"
       }
     }
   },

@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Forhåndsvisning av synkronisering (tørrkjøring)"
+      },
+      "force_sync": {
+        "name": "Tving synkronisering"
       }
     }
   },

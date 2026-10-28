@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Synchronisatievoorbeeld (proefuitvoering)"
+      },
+      "force_sync": {
+        "name": "Synchronisatie forceren"
       }
     }
   },

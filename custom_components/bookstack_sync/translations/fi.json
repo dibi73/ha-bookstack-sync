@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Synkronoinnin esikatselu (kuiva-ajo)"
+      },
+      "force_sync": {
+        "name": "Pakota synkronointi"
       }
     }
   },

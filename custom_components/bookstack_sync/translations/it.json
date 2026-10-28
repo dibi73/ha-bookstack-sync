@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Anteprima sincronizzazione (esecuzione di prova)"
+      },
+      "force_sync": {
+        "name": "Forza sincronizzazione"
       }
     }
   },

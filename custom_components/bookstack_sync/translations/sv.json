@@ -147,6 +147,9 @@
       },
       "preview": {
         "name": "Förhandsgranskning av synkronisering (torrkörning)"
+      },
+      "force_sync": {
+        "name": "Tvinga synkronisering"
       }
     }
   },
