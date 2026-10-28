@@ -25,6 +25,7 @@ import unicodedata
 from dataclasses import dataclass
 
 from .const import (
+    ATTRIBUTION,
     AUTO_BEGIN_MARKER,
     AUTO_END_MARKER,
     MANUAL_BEGIN_MARKER,
@@ -38,6 +39,14 @@ _AUTO_RE = re.compile(
 _MANUAL_RE = re.compile(
     re.escape(MANUAL_BEGIN_MARKER) + r"(.*?)" + re.escape(MANUAL_END_MARKER),
     re.DOTALL,
+)
+
+# #260: the attribution line at the top of every AUTO block carries the
+# render time ("... – synced at 2026-10-28 22:44 UTC"). It is masked out
+# before hashing, otherwise every page counts as changed on every sync.
+_ATTRIBUTION_TIMESTAMP_RE = re.compile(
+    r"^(.*" + re.escape(ATTRIBUTION) + r".*?)\d{4}-\d{2}-\d{2} \d{2}:\d{2}",
+    re.MULTILINE,
 )
 
 _FALLBACK_MANUAL_BODY = (
@@ -92,7 +101,20 @@ def _normalise_for_hash(auto_body: str) -> str:
     3. Trailing/leading whitespace: ``strip()``. ``build_page_body``
        writes through ``auto_body.strip()`` and ``extract_auto_block``
        reads via ``.strip('\n')``, so the hash must match either side.
+
+    4. The render timestamp in the attribution line is masked (#260).
+       It changes on every run, so leaving it in made every page look
+       changed and get rewritten (plus a new BookStack revision) on every
+       sync. The visible timestamp now reflects the last content change.
     """
+    return _ATTRIBUTION_TIMESTAMP_RE.sub(
+        r"\1<timestamp>",
+        _normalise_whitespace_and_unicode(auto_body),
+    )
+
+
+def _normalise_whitespace_and_unicode(auto_body: str) -> str:
+    """Apply steps 1-3 of ``_normalise_for_hash`` (newlines, NFC, strip)."""
     text = auto_body.replace("\r\n", "\n").replace("\r", "\n")
     text = unicodedata.normalize("NFC", text)
     return text.strip()
@@ -101,6 +123,18 @@ def _normalise_for_hash(auto_body: str) -> str:
 def hash_auto_block(auto_body: str) -> str:
     """Compute the whitespace+unicode-normalised hash of the AUTO body."""
     return hashlib.sha256(_normalise_for_hash(auto_body).encode("utf-8")).hexdigest()
+
+
+def _timestamped_hash(auto_body: str) -> str:
+    """
+    Hash as computed before v0.28.1, with the render timestamp included.
+
+    Only used to recognise mappings stored by earlier versions so they are
+    not falsely flagged as tampered (#260). Pages re-stamp to the new hash
+    on their next write or unchanged check.
+    """
+    normalised = _normalise_whitespace_and_unicode(auto_body)
+    return hashlib.sha256(normalised.encode("utf-8")).hexdigest()
 
 
 def _legacy_unstripped_hash(auto_body: str) -> str:
@@ -224,6 +258,8 @@ def merge_page(
         # variant, so the legacy check naturally goes away.
         and _legacy_unstripped_hash(existing_auto + "\n") != last_known_auto_hash
         and _legacy_unstripped_hash(existing_auto) != last_known_auto_hash
+        # #260: hashes stored before v0.28.1 still contain the timestamp.
+        and _timestamped_hash(existing_auto) != last_known_auto_hash
     )
 
     auto_changed = existing_auto is None or hash_auto_block(existing_auto) != new_hash

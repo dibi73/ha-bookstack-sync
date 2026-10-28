@@ -284,7 +284,8 @@ The **Options** dialog (integration card → *Configure*) covers:
 1. Reads Home Assistant's registries (areas, devices, entities,
    labels, automations, …) and builds every page's auto block.
 2. Compares each page with what it last wrote. Unchanged pages are not
-   written, so BookStack gets no empty revisions.
+   written, so BookStack gets no empty revisions. The timestamp at the
+   top of a page therefore shows when its content last changed.
 3. Writes changed pages, up to 5 at a time, staying below BookStack's
    default limit of 180 API requests per minute. Network hiccups and
    rate-limit answers are retried with backoff; writes of very large

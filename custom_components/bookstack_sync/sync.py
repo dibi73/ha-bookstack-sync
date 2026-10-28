@@ -1479,6 +1479,9 @@ async def _sync_one(  # noqa: PLR0911, PLR0913, PLR0915 - cohesive sync step, sp
         # changes again otherwise.
         report.unchanged.append(page.title)
         mapping.last_seen = datetime.now(tz=UTC).isoformat()
+        # #260: re-stamp a pre-v0.28.1 (timestamped) stored hash to the
+        # current form once the page is confirmed untampered.
+        mapping.auto_block_hash = new_hash
         # v0.14.4: refresh slug from BookStack — handles the case where
         # a user renamed the page in BookStack and BookStack regenerated
         # the slug. Without this update, our cross-page links would 404.

@@ -300,7 +300,8 @@ Der Dialog **Optionen** (Integrationskachel → *Konfigurieren*) umfasst:
    Seite.
 2. Vergleicht jede Seite mit dem, was zuletzt geschrieben wurde.
    Unveränderte Seiten werden nicht geschrieben, BookStack bekommt also
-   keine leeren Revisionen.
+   keine leeren Revisionen. Der Zeitstempel oben auf einer Seite zeigt
+   deshalb, wann sich ihr Inhalt zuletzt geändert hat.
 3. Schreibt geänderte Seiten, bis zu 5 gleichzeitig, und bleibt dabei
    unter BookStacks Standardgrenze von 180 API-Anfragen pro Minute.
    Netzwerkaussetzer und Antworten wegen Ratenbegrenzung werden mit
