@@ -6,10 +6,11 @@ import asyncio
 import ipaddress
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.helpers import (
@@ -28,7 +29,25 @@ from homeassistant.helpers import (
 from .const import LOGGER
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from homeassistant.core import HomeAssistant
+
+
+def _all_devices(device_reg: dr.DeviceRegistry) -> Iterable[dr.DeviceEntry]:
+    """
+    Return every device entry in the registry (#233).
+
+    HA 2026.9 turned ``DeviceRegistry.devices`` into a view that yields the
+    entries when iterated and reports mapping-style use such as
+    ``.values()`` as deprecated (breaks in 2027.9). Older releases return a
+    plain mapping, where iterating yields the device IDs instead. This
+    integration declares no minimum HA version, so support both.
+    """
+    devices: Any = device_reg.devices
+    if isinstance(devices, Mapping):
+        return cast("Iterable[dr.DeviceEntry]", devices.values())
+    return cast("Iterable[dr.DeviceEntry]", devices)
 
 
 # Common attribute names that Tasmota / Shelly / generic MQTT integrations
@@ -471,9 +490,8 @@ def _compute_device_groups(device_reg: dr.DeviceRegistry) -> dict[str, list[str]
     by_connection: dict[tuple[str, str], list[str]] = {}
     by_tuya_value: dict[str, list[str]] = {}
     bt_artifact_hosts: list[tuple[str, str]] = []  # (artifact_id, host_id)
-    # Whole-registry scan (#146): no per-ID/identifier lookup applies here,
-    # and HA has no dedicated bulk-enumeration helper - .values() is fine.
-    for device in device_reg.devices.values():
+    # Whole-registry scan (#146): no per-ID/identifier lookup applies here.
+    for device in _all_devices(device_reg):
         find(device.id)  # ensure every device has a parent entry
         for identifier in device.identifiers:
             by_identifier.setdefault(identifier, []).append(device.id)
@@ -970,9 +988,8 @@ def _extract_integrations(
     excluded_domains: set[str] | None = None,
 ) -> list[IntegrationSnapshot]:
     devices_per_entry: dict[str, int] = {}
-    # Whole-registry scan (#146) - see _compute_device_groups for why
-    # .values() stays (no per-ID lookup applies, no bulk-enum helper exists).
-    for device in device_reg.devices.values():
+    # Whole-registry scan (#146), via _all_devices (#233).
+    for device in _all_devices(device_reg):
         # device_reg's devices iterate the raw HA registry here (not our
         # filtered DeviceSnapshots), so the values are still entry_id strings.
         for entry_id in device.config_entries:
@@ -1535,9 +1552,8 @@ def _extract_unifi_topology(
     installed or only clients tracked).
     """
     nodes: dict[str, UnifiInfraNode] = {}
-    # Whole-registry scan (#146) - see _compute_device_groups for why
-    # .values() stays (no per-ID lookup applies, no bulk-enum helper exists).
-    for device in device_reg.devices.values():
+    # Whole-registry scan (#146), via _all_devices (#233).
+    for device in _all_devices(device_reg):
         if device.manufacturer not in _UNIFI_MANUFACTURERS:
             continue
         role = _classify_unifi_role(device.model or "")
@@ -1690,11 +1706,10 @@ def _extract_bluetooth_network(
     proxies`` - just the proxy's identity, not what it hears (still
     not derivable).
     """
-    # Whole-registry scan (#146) - see _compute_device_groups for why
-    # .values() stays (no per-ID lookup applies, no bulk-enum helper exists).
+    # Whole-registry scan (#146), via _all_devices (#233).
     all_bt_devices = [
         d
-        for d in device_reg.devices.values()
+        for d in _all_devices(device_reg)
         if any(c[0] == dr.CONNECTION_BLUETOOTH for c in d.connections)
     ]
     if not all_bt_devices:

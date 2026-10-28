@@ -27,6 +27,7 @@ from homeassistant.helpers import (
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bookstack_sync.extractor import (
+    _all_devices,
     _classify_unifi_role,
     _compute_device_groups,
     _extract_bluetooth_network,
@@ -1963,3 +1964,40 @@ def test_parse_energy_payload_pure() -> None:
 
     assert _parse_energy_payload(None) is None
     assert _parse_energy_payload({}) is None
+
+
+class _ViewLikeDevices:
+    """Stand-in for HA 2026.9+'s ``devices`` view: iterates entries, no ``.values``."""
+
+    def __init__(self, entries: list[object]) -> None:
+        self._entries = entries
+
+    def __iter__(self):
+        return iter(self._entries)
+
+    def values(self):
+        msg = "mapping-style access is deprecated (#233)"
+        raise AssertionError(msg)
+
+
+def test_all_devices_iterates_new_style_view() -> None:
+    """#233: on HA 2026.9+ ``devices`` must be iterated, not ``.values()``-ed."""
+    entries = [object(), object()]
+    registry = type("Reg", (), {"devices": _ViewLikeDevices(entries)})()
+    assert list(_all_devices(registry)) == entries
+
+
+def test_all_devices_uses_values_on_old_mapping() -> None:
+    """#233: before 2026.9 ``devices`` is a mapping; iterating it yields IDs."""
+    entries = {"id1": object(), "id2": object()}
+    registry = type("Reg", (), {"devices": entries})()
+    assert list(_all_devices(registry)) == list(entries.values())
+
+
+async def test_all_devices_matches_real_registry(hass: HomeAssistant) -> None:
+    """Against the HA version under test, every registered device comes back."""
+    await _seed_minimal_registry(hass)
+    device_reg = dr.async_get(hass)
+    ids = {d.id for d in _all_devices(device_reg)}
+    assert ids
+    assert all(device_reg.async_get(i) is not None for i in ids)
