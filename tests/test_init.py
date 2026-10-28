@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
 
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.core import CoreState
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -137,3 +140,41 @@ async def test_migrate_external_base_url_does_not_overwrite_existing_data(
         config_entry.data[CONF_EXTERNAL_BASE_URL]
         == "https://already-migrated.example.com"
     )
+
+
+async def test_initial_sync_waits_for_ha_start_and_is_untracked(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """
+    #259: the first sync must not hold up HA's startup.
+
+    It used to go through ``async_request_refresh`` (debouncer -> tracked
+    task), which HA's bootstrap waits for. Now it starts only after HA has
+    started, as a direct ``async_refresh`` in a background task.
+    """
+    config_entry.add_to_hass(hass)
+    hass.set_state(CoreState.not_running)
+
+    with (
+        patch(
+            "custom_components.bookstack_sync.coordinator."
+            "BookStackSyncCoordinator.async_refresh",
+            new=AsyncMock(),
+        ) as refresh,
+        patch(
+            "custom_components.bookstack_sync.coordinator."
+            "BookStackSyncCoordinator.async_request_refresh",
+            new=AsyncMock(),
+        ) as request_refresh,
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+        refresh.assert_not_awaited()
+
+        hass.set_state(CoreState.running)
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+        await hass.async_block_till_done()
+
+        refresh.assert_awaited_once()
+        request_refresh.assert_not_awaited()
