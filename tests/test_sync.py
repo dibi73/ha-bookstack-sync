@@ -8,6 +8,7 @@ rendering, tombstoning, page mapping persistence.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -818,6 +819,36 @@ async def test_notification_lists_orphaned_pages_and_caps_the_list(
     assert f"Gerät {NOTIFICATION_MAX_ITEMS - 1}]" in body
     assert f"Gerät {NOTIFICATION_MAX_ITEMS}]" not in body
     assert str(extra) in body.rsplit("\n", 1)[-1]
+
+
+async def test_second_sync_without_ha_changes_writes_nothing(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """#260: a later sync with the same HA state leaves every page unchanged."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    ar.async_get(hass).async_create("Living Room")
+
+    class _Clock(datetime):
+        current = datetime(2026, 10, 28, 22, 0, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return cls.current
+
+    with patch("custom_components.bookstack_sync.sync.datetime", _Clock):
+        await run_sync(hass, client, store, 1, strings)
+        _Clock.current = datetime(2026, 10, 29, 3, 0, tzinfo=UTC)
+        writes_before = client.update_page.await_count + client.create_page.await_count
+        report = await run_sync(hass, client, store, 1, strings)
+
+    assert report.updated == []
+    assert report.created == []
+    assert report.unchanged
+    writes_after = client.update_page.await_count + client.create_page.await_count
+    assert writes_after == writes_before
 
 
 async def test_drifted_stored_hash_does_not_trigger_tampering(
