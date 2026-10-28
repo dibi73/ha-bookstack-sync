@@ -14,8 +14,12 @@ Github is used to host code, to track issues and feature requests, as well as ac
 Pull requests are the best way to propose changes to the codebase.
 
 1. Fork the repo and create your branch from `main`.
-2. If you've changed something, update the documentation.
-3. Make sure your code lints (using `scripts/lint`).
+2. If you've changed something, update the documentation. The README
+   exists in English (`README.md`) and German (`README.de.md`); please
+   keep both in sync (a rough German version is fine, it will be
+   polished on review).
+3. Make sure your code lints (using `scripts/lint`) and passes
+   `mypy` (strict, configured in `mypy.ini`).
 4. Test you contribution.
 5. Issue that pull request!
 
