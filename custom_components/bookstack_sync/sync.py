@@ -896,7 +896,12 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     # look like a vanished HA object and get wrongly tombstoned every
     # run; (2) the main overview's "Other pages" list can then link to
     # it directly instead of always rendering bold, unlinked text.
-    orphaned_entries = await _gather_orphaned_entries(client, store, book_slug)
+    orphaned_entries = await _gather_orphaned_entries(
+        client,
+        store,
+        book_slug,
+        external_base_url=external_base_url,
+    )
     orphaned_page = _PlannedPage(
         key=f"{PAGE_KIND_ORPHANED}:_",
         title=strings["title_orphaned"],
@@ -1448,6 +1453,8 @@ async def _gather_orphaned_entries(
     client: BookStackApiClient,
     store: BookStackSyncStore,
     book_slug: str,
+    *,
+    external_base_url: str | None = None,
 ) -> list[OrphanedPageEntry]:
     """
     Build the row list for the orphaned-pages overview page (#166).
@@ -1458,6 +1465,12 @@ async def _gather_orphaned_entries(
     already pays for the same set of pages. A page that 404s was deleted
     directly in BookStack since it was tombstoned; the stale mapping is
     dropped so it stops being re-checked on every future sync.
+
+    With an ``external_base_url`` configured (#223), the page links are
+    absolute against it, the same address BookStack itself uses for its
+    own links (e.g. in the "Geräte" chapter), so they also work where a
+    root-relative href does not resolve (copied links, the markdown
+    export). Without one they stay root-relative.
     """
     entries: list[OrphanedPageEntry] = []
     for key, mapping in sorted(store.all().items()):
@@ -1483,7 +1496,15 @@ async def _gather_orphaned_entries(
             continue
         name = str(page.get("name") or key)
         slug = str(page.get("slug") or "")
-        url = _build_page_url(book_slug, slug) if slug else None
+        url = (
+            (
+                _build_absolute_page_url(external_base_url, book_slug, slug)
+                if external_base_url
+                else _build_page_url(book_slug, slug)
+            )
+            if slug
+            else None
+        )
         entries.append(
             OrphanedPageEntry(
                 name=name,

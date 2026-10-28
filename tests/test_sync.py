@@ -1341,6 +1341,32 @@ async def test_orphaned_overview_lists_tombstoned_page_next_sync(
     assert f"(/books/book/page/{target_slug})" in orphaned_markdown
 
 
+async def test_orphaned_overview_links_use_external_base_url_when_set(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """#223: with an external BookStack URL, orphaned-page links are absolute."""
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    living = area_reg.async_create("Living Room")
+    external = "https://wiki.example.com"
+
+    await run_sync(hass, client, store, 1, strings, external_base_url=external)
+    area_reg.async_delete(living.id)
+    await run_sync(hass, client, store, 1, strings, external_base_url=external)
+    await run_sync(hass, client, store, 1, strings, external_base_url=external)
+
+    orphaned_mapping = store.get("orphaned:_")
+    assert orphaned_mapping is not None
+    orphaned_markdown = state["pages"][orphaned_mapping.page_id]["markdown"]
+    area_mapping = store.get("area:" + living.id)
+    assert area_mapping is not None
+    target_slug = state["pages"][area_mapping.page_id]["slug"]
+    assert f"({external}/books/book/page/{target_slug})" in orphaned_markdown
+
+
 async def test_orphaned_overview_drops_stale_mapping_if_deleted_in_bookstack(
     hass: HomeAssistant,
     store: BookStackSyncStore,
