@@ -92,7 +92,7 @@ def _slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", ascii_text).strip("-")
 
 
-def _md_escape(value: str) -> str:
+def _md_escape(value: object) -> str:
     """
     Escape characters that would break a markdown table or inject HTML.
 
@@ -106,10 +106,12 @@ def _md_escape(value: str) -> str:
     sanitiser strips ``javascript:`` schemes on render, but treating that
     as defence-in-depth lets us not depend on it.
     """
-    if not value:
-        return value
+    # Device registry fields such as sw_version can arrive as ints.
+    text = "" if value is None else str(value)
+    if not text:
+        return text
     return (
-        value.replace("\\", "\\\\")
+        text.replace("\\", "\\\\")
         .replace("|", "\\|")
         .replace("[", "\\[")
         .replace("]", "\\]")
