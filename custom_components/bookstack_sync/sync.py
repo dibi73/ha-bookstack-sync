@@ -69,6 +69,7 @@ from .extractor import (
     ReverseUsageEntry,
     async_extract_addons,
     async_extract_backup_status,
+    async_extract_blueprints,
     async_extract_dashboard_usage,
     async_extract_energy_config,
     extract_snapshot,
@@ -353,6 +354,7 @@ def _plan_pages(
                 now,
                 strings,
                 ha_url=ha_url,
+                blueprints=[b for b in snapshot.blueprints if b.domain == "automation"],
             ),
         ),
         _PlannedPage(
@@ -363,6 +365,7 @@ def _plan_pages(
                 now,
                 strings,
                 ha_url=ha_url,
+                blueprints=[b for b in snapshot.blueprints if b.domain == "script"],
             ),
         ),
         _PlannedPage(
@@ -761,8 +764,10 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     backup_status = await async_extract_backup_status(hass)
     addons = await async_extract_addons(hass)
     dashboard_usage = await async_extract_dashboard_usage(hass)
+    blueprints = await async_extract_blueprints(hass)
     snapshot = extract_snapshot(
         hass,
+        blueprints=blueprints,
         energy_config=energy_config,
         backup_status=backup_status,
         addons=addons,
@@ -1071,8 +1076,10 @@ async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params 
     backup_status = await async_extract_backup_status(hass)
     addons = await async_extract_addons(hass)
     dashboard_usage = await async_extract_dashboard_usage(hass)
+    blueprints = await async_extract_blueprints(hass)
     snapshot = extract_snapshot(
         hass,
+        blueprints=blueprints,
         energy_config=energy_config,
         backup_status=backup_status,
         addons=addons,

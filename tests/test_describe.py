@@ -7,6 +7,7 @@ from custom_components.bookstack_sync.describe import (
     describe_automation,
     describe_script,
 )
+from custom_components.bookstack_sync.extractor import BlueprintInfo
 
 DE = get_strings("de")
 EN = get_strings("en")
@@ -237,3 +238,44 @@ def test_repeat_while_lists_conditions_then_body() -> None:
 def test_no_config_renders_nothing() -> None:
     assert describe_automation(None, DE, {}) == []
     assert describe_script(None, DE, {}) == []
+
+
+def test_blueprint_automation_lists_blueprint_and_inputs() -> None:
+    """#50: blueprint-based automations show the blueprint and its inputs."""
+    blueprint = BlueprintInfo(
+        domain="automation",
+        path="homeassistant/motion_light.yaml",
+        name="Motion-activated Light",
+        inputs={"motion_entity": "Motion Sensor", "light_target": "Light"},
+    )
+    config = {
+        "use_blueprint": {
+            "path": "homeassistant/motion_light.yaml",
+            "input": {
+                "motion_entity": "light.sofa",
+                "light_target": {"entity_id": ["light.sofa"]},
+                "no_motion_wait": 120,
+                "notify_url": "https://x/?token=SECRET",
+            },
+        },
+    }
+    out = _text(describe_automation(config, DE, REFS, blueprint))
+
+    assert (
+        "**Blueprint**\n\n- Motion-activated Light (`homeassistant/motion_light.yaml`)"
+        in out
+    )
+    assert "- Motion Sensor: Sofa (`light.sofa`)" in out
+    assert "- Light: Sofa (`light.sofa`)" in out
+    assert "- no_motion_wait: `120`" in out
+    assert "- notify_url: *(verborgen)*" in out
+    assert "SECRET" not in out
+    assert "**Auslöser**" not in out
+
+
+def test_blueprint_not_loadable_shows_path_only() -> None:
+    config = {"use_blueprint": {"path": "gone/missing.yaml", "input": {}}}
+    out = _text(describe_script(config, EN, {}))
+
+    assert "**Blueprint**\n\n- `gone/missing.yaml`" in out
+    assert "**Inputs**" not in out

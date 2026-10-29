@@ -215,6 +215,27 @@ class DeviceSnapshot:
 
 
 @dataclass
+class BlueprintInfo:
+    """
+    One installed blueprint and who uses it (issue #50).
+
+    ``inputs`` maps input key → display name from the blueprint's own
+    metadata (sections flattened), so a summary can say "Motion sensor"
+    instead of ``motion_entity``. ``used_by`` holds the names of the
+    automations/scripts built from it, sorted.
+    """
+
+    domain: str
+    path: str
+    name: str
+    author: str | None = None
+    description: str | None = None
+    source_url: str | None = None
+    inputs: dict[str, str] = field(default_factory=dict)
+    used_by: list[str] = field(default_factory=list)
+
+
+@dataclass
 class AutomationSnapshot:
     """One automation, scraped from the automation domain's state."""
 
@@ -230,6 +251,9 @@ class AutomationSnapshot:
     # ``_reference_labels``. ``describe.describe_automation`` renders both.
     config: dict[str, Any] | None = None
     refs: dict[str, str] = field(default_factory=dict)
+    # Issue #50: the blueprint ``config["use_blueprint"]`` points to, when
+    # HA could load it.
+    blueprint: BlueprintInfo | None = None
 
 
 @dataclass
@@ -245,6 +269,9 @@ class ScriptSnapshot:
     # Issue #44, see ``AutomationSnapshot.config``.
     config: dict[str, Any] | None = None
     refs: dict[str, str] = field(default_factory=dict)
+    # Issue #50: the blueprint ``config["use_blueprint"]`` points to, when
+    # HA could load it.
+    blueprint: BlueprintInfo | None = None
 
 
 @dataclass
@@ -452,6 +479,8 @@ class HASnapshot:
     labels: list[LabelSnapshot] = field(default_factory=list)
     # Backup status from HA's backup integration (issue #47), when available.
     backup_status: BackupStatusSnapshot | None = None
+    # Installed automation/script blueprints (issue #50), sorted by name.
+    blueprints: list[BlueprintInfo] = field(default_factory=list)
     # ``False`` once ``_strip_live_values`` has run (issue #266): renderers
     # then leave out the table columns that would only hold ``—``.
     live_values: bool = True
@@ -599,6 +628,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     exclude_disabled: bool = False,
     exclude_live_values: bool = False,
     dashboard_usage: dict[str, list[DashboardRef]] | None = None,
+    blueprints: list[BlueprintInfo] | None = None,
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
@@ -652,6 +682,10 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     read separately by ``async_extract_dashboard_usage``, because loading a
     dashboard's config is async. Each device gets the views of all its
     entities attached as ``DeviceSnapshot.dashboards``.
+
+    ``blueprints`` (issue #50) comes from ``async_extract_blueprints``
+    (loading blueprint files needs the executor); automations and scripts
+    built from one get it attached, and each blueprint learns its users.
     """
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
@@ -906,9 +940,79 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     )
     if dashboard_usage:
         _attach_dashboards(snapshot, dashboard_usage)
+    if blueprints:
+        _attach_blueprints(snapshot, blueprints)
     if exclude_live_values:
         _strip_live_values(snapshot)
     return snapshot
+
+
+def _attach_blueprints(snapshot: HASnapshot, blueprints: list[BlueprintInfo]) -> None:
+    by_key = {(b.domain, b.path): b for b in blueprints}
+    users: list[tuple[str, AutomationSnapshot | ScriptSnapshot]] = [
+        *(("automation", a) for a in snapshot.automations),
+        *(("script", s) for s in snapshot.scripts),
+    ]
+    for domain, item in users:
+        use = (item.config or {}).get("use_blueprint")
+        if not isinstance(use, dict):
+            continue
+        blueprint = by_key.get((domain, str(use.get("path"))))
+        if blueprint is None:
+            continue
+        item.blueprint = blueprint
+        blueprint.used_by.append(item.name)
+    for blueprint in blueprints:
+        blueprint.used_by.sort(key=str.lower)
+    snapshot.blueprints = sorted(
+        blueprints, key=lambda b: (b.domain, b.name.lower(), b.path)
+    )
+
+
+async def async_extract_blueprints(hass: HomeAssistant) -> list[BlueprintInfo]:
+    """
+    List every automation and script blueprint HA can load (issue #50).
+
+    Uses the ``blueprint`` integration's ``DomainBlueprints`` per domain,
+    which caches parsed files and reads them on the executor. A blueprint
+    that fails to load is skipped; so is everything when the integration
+    isn't set up.
+    """
+    domains = hass.data.get("blueprint")
+    if not isinstance(domains, dict):
+        return []
+    result: list[BlueprintInfo] = []
+    for domain in ("automation", "script"):
+        domain_blueprints = domains.get(domain)
+        if domain_blueprints is None:
+            continue
+        try:
+            loaded = await domain_blueprints.async_get_blueprints()
+        except Exception as err:  # noqa: BLE001 - blueprints are optional extras
+            LOGGER.debug("Blueprints for %s not loaded: %s", domain, err)
+            continue
+        for path, blueprint in loaded.items():
+            metadata = getattr(blueprint, "metadata", None)
+            if not isinstance(metadata, dict):
+                continue
+            inputs = {
+                str(key): str(spec.get("name") or key)
+                if isinstance(spec, dict)
+                else str(key)
+                for key, spec in (getattr(blueprint, "inputs", None) or {}).items()
+            }
+            result.append(
+                BlueprintInfo(
+                    domain=domain,
+                    path=str(path),
+                    name=str(metadata.get("name") or path),
+                    author=metadata.get("author"),
+                    description=metadata.get("description"),
+                    source_url=metadata.get("source_url"),
+                    inputs=inputs,
+                ),
+            )
+    return result
 
 
 def _attach_dashboards(

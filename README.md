@@ -71,7 +71,12 @@ Pages are organised into chapters inside your target book:
   data shows values only for harmless keys such as `message`,
   `brightness_pct` or `temperature`; all other keys are listed by name
   only, because their values may come from `!secret`. Webhook IDs are
-  never shown
+  never shown. An automation or script built from a blueprint shows the
+  blueprint and its inputs by their display names instead (inputs whose
+  name suggests a credential stay hidden), and both pages end with a
+  **Blueprints** list: every installed blueprint with file, author,
+  source, a short description and which automations or scripts use it
+  — unused blueprints included
 - **Network** — table of every device with network data, plus a UniFi
   topology tree and a DHCP-reservation export block, when applicable
 - **Bluetooth** — the list of BT proxies (ESPHome BT-proxy nodes and

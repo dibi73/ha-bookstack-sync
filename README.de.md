@@ -73,7 +73,13 @@ Die Seiten werden in Kapiteln deines Ziel-Buchs organisiert:
   HA-Backup. Bei Aktionsdaten stehen Werte nur für unbedenkliche Felder
   wie `message`, `brightness_pct` oder `temperature`; alle anderen
   Felder erscheinen nur mit Namen, weil ihre Werte aus `!secret` stammen
-  können. Webhook-IDs erscheinen nie
+  können. Webhook-IDs erscheinen nie. Eine Automation oder ein Skript
+  aus einem Blueprint zeigt stattdessen den Blueprint und seine Eingaben
+  mit ihren Anzeigenamen (Eingaben, deren Name nach Zugangsdaten
+  klingt, bleiben verborgen), und beide Seiten enden mit einer Liste
+  **Blueprints**: jeder installierte Blueprint mit Datei, Autor, Quelle,
+  kurzer Beschreibung und den Automationen bzw. Skripten, die ihn nutzen
+  — auch unbenutzte
 - **Netzwerk** — Tabelle aller Geräte mit Netzwerkdaten, dazu ein
   UniFi-Topologiebaum und ein Exportblock für DHCP-Reservierungen, wo
   möglich

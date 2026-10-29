@@ -22,9 +22,13 @@ to a code span of the raw value.
 from __future__ import annotations
 
 import json
-from typing import Any
+import re
+from typing import TYPE_CHECKING, Any
 
 from ._markdown import _md_escape
+
+if TYPE_CHECKING:
+    from .extractor import BlueprintInfo
 
 # Nesting deeper than this is cut off with "…" — a choose inside a repeat
 # inside an if is already hard to follow as prose.
@@ -63,6 +67,10 @@ _SAFE_DATA_KEYS = frozenset(
 )
 
 _TARGET_KEYS = ("entity_id", "device_id", "area_id", "floor_id", "label_id")
+
+# Blueprint inputs are free-form; hide the value of any input whose key
+# suggests a credential (#50).
+_SECRET_INPUT_RE = re.compile(r"secret|token|passw|api_?key|webhook|url", re.IGNORECASE)
 
 
 def _code(value: object) -> str:
@@ -476,15 +484,48 @@ def _section(title: str, lines: list[str]) -> list[str]:
     return [f"**{title}**", "", *lines, ""] if lines else []
 
 
+def _blueprint_lines(
+    config: dict[str, Any],
+    d: _Describer,
+    blueprint: BlueprintInfo | None,
+) -> list[str]:
+    """Describe ``use_blueprint``: which blueprint, with which inputs (#50)."""
+    use = config.get("use_blueprint")
+    if not isinstance(use, dict):
+        return []
+    path = _code(use.get("path"))
+    head = f"- {_md_escape(blueprint.name)} ({path})" if blueprint else f"- {path}"
+    labels = blueprint.inputs if blueprint else {}
+    inputs: list[str] = []
+    for key, value in (use.get("input") or {}).items():
+        label = _md_escape(labels.get(key, key))
+        if _SECRET_INPUT_RE.search(str(key)):
+            shown = d.s["desc_hidden"]
+        elif isinstance(value, dict) and any(k in value for k in _TARGET_KEYS):
+            shown = d.target(value)
+        elif isinstance(value, (str, list)):
+            shown = d.refs_of(value)
+        else:
+            shown = _code(value)
+        inputs.append(f"- {label}: {shown}")
+    return [
+        *_section(d.s["desc_blueprint"], [head]),
+        *_section(d.s["desc_inputs"], inputs),
+    ]
+
+
 def describe_automation(
     config: dict[str, Any] | None,
     strings: dict[str, str],
     refs: dict[str, str],
+    blueprint: BlueprintInfo | None = None,
 ) -> list[str]:
     """Return Markdown lines describing triggers, conditions and actions."""
     if not isinstance(config, dict):
         return []
     d = _Describer(strings, refs)
+    if "use_blueprint" in config:
+        return _blueprint_lines(config, d, blueprint)
     triggers = config.get("triggers", config.get("trigger"))
     conditions = config.get("conditions", config.get("condition"))
     actions = config.get("actions", config.get("action"))
@@ -502,11 +543,14 @@ def describe_script(
     config: dict[str, Any] | None,
     strings: dict[str, str],
     refs: dict[str, str],
+    blueprint: BlueprintInfo | None = None,
 ) -> list[str]:
     """Return Markdown lines describing a script's fields and sequence."""
     if not isinstance(config, dict):
         return []
     d = _Describer(strings, refs)
+    if "use_blueprint" in config:
+        return _blueprint_lines(config, d, blueprint)
     fields = config.get("fields")
     field_lines = (
         [
