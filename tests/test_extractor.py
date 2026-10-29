@@ -35,6 +35,7 @@ from custom_components.bookstack_sync.extractor import (
     _parse_energy_payload,
     async_extract_addons,
     async_extract_backup_status,
+    async_extract_dashboard_usage,
     async_extract_energy_config,
     extract_snapshot,
 )
@@ -1980,6 +1981,76 @@ async def test_automation_without_component_has_no_config(hass: HomeAssistant) -
     morning = next(a for a in snap.automations if a.name == "Morning Routine")
     assert morning.config is None
     assert morning.refs == {}
+
+
+class _FakeDashboard:
+    def __init__(self, config: Any, meta: dict[str, Any] | None = None) -> None:
+        self._config = config
+        self.config = meta
+
+    async def async_load(self, *, force: bool) -> Any:
+        if isinstance(self._config, Exception):
+            raise self._config
+        return self._config
+
+
+async def test_dashboard_usage_attached_to_devices(hass: HomeAssistant) -> None:
+    """#45: each device lists the dashboard views showing its entities."""
+    await _seed_minimal_registry(hass)
+    hass.data["lovelace"] = MagicMock(
+        dashboards={
+            None: _FakeDashboard(
+                {
+                    "views": [
+                        {"title": "Start", "cards": []},
+                        {
+                            "title": "Wohnzimmer",
+                            "path": "wohnen",
+                            "sections": [
+                                {
+                                    "cards": [
+                                        {"type": "tile", "entity": "Light.Sofa_Light"}
+                                    ]
+                                }
+                            ],
+                        },
+                    ],
+                },
+            ),
+            "dashboard-leo": _FakeDashboard(
+                {
+                    "views": [
+                        {
+                            "title": "Licht",
+                            "cards": [{"entities": ["light.sofa_light"]}],
+                        }
+                    ]
+                },
+                meta={"title": "Leo", "url_path": "dashboard-leo"},
+            ),
+            "dashboard-kaputt": _FakeDashboard(RuntimeError("broken")),
+            "dashboard-auto": _FakeDashboard({"strategy": {"type": "original-states"}}),
+        },
+    )
+
+    usage = await async_extract_dashboard_usage(hass)
+    snap = extract_snapshot(hass, dashboard_usage=usage)
+
+    sofa = next(d for d in _all_snapshot_devices(snap) if d.name == "Sofa Light")
+    assert [
+        (r.dashboard_title, r.dashboard_path, r.view_title, r.view_path)
+        for r in sofa.dashboards
+    ] == [
+        (None, "lovelace", "Wohnzimmer", "wohnen"),
+        ("Leo", "dashboard-leo", "Licht", "0"),
+    ]
+    fridge = next(d for d in _all_snapshot_devices(snap) if d.name == "Fridge Door")
+    assert fridge.dashboards == []
+
+
+async def test_dashboard_usage_without_lovelace(hass: HomeAssistant) -> None:
+    """#45: no lovelace data → nothing attached, no crash."""
+    assert await async_extract_dashboard_usage(hass) == {}
 
 
 async def test_live_values_kept_by_default(hass: HomeAssistant) -> None:

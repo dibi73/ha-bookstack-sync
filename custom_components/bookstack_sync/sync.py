@@ -69,6 +69,7 @@ from .extractor import (
     ReverseUsageEntry,
     async_extract_addons,
     async_extract_backup_status,
+    async_extract_dashboard_usage,
     async_extract_energy_config,
     extract_snapshot,
 )
@@ -759,11 +760,13 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     energy_config = await async_extract_energy_config(hass)
     backup_status = await async_extract_backup_status(hass)
     addons = await async_extract_addons(hass)
+    dashboard_usage = await async_extract_dashboard_usage(hass)
     snapshot = extract_snapshot(
         hass,
         energy_config=energy_config,
         backup_status=backup_status,
         addons=addons,
+        dashboard_usage=dashboard_usage,
         known_device_pages=known_device_pages,
         excluded_integrations=excluded_integrations,
         excluded_devices=excluded_devices,
@@ -1067,11 +1070,13 @@ async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params 
     energy_config = await async_extract_energy_config(hass)
     backup_status = await async_extract_backup_status(hass)
     addons = await async_extract_addons(hass)
+    dashboard_usage = await async_extract_dashboard_usage(hass)
     snapshot = extract_snapshot(
         hass,
         energy_config=energy_config,
         backup_status=backup_status,
         addons=addons,
+        dashboard_usage=dashboard_usage,
         known_device_pages=known_device_pages,
         excluded_integrations=excluded_integrations,
         excluded_devices=excluded_devices,

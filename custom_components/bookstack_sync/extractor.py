@@ -170,6 +170,23 @@ class AkaEntry:
     device_id: str
 
 
+@dataclass(frozen=True)
+class DashboardRef:
+    """
+    One dashboard view an entity is shown on (issue #45).
+
+    ``dashboard_title`` is ``None`` for HA's default dashboard, whose
+    visible name ("Overview") the renderer takes from its strings.
+    ``view_index`` keeps the views in their on-screen order.
+    """
+
+    dashboard_title: str | None
+    dashboard_path: str
+    view_title: str
+    view_path: str
+    view_index: int
+
+
 @dataclass
 class DeviceSnapshot:
     """One Home Assistant device with its entity list."""
@@ -192,6 +209,9 @@ class DeviceSnapshot:
     # device, folded into this one (see ``AkaEntry``). Empty for the
     # ~80% of devices that aren't duplicated across integrations.
     also_known_as: tuple[AkaEntry, ...] = field(default_factory=tuple)
+    # Dashboard views that show at least one of this device's entities
+    # (issue #45), sorted. Only where, never the dashboard config itself.
+    dashboards: list[DashboardRef] = field(default_factory=list)
 
 
 @dataclass
@@ -578,6 +598,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     excluded_devices: list[str] | None = None,
     exclude_disabled: bool = False,
     exclude_live_values: bool = False,
+    dashboard_usage: dict[str, list[DashboardRef]] | None = None,
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
@@ -626,6 +647,11 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     ``exclude_live_values`` (issue #266) blanks every value that changes
     between two syncs without any change to the setup itself, see
     ``_strip_live_values``.
+
+    ``dashboard_usage`` (issue #45) maps entity_id → dashboard views and is
+    read separately by ``async_extract_dashboard_usage``, because loading a
+    dashboard's config is async. Each device gets the views of all its
+    entities attached as ``DeviceSnapshot.dashboards``.
     """
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
@@ -878,9 +904,79 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     snapshot.labels = _extract_labels(
         hass, device_reg, entity_reg, devices, primary_to_members
     )
+    if dashboard_usage:
+        _attach_dashboards(snapshot, dashboard_usage)
     if exclude_live_values:
         _strip_live_values(snapshot)
     return snapshot
+
+
+def _attach_dashboards(
+    snapshot: HASnapshot,
+    usage: dict[str, list[DashboardRef]],
+) -> None:
+    devices = [*snapshot.unassigned_devices]
+    for area in snapshot.areas:
+        devices.extend(area.devices)
+    for device in devices:
+        refs = {
+            ref for entity in device.entities for ref in usage.get(entity.entity_id, [])
+        }
+        device.dashboards = sorted(
+            refs,
+            key=lambda r: (
+                r.dashboard_path != "lovelace",
+                r.dashboard_path,
+                r.view_index,
+            ),
+        )
+
+
+async def async_extract_dashboard_usage(
+    hass: HomeAssistant,
+) -> dict[str, list[DashboardRef]]:
+    """
+    Map entity_id → dashboard views it appears on (issue #45).
+
+    Walks every dashboard HA's ``lovelace`` integration knows (storage and
+    YAML mode alike) via its public ``async_load``. Entity IDs are found
+    the same way as for "Used by": any entity-ID-shaped token anywhere in
+    a view's config; tokens that aren't real entities never match a
+    device's entity list, so they're harmless. Auto-generated and
+    strategy dashboards have no stored views and are skipped, as is any
+    dashboard that fails to load - a broken dashboard must not stop the
+    sync.
+    """
+    data = hass.data.get("lovelace")
+    dashboards = getattr(data, "dashboards", None)
+    if not isinstance(dashboards, dict):
+        return {}
+    usage: dict[str, list[DashboardRef]] = {}
+    for url_path, dashboard in dashboards.items():
+        try:
+            config = await dashboard.async_load(force=False)
+        except Exception as err:  # noqa: BLE001 - any failure just means "no views"
+            LOGGER.debug("Dashboard %s not loaded: %s", url_path or "lovelace", err)
+            continue
+        if not isinstance(config, dict):
+            continue
+        meta = getattr(dashboard, "config", None) or {}
+        title = meta.get("title") if url_path else None
+        path = url_path or "lovelace"
+        for index, view in enumerate(config.get("views") or []):
+            if not isinstance(view, dict):
+                continue
+            view_path = str(view.get("path") or index)
+            ref = DashboardRef(
+                dashboard_title=str(title) if title else (path if url_path else None),
+                dashboard_path=path,
+                view_title=str(view.get("title") or view.get("path") or index + 1),
+                view_path=view_path,
+                view_index=index,
+            )
+            for entity_id in _extract_entity_ids_from_text(repr(view).lower()):
+                usage.setdefault(entity_id, []).append(ref)
+    return usage
 
 
 def _strip_live_network(info: NetworkInfo | None) -> None:
