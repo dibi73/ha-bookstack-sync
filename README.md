@@ -61,7 +61,14 @@ Pages are organised into chapters inside your target book:
   that carries it (directly or via one of its entities)
 - **Integrations**, **Automations**, **Scripts**, **Scenes** — one
   bundled page each, listing every entry with description, mode, last
-  triggered etc.
+  triggered etc. Every automation and script also gets a readable
+  summary of its triggers, conditions and actions (a script: its input
+  fields and sequence), with entities, devices and areas shown by name.
+  The raw YAML is not copied — HA's backup already holds it. Action
+  data shows values only for harmless keys such as `message`,
+  `brightness_pct` or `temperature`; all other keys are listed by name
+  only, because their values may come from `!secret`. Webhook IDs are
+  never shown
 - **Network** — table of every device with network data, plus a UniFi
   topology tree and a DHCP-reservation export block, when applicable
 - **Bluetooth** — the list of BT proxies (ESPHome BT-proxy nodes and

@@ -761,6 +761,33 @@ class TestBundlePages:
         assert "`automation.foo`" in out
         assert "> Wakes me up" in out
 
+    def test_automation_summary_follows_description(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """#44: triggers/actions are listed in words below the quote."""
+        autos = [
+            AutomationSnapshot(
+                entity_id="automation.foo",
+                name="Foo",
+                description="Wakes me up",
+                state="on",
+                mode="single",
+                last_triggered=None,
+                config={
+                    "triggers": [{"trigger": "time", "at": "06:00:00"}],
+                    "actions": [{"action": "light.turn_on", "entity_id": "light.sofa"}],
+                },
+                refs={"light.sofa": "Sofa (`light.sofa`)"},
+            ),
+        ]
+        out = render_automations_auto_block(autos, fixed_now, strings_de)
+        assert (
+            "> Wakes me up\n\n**Auslöser**\n\n- Um `06:00:00`\n\n"
+            "**Aktionen**\n\n- `light.turn_on` für Sofa (`light.sofa`)"
+        ) in out
+
     def test_empty_automations_emits_placeholder(
         self,
         fixed_now: datetime,

@@ -32,6 +32,7 @@ from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
 )
 
+from ._markdown import _md_escape
 from .api import (
     BookStackApiAuthError,
     BookStackApiError,
@@ -79,7 +80,6 @@ from .merge import (
 )
 from .renderer import (
     OrphanedPageEntry,
-    _md_escape,
     render_addons_auto_block,
     render_area_auto_block,
     render_automations_auto_block,
