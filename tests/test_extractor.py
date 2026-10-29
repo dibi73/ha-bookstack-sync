@@ -1936,7 +1936,8 @@ async def test_automation_raw_config_and_reference_labels(
     """#44: raw_config is taken from HA and its IDs resolved to names."""
     await _seed_minimal_registry(hass)
     device_reg = dr.async_get(hass)
-    sofa_device = next(d for d in device_reg.devices.values() if d.name == "Sofa Light")
+    sofa_device = device_reg.async_get_device(identifiers={("mqtt", "sofa")})
+    assert sofa_device is not None
     sofa_entry = er.async_get(hass).async_get("light.sofa_light")
     assert sofa_entry is not None
     config = {
