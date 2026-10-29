@@ -1935,11 +1935,9 @@ async def test_automation_raw_config_and_reference_labels(
 ) -> None:
     """#44: raw_config is taken from HA and its IDs resolved to names."""
     await _seed_minimal_registry(hass)
-    device_reg = dr.async_get(hass)
-    sofa_device = device_reg.async_get_device(identifiers={("mqtt", "sofa")})
-    assert sofa_device is not None
     sofa_entry = er.async_get(hass).async_get("light.sofa_light")
     assert sofa_entry is not None
+    assert sofa_entry.device_id is not None
     config = {
         "triggers": [
             {"trigger": "state", "entity_id": "light.sofa_light", "to": "on"},
@@ -1948,7 +1946,7 @@ async def test_automation_raw_config_and_reference_labels(
         ],
         "actions": [
             {
-                "device_id": sofa_device.id,
+                "device_id": sofa_entry.device_id,
                 "domain": "light",
                 "entity_id": sofa_entry.id,
                 "type": "turn_off",
@@ -1966,7 +1964,7 @@ async def test_automation_raw_config_and_reference_labels(
     assert morning.refs["light.sofa_light"] == "Sofa Light (`light.sofa_light`)"
     assert morning.refs[sofa_entry.id] == "Sofa Light (`light.sofa_light`)"
     assert morning.refs["Light.Sofa_Light"] == "Sofa Light (`light.sofa_light`)"
-    assert morning.refs[sofa_device.id] == "Sofa Light"
+    assert morning.refs[sofa_entry.device_id] == "Sofa Light"
     # Plain values that aren't IDs get no label, nor does text that merely
     # starts with an entity ID.
     assert "on" not in morning.refs
