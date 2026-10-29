@@ -1943,6 +1943,7 @@ async def test_automation_raw_config_and_reference_labels(
         "triggers": [
             {"trigger": "state", "entity_id": "light.sofa_light", "to": "on"},
             {"trigger": "state", "entity_id": "Light.Sofa_Light"},
+            {"trigger": "event", "event_type": "light.sofa_light is on"},
         ],
         "actions": [
             {
@@ -1965,8 +1966,10 @@ async def test_automation_raw_config_and_reference_labels(
     assert morning.refs[sofa_entry.id] == "Sofa Light (`light.sofa_light`)"
     assert morning.refs["Light.Sofa_Light"] == "Sofa Light (`light.sofa_light`)"
     assert morning.refs[sofa_device.id] == "Sofa Light"
-    # Plain values that aren't IDs get no label.
+    # Plain values that aren't IDs get no label, nor does text that merely
+    # starts with an entity ID.
     assert "on" not in morning.refs
+    assert "light.sofa_light is on" not in morning.refs
 
 
 async def test_automation_without_component_has_no_config(hass: HomeAssistant) -> None:

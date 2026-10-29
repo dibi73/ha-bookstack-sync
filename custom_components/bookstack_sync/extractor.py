@@ -1014,7 +1014,7 @@ def _extract_automations(
     return automations
 
 
-_ENTITY_ID_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
+_FULL_ENTITY_ID_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 
 
 def _raw_configs(hass: HomeAssistant, domain: str) -> dict[str, dict[str, Any]]:
@@ -1084,7 +1084,7 @@ def _reference_labels(
         # HA lower-cases entity IDs on load, but raw_config keeps what the
         # user typed (``cover.RaffstoresEG``).
         entity_id = value.lower()
-        if _ENTITY_ID_RE.match(entity_id) and (
+        if _FULL_ENTITY_ID_RE.fullmatch(entity_id) and (
             hass.states.get(entity_id) is not None or entity_reg.async_get(entity_id)
         ):
             labels[value] = _entity_label(
