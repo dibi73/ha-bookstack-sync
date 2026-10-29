@@ -423,6 +423,9 @@ class HASnapshot:
     labels: list[LabelSnapshot] = field(default_factory=list)
     # Backup status from HA's backup integration (issue #47), when available.
     backup_status: BackupStatusSnapshot | None = None
+    # ``False`` once ``_strip_live_values`` has run (issue #266): renderers
+    # then leave out the table columns that would only hold ``—``.
+    live_values: bool = True
 
 
 # Entity domains that already get their own dedicated per-area section
@@ -565,6 +568,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     excluded_integrations: list[str] | None = None,
     excluded_devices: list[str] | None = None,
     exclude_disabled: bool = False,
+    exclude_live_values: bool = False,
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
@@ -609,6 +613,10 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     entities that HA has disabled (``disabled_by`` set). Disabling a config
     entry cascades ``disabled_by`` to its devices and entities in HA
     itself, so disabled integrations are covered without a separate check.
+
+    ``exclude_live_values`` (issue #266) blanks every value that changes
+    between two syncs without any change to the setup itself, see
+    ``_strip_live_values``.
     """
     area_reg = ar.async_get(hass)
     device_reg = dr.async_get(hass)
@@ -861,7 +869,66 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     snapshot.labels = _extract_labels(
         hass, device_reg, entity_reg, devices, primary_to_members
     )
+    if exclude_live_values:
+        _strip_live_values(snapshot)
     return snapshot
+
+
+def _strip_live_network(info: NetworkInfo | None) -> None:
+    if info is not None:
+        info.last_seen = None
+        info.signal_strength = None
+
+
+def _strip_live_device(device: DeviceSnapshot) -> None:
+    for entity in device.entities:
+        entity.state = None
+    _strip_live_network(device.network)
+    for info in device.network_extra:
+        _strip_live_network(info)
+
+
+def _strip_live_values(snapshot: HASnapshot) -> None:
+    """
+    Blank the values that change between syncs on an unchanged setup (#266).
+
+    Entity states, "last triggered", helper values, Bluetooth availability
+    and every "last seen" timestamp are captured at sync time, so on a real
+    installation they rewrite ~100 pages per sync with no change worth a
+    new BookStack revision. The renderers already omit a ``None`` state or
+    timestamp; ``live_values = False`` tells them to drop whole columns.
+
+    Deliberately kept: an automation's on/off status (configuration), the
+    integrations' setup state (a health signal that only moves on restarts
+    or errors) and IP addresses / topology (structure).
+    """
+    snapshot.live_values = False
+    devices = [*snapshot.unassigned_devices]
+    for area in snapshot.areas:
+        devices.extend(area.devices)
+        for entity in area.orphan_entities:
+            entity.state = None
+    for label in snapshot.labels:
+        devices.extend(label.devices)
+    for device in devices:
+        _strip_live_device(device)
+    automations = [*snapshot.automations]
+    scripts = [*snapshot.scripts]
+    for area in snapshot.areas:
+        automations.extend(area.automations)
+        scripts.extend(area.scripts)
+    for automation in automations:
+        automation.last_triggered = None
+    for script in scripts:
+        script.last_triggered = None
+    for info in snapshot.unknown_unifi_clients:
+        _strip_live_network(info)
+    if snapshot.bluetooth is not None:
+        for heard in snapshot.bluetooth.devices:
+            heard.last_seen = None
+    for group in snapshot.helpers:
+        for entry in group.entries:
+            entry.state = None
 
 
 def _mqtt_topic_from(attrs: dict[str, Any]) -> str | None:

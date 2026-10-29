@@ -33,11 +33,17 @@ CONF_EXCLUDED_DEVICES = "excluded_devices"
 # devices, and via HA's cascade the devices/entities of disabled config
 # entries). Off by default so an update never makes pages disappear.
 CONF_EXCLUDE_DISABLED = "exclude_disabled"
+# Issue #266: leave out values captured at sync time (entity states, last
+# triggered/seen, helper values, BT availability) so a setup that didn't
+# change produces no new page revisions. Off by default: existing pages
+# keep showing the values they always showed.
+CONF_EXCLUDE_LIVE_VALUES = "exclude_live_values"
 
 DEFAULT_VERIFY_SSL = True
 DEFAULT_EXCLUDED_INTEGRATIONS: list[str] = []
 DEFAULT_EXCLUDED_DEVICES: list[str] = []
 DEFAULT_EXCLUDE_DISABLED = False
+DEFAULT_EXCLUDE_LIVE_VALUES = False
 # "auto" follows hass.config.language; explicit codes ("de", "en") override it
 OUTPUT_LANGUAGE_AUTO = "auto"
 DEFAULT_OUTPUT_LANGUAGE = OUTPUT_LANGUAGE_AUTO

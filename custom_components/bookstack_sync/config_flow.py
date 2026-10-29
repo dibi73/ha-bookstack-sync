@@ -27,6 +27,7 @@ from .const import (
     CONF_BASE_URL,
     CONF_BOOK_ID,
     CONF_EXCLUDE_DISABLED,
+    CONF_EXCLUDE_LIVE_VALUES,
     CONF_EXCLUDED_DEVICES,
     CONF_EXCLUDED_INTEGRATIONS,
     CONF_EXPORT_ENABLED,
@@ -38,6 +39,7 @@ from .const import (
     CONF_TOKEN_SECRET,
     CONF_VERIFY_SSL,
     DEFAULT_EXCLUDE_DISABLED,
+    DEFAULT_EXCLUDE_LIVE_VALUES,
     DEFAULT_EXCLUDED_DEVICES,
     DEFAULT_EXCLUDED_INTEGRATIONS,
     DEFAULT_EXPORT_ENABLED,
@@ -568,6 +570,10 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                             CONF_EXCLUDE_DISABLED,
                             DEFAULT_EXCLUDE_DISABLED,
                         ),
+                        CONF_EXCLUDE_LIVE_VALUES: user_input.get(
+                            CONF_EXCLUDE_LIVE_VALUES,
+                            DEFAULT_EXCLUDE_LIVE_VALUES,
+                        ),
                     },
                 )
 
@@ -630,6 +636,10 @@ class BookStackSyncOptionsFlow(OptionsFlow):
             CONF_EXCLUDE_DISABLED,
             DEFAULT_EXCLUDE_DISABLED,
         )
+        current_exclude_live_values = self.config_entry.options.get(
+            CONF_EXCLUDE_LIVE_VALUES,
+            DEFAULT_EXCLUDE_LIVE_VALUES,
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -686,6 +696,12 @@ class BookStackSyncOptionsFlow(OptionsFlow):
                     vol.Required(
                         CONF_EXCLUDE_DISABLED,
                         default=current_exclude_disabled,
+                    ): selector.BooleanSelector(),
+                    # Issue #266. Off by default: existing pages keep the
+                    # values they have always shown.
+                    vol.Required(
+                        CONF_EXCLUDE_LIVE_VALUES,
+                        default=current_exclude_live_values,
                     ): selector.BooleanSelector(),
                 },
             ),

@@ -921,6 +921,10 @@ def render_network_auto_block(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive ren
         # nothing as a Device.
 
     has_unifi = any(d.network and d.network.source_platform == "unifi" for d in devices)
+    # #266: without live values the "last seen" column would only hold "—".
+    live = snapshot.live_values if snapshot else True
+    seen_col = f" {strings['network_col_last_seen']} |" if live else ""
+    seen_sep = " --- |" if live else ""
 
     if devices and has_unifi:
         header = (
@@ -930,20 +934,18 @@ def render_network_auto_block(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive ren
             f"| {strings['network_col_connection']} "
             f"| {strings['network_col_vlan']} "
             f"| {strings['network_col_ap_switch']} "
-            f"| {strings['network_col_oui']} "
-            f"| {strings['network_col_last_seen']} |"
+            f"| {strings['network_col_oui']} |" + seen_col
         )
-        lines.extend([header, "| --- | --- | --- | --- | --- | --- | --- | --- |"])
+        lines.extend([header, "| --- | --- | --- | --- | --- | --- | --- |" + seen_sep])
     elif devices:
         header = (
             f"| {strings['network_col_hostname']} "
             f"| {strings['network_col_mac']} "
             f"| {strings['network_col_ip']} "
             f"| {strings['network_col_connection']} "
-            f"| {strings['network_col_vlan']} "
-            f"| {strings['network_col_last_seen']} |"
+            f"| {strings['network_col_vlan']} |" + seen_col
         )
-        lines.extend([header, "| --- | --- | --- | --- | --- | --- |"])
+        lines.extend([header, "| --- | --- | --- | --- | --- |" + seen_sep])
 
     for device in devices:
         info = device.network
@@ -959,7 +961,7 @@ def render_network_auto_block(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive ren
         else:
             conn = "—"
         vlan_or_ssid = _md_escape(info.ssid or info.vlan or "—")
-        last_seen = info.last_seen or "—"
+        last_seen = f" {info.last_seen or '—'} |" if live else ""
         if has_unifi:
             ap_switch = "—"
             if info.switch_mac:
@@ -971,12 +973,12 @@ def render_network_auto_block(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive ren
             oui = _md_escape(info.oui or "—")
             lines.append(
                 f"| **{hostname}** | `{mac}` | {ip} | {conn} | {vlan_or_ssid} "
-                f"| {ap_switch} | {oui} | {last_seen} |",
+                f"| {ap_switch} | {oui} |{last_seen}",
             )
         else:
             lines.append(
                 f"| **{hostname}** | `{mac}` | {ip} | {conn} | {vlan_or_ssid} "
-                f"| {last_seen} |",
+                f"|{last_seen}",
             )
 
     # Unknown UniFi clients (#28 cross-reference)
@@ -994,18 +996,17 @@ def render_network_auto_block(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive ren
                 (
                     f"| {strings['network_col_hostname']} "
                     f"| {strings['network_col_mac']} "
-                    f"| {strings['network_col_ip']} "
-                    f"| {strings['network_col_last_seen']} |"
+                    f"| {strings['network_col_ip']} |" + seen_col
                 ),
-                "| --- | --- | --- | --- |",
+                "| --- | --- | --- |" + seen_sep,
             ],
         )
         for client in unknown_clients:
             host = _md_escape(client.hostname or "—")
             mac = client.mac or "—"
             ip = client.ip or "—"
-            last_seen = client.last_seen or "—"
-            lines.append(f"| `{host}` | `{mac}` | {ip} | {last_seen} |")
+            last_seen = f" {client.last_seen or '—'} |" if live else ""
+            lines.append(f"| `{host}` | `{mac}` | {ip} |{last_seen}")
 
     # DHCP-reservation export block (#28). Generic format, sortable for
     # paste into FritzBox / OPNsense / pfsense / UniFi controller.
@@ -1296,8 +1297,16 @@ def render_bluetooth_auto_block(
     now: datetime,
     strings: dict[str, str],
     ha_url: str = "",
+    *,
+    live_values: bool = True,
 ) -> str:
-    """Render the AUTO block of the standalone Bluetooth page (#32/#162)."""
+    """
+    Render the AUTO block of the standalone Bluetooth page (#32/#162).
+
+    ``live_values=False`` (#266) drops the status and last-seen columns
+    and lists the devices by name instead of by most recent activity, so
+    the page only changes when the set of devices does.
+    """
     lines: list[str] = [_format_attribution(strings, now), ""]
 
     if network.proxies:
@@ -1328,6 +1337,21 @@ def render_bluetooth_auto_block(
 
     if not network.devices:
         lines.append(strings["empty_bluetooth"])
+        return "\n".join(lines).rstrip() + "\n"
+
+    if not live_values:
+        lines.extend(
+            [
+                f"| {strings['bt_col_name']} | {strings['bt_col_address']} |",
+                "| --- | --- |",
+            ],
+        )
+        lines.extend(
+            f"| {dev.name} | `{dev.address}` |"
+            for dev in sorted(
+                network.devices, key=lambda d: (d.name.lower(), d.address)
+            )
+        )
         return "\n".join(lines).rstrip() + "\n"
 
     lines.extend(
@@ -1666,8 +1690,14 @@ def render_helpers_auto_block(
     now: datetime,
     strings: dict[str, str],
     ha_url: str = "",
+    *,
+    live_values: bool = True,
 ) -> str:
-    """Render the AUTO block of the Helpers page (#42)."""
+    """
+    Render the AUTO block of the Helpers page (#42).
+
+    ``live_values=False`` (#266) drops the State column.
+    """
     lines: list[str] = [_format_attribution(strings, now), ""]
     helpers_url = _ha_url_for(ha_url, "helpers", "")
     if helpers_url:
@@ -1683,16 +1713,16 @@ def render_helpers_auto_block(
             [
                 f"## {label} ({len(group.entries)})",
                 "",
-                "| Name | Entity | State |",
-                "| --- | --- | --- |",
+                "| Name | Entity | State |" if live_values else "| Name | Entity |",
+                "| --- | --- | --- |" if live_values else "| --- | --- |",
             ],
         )
         for entry in group.entries:
             state = entry.state if entry.state is not None else "—"
             lines.append(
                 f"| **{_md_escape(entry.name)}** "
-                f"| {_entity_id_md(entry.entity_id, ha_url)} "
-                f"| `{state}` |",
+                f"| {_entity_id_md(entry.entity_id, ha_url)} |"
+                + (f" `{state}` |" if live_values else ""),
             )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"

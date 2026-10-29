@@ -144,7 +144,9 @@ Bewertung.
   erhalten. Eine Hash-basierte Erkennung protokolliert (und überspringt)
   jede Seite, deren automatischer Teil außerhalb von HA geändert wurde.
 - **Idempotent.** Gleicher HA-Zustand → byte-identisches Markdown →
-  keine unnötigen BookStack-Revisionen.
+  keine unnötigen BookStack-Revisionen. Mit ausgeschalteten aktuellen
+  Werten erzeugt nur eine echte Änderung an der Einrichtung eine neue
+  Revision.
 - **Weiches Löschen.** Verschwindet ein Gerät aus HA, wird seine Seite
   nicht gelöscht. Stattdessen ersetzt ein Hinweis „verwaist — Gerät weg
   seit JJJJ-MM-TT“ den automatischen Teil; der manuelle Teil bleibt.
@@ -171,6 +173,8 @@ die Stufe **Platinum** der HA Quality Scale:
   Seiten, Reparaturmeldungen mit Ein-Klick-Lösung
 - Ganze Integrationen, einzelne Geräte oder alles in HA Deaktivierte von
   der Dokumentation ausschließen
+- Wahlweise aktuelle Werte (Zustände, Zeitstempel) weglassen, damit sich
+  Seiten nur ändern, wenn sich die Einrichtung ändert
 - Reauth-Flow und Neu-konfigurieren-Flow (URL / Token / TLS)
 - Diagnose-Endpunkt (geschwärzter Dump für Fehlerberichte)
 - TLS-Prüfung abschaltbar, Anzeige der MQTT-Topics, Oberfläche in 28
@@ -282,6 +286,15 @@ Der Dialog **Optionen** (Integrationskachel → *Konfigurieren*) umfasst:
   deaktiviert) deaktivierte Integrationen. Standardmäßig aus; hilfreich,
   wenn eine Integration tausende deaktivierte Entitäten anlegt und ihre
   Geräteseiten riesig werden
+- Aktuelle Werte nicht dokumentieren: lässt alles weg, was nur ein
+  Messwert zum Zeitpunkt des Syncs ist, also Zustände der Entitäten,
+  *Letzter Trigger* von Automationen und Skripten, Werte der Helfer,
+  Bluetooth-Erreichbarkeit und jedes *Zuletzt gesehen*. Die passenden
+  Tabellenspalten entfallen. Erhalten bleiben der Ein/Aus-Status einer
+  Automation, der Zustand der Integrationen und IP-Adressen.
+  Standardmäßig aus; einschalten, wenn BookStack nur bei echten
+  Änderungen Revisionen bekommen und der Sync schneller sein soll (siehe
+  *So läuft ein Sync ab*)
 
 ## So läuft ein Sync ab
 
@@ -302,6 +315,11 @@ Der Dialog **Optionen** (Integrationskachel → *Konfigurieren*) umfasst:
    Unveränderte Seiten werden nicht geschrieben, BookStack bekommt also
    keine leeren Revisionen. Der Zeitstempel oben auf einer Seite zeigt
    deshalb, wann sich ihr Inhalt zuletzt geändert hat.
+   Standardmäßig zeigen die Seiten auch aktuelle Werte (Zustände der
+   Entitäten, *Letzter Trigger*, …), und die ändern sich zwischen fast
+   jedem Sync. In einer typischen Installation schreibt das bei jedem
+   Lauf etwa ein Fünftel aller Seiten neu. Mit *Aktuelle Werte nicht
+   dokumentieren* schreibt ein Sync bei unveränderter Einrichtung nichts.
 3. Schreibt geänderte Seiten, bis zu 5 gleichzeitig, und bleibt dabei
    unter BookStacks Standardgrenze von 180 API-Anfragen pro Minute.
    Netzwerkaussetzer und Antworten wegen Ratenbegrenzung werden mit
@@ -610,6 +628,13 @@ Sync sie automatisch ins richtige Kapitel.
   Integration ist in 28 Sprachen übersetzt (seit v0.12.0), der *Inhalt*
   der BookStack-Seiten ist aber Deutsch oder Englisch. Eine weitere
   Inhaltssprache heißt `_strings.py` befüllen; PRs willkommen.
+- **Aktuelle Werte sind eine Momentaufnahme.** Zustände und
+  Zeitstempel auf den Seiten sind die Werte zum Zeitpunkt des letzten
+  Syncs, keine Live-Daten — dafür ist HA da. Auch mit ausgeschalteten
+  aktuellen Werten kann sich die Netzwerkseite ändern, wenn ein
+  WLAN-Client zu einem anderen Access Point oder VLAN wechselt, und die
+  Integrationsseite, wenn eine Integration nach einem Neustart in
+  `setup_retry` hängt.
 - **Das API-Token hat Zugriff auf Buchebene.** BookStack kennt keine
   Tokens pro Seite; die Integration nutzt, was das Token erreichen kann.
 
