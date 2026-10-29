@@ -139,7 +139,8 @@ avoids that false alarm and lets you judge for yourself.
   detection logs (and skips) any page where the auto block was edited
   outside of HA.
 - **Idempotent**. Same HA state → byte-identical markdown → no
-  spurious BookStack revisions.
+  spurious BookStack revisions. With live values switched off, only a
+  real change to the setup creates a new revision.
 - **Soft-delete**. When a device disappears from HA, its page is not
   deleted. Instead the auto block is replaced with an "orphaned —
   device gone since YYYY-MM-DD" notice; the manual block stays.
@@ -166,6 +167,8 @@ Scale **Platinum** tier:
   repair issues with one-click fixes
 - Exclude whole integrations, single devices, or everything disabled in
   HA from the documentation
+- Optionally leave out live values (states, timestamps), so pages only
+  change when the setup changes
 - Reauth flow + user-initiated reconfigure flow (URL / token / TLS)
 - Diagnostics endpoint (redacted dump for bug reports)
 - TLS-verify toggle, MQTT-topic display, UI localised in 28 languages
@@ -271,6 +274,13 @@ The **Options** dialog (integration card → *Configure*) covers:
   devices, and (because HA disables their devices and entities too)
   disabled integrations. Off by default; useful when an integration
   creates thousands of disabled entities and its device pages get huge
+- Do not document live values: leaves out everything that is only a
+  reading at sync time, i.e. entity states, *Last triggered* of
+  automations and scripts, helper values, Bluetooth availability and
+  every *Last seen* time. The matching table columns disappear. Kept:
+  an automation's on/off status, integration states and IP addresses.
+  Off by default; turn it on if you want BookStack revisions only for
+  real changes and faster syncs (see *How syncing works*)
 
 ## How syncing works
 
@@ -286,6 +296,11 @@ The **Options** dialog (integration card → *Configure*) covers:
 2. Compares each page with what it last wrote. Unchanged pages are not
    written, so BookStack gets no empty revisions. The timestamp at the
    top of a page therefore shows when its content last changed.
+   By default pages also show live values (entity states, *Last
+   triggered*, …), and those change between almost any two syncs. On a
+   typical installation that rewrites about a fifth of all pages each
+   run. With *Do not document live values* switched on, a sync of an
+   unchanged setup writes nothing.
 3. Writes changed pages, up to 5 at a time, staying below BookStack's
    default limit of 180 API requests per minute. Network hiccups and
    rate-limit answers are retried with backoff; writes of very large
@@ -577,6 +592,12 @@ moves them to the right chapter automatically.
   is localised in 28 languages (since v0.12.0), but the *content*
   written into BookStack pages is German or English. Adding a content
   language is a matter of populating `_strings.py`; PRs welcome.
+- **Live values are a snapshot.** States and timestamps on the pages
+  are the values at the time of the last sync, not live data — use HA
+  for that. Even with live values switched off, the network page can
+  still change when a WLAN client roams to another access point or
+  VLAN, and the integrations page when an integration is in
+  `setup_retry` after a restart.
 - **API token has full book-level access.** BookStack does not offer
   per-page tokens; the integration uses whatever the token can reach.
 

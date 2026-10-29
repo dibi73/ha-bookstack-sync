@@ -1930,6 +1930,43 @@ async def test_exclude_disabled_drops_disabled_devices_and_entities(
     assert {e.entity_id for e in devices["NAS"].entities} == {"sensor.nas_cpu"}
 
 
+async def test_live_values_kept_by_default(hass: HomeAssistant) -> None:
+    """#266: without the opt-in, states and timestamps stay in the snapshot."""
+    await _seed_minimal_registry(hass)
+
+    snap = extract_snapshot(hass)
+
+    assert snap.live_values is True
+    sofa = next(d for d in _all_snapshot_devices(snap) if d.name == "Sofa Light")
+    assert sofa.entities[0].state == "on"
+
+
+async def test_exclude_live_values_blanks_states_and_timestamps(
+    hass: HomeAssistant,
+) -> None:
+    """#266: with the opt-in, values captured at sync time are left out."""
+    await _seed_minimal_registry(hass)
+    hass.states.async_set(
+        "automation.morning",
+        "on",
+        {
+            "friendly_name": "Morning Routine",
+            "mode": "single",
+            "last_triggered": "2026-10-29T04:00:00+00:00",
+        },
+    )
+
+    snap = extract_snapshot(hass, exclude_live_values=True)
+
+    assert snap.live_values is False
+    sofa = next(d for d in _all_snapshot_devices(snap) if d.name == "Sofa Light")
+    assert sofa.entities[0].state is None
+    morning = next(a for a in snap.automations if a.name == "Morning Routine")
+    assert morning.last_triggered is None
+    # On/off is configuration, not a reading - it stays.
+    assert morning.state == "on"
+
+
 async def test_extract_integrations_marks_excluded_but_keeps_it_listed(
     hass: HomeAssistant,
 ) -> None:

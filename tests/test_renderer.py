@@ -1373,6 +1373,93 @@ class TestBluetoothPage:
         assert "http" not in out
 
 
+class TestLiveValuesOff:
+    """#266: with live values off, their columns disappear instead of showing —."""
+
+    def test_bluetooth_drops_status_and_last_seen_and_sorts_by_name(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        network = BluetoothNetwork(
+            devices=[
+                BluetoothDeviceHeard(
+                    name="Zeta", address="aa:aa:aa:aa:aa:aa", is_available=True
+                ),
+                BluetoothDeviceHeard(
+                    name="Alpha", address="bb:bb:bb:bb:bb:bb", is_available=False
+                ),
+            ],
+        )
+        out = render_bluetooth_auto_block(
+            network, fixed_now, strings_de, live_values=False
+        )
+
+        assert "| Gerät | Adresse |\n| --- | --- |" in out
+        assert "Zuletzt aktiv" not in out
+        assert "erreichbar" not in out
+        assert out.index("Alpha") < out.index("Zeta")
+
+    def test_helpers_drop_state_column(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        groups = [
+            HelperGroup(
+                domain="input_number",
+                entries=[
+                    HelperEntry(
+                        entity_id="input_number.fan",
+                        name="Fan",
+                        domain="input_number",
+                        state=None,
+                        attributes={},
+                    ),
+                ],
+            ),
+        ]
+        out = render_helpers_auto_block(
+            groups, fixed_now, strings_de, live_values=False
+        )
+
+        assert "| Name | Entity |" in out
+        assert "State" not in out
+        assert "| **Fan** | `input_number.fan` |" in out
+
+    def test_network_drops_last_seen_column(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device(name="NUC")
+        device.network = NetworkInfo(
+            ip="192.168.1.10",
+            mac="aa:bb:cc:dd:ee:ff",
+            connection_type="wired",
+            source_platform="unifi",
+        )
+        snapshot = _empty_snapshot()
+        snapshot.live_values = False
+        out = render_network_auto_block(
+            [device],
+            fixed_now,
+            strings_de,
+            unknown_clients=[NetworkInfo(mac="11:22:33:44:55:66", ip="192.168.1.99")],
+            snapshot=snapshot,
+        )
+
+        assert "Letzter Kontakt" not in out
+        assert (
+            "| Hersteller (OUI) |\n| --- | --- | --- | --- | --- | --- | --- |\n" in out
+        )
+        assert (
+            "| **NUC** | `aa:bb:cc:dd:ee:ff` | 192.168.1.10 | LAN | — | — | — |" in out
+        )
+        assert "| Hostname | MAC | IP |\n| --- | --- | --- |\n" in out
+        assert "| `—` | `11:22:33:44:55:66` | 192.168.1.99 |" in out
+
+
 class TestAreaPageMinimal:
     """v0.14.0: area pages are navigation hubs only — no full device data."""
 
