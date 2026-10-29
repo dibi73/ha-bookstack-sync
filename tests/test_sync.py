@@ -47,6 +47,7 @@ from custom_components.bookstack_sync.sync import (
     _run_concurrent,
     resync_single_page,
     run_sync,
+    tombstone_single_page,
 )
 
 if TYPE_CHECKING:
@@ -1004,12 +1005,17 @@ async def test_force_overwrites_tampered_tombstone_pages(
         ),
     )
 
-    # Without force: tombstone is skipped.
+    # Without force: tombstone is skipped - reported under the BookStack
+    # page title and fed to the orphan-conflict repair issue (#275).
+    page_name = state["pages"][target_mapping.page_id]["name"]
     report_skip = await run_sync(hass, client, store, 1, strings)
-    assert report_skip.skipped_conflict == [f"{target_key} (tombstone)"], (
+    assert report_skip.skipped_conflict == [page_name], (
         f"expected tamper-skip on tombstone without force, "
         f"got {report_skip.skipped_conflict!r}"
     )
+    assert report_skip.orphan_conflict_page_keys == [target_key]
+    assert report_skip.orphan_conflict_page_titles == [page_name]
+    assert report_skip.orphan_conflict_page_urls[0].startswith(client.base_url)
 
     # With force=True: tombstoned anyway, no skip.
     report_force = await run_sync(hass, client, store, 1, strings, force=True)
@@ -1017,6 +1023,74 @@ async def test_force_overwrites_tampered_tombstone_pages(
         f"force=True should bypass tombstone tamper-skip too, "
         f"got {report_force.skipped_conflict!r}"
     )
+
+
+async def test_tombstone_single_page_forces_one_orphan_conflict(
+    hass: HomeAssistant,
+    store: BookStackSyncStore,
+    strings: dict[str, str],
+) -> None:
+    """#275: the repair Fix tombstones exactly the conflicted orphan page."""
+    from custom_components.bookstack_sync.store import PageMapping  # noqa: PLC0415
+
+    state: dict[str, Any] = {}
+    client = _fake_client_with_state(state)
+    area_reg = ar.async_get(hass)
+    living = area_reg.async_create("Living Room")
+    await run_sync(hass, client, store, 1, strings)
+
+    area_reg.async_delete(living.id)
+    target_key = next(k for k in store.all() if k.startswith("area:"))
+    mapping = store.get(target_key)
+    store.set(
+        target_key,
+        PageMapping(
+            page_id=mapping.page_id,
+            auto_block_hash="cafebabe" * 8,
+            last_seen=mapping.last_seen,
+            hash_origin="bookstack",
+        ),
+    )
+    report = await run_sync(hass, client, store, 1, strings)
+    assert report.orphan_conflict_page_keys == [target_key]
+
+    assert await tombstone_single_page(client, store, target_key, strings) is True
+    assert store.get(target_key).tombstoned_at is not None
+
+    # Already tombstoned: nothing left to fix, and the next run is clean.
+    assert await tombstone_single_page(client, store, target_key, strings) is False
+    report_after = await run_sync(hass, client, store, 1, strings)
+    assert report_after.orphan_conflict_page_keys == []
+    assert report_after.skipped_conflict == []
+
+
+async def test_notification_lists_orphan_conflicts_without_ha_link(
+    hass: HomeAssistant,
+    strings: dict[str, str],
+) -> None:
+    """#275: orphan conflicts appear in the notification, linked to BookStack only."""
+    report = SyncReport(
+        skipped_conflict=["Gerät: Alt"],
+        orphan_conflict_page_keys=["device:gone"],
+        orphan_conflict_page_titles=["Gerät: Alt"],
+        orphan_conflict_page_urls=["https://wiki.example.com/books/b/page/alt"],
+    )
+
+    with patch(
+        "custom_components.bookstack_sync.sync.async_create_notification",
+    ) as notify:
+        _post_sync_notification(
+            hass,
+            report,
+            strings,
+            link_base_url="https://wiki.example.com",
+            book_slug="b",
+        )
+
+    body = notify.call_args.args[1]
+    assert "[Gerät: Alt](https://wiki.example.com/books/b/page/alt)" in body
+    assert "/config/devices/device/gone" not in body
+    assert "(/config/repairs)" in body
 
 
 async def test_tampered_page_url_uses_external_base_url_when_configured(

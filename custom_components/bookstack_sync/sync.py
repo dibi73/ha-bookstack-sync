@@ -264,6 +264,13 @@ class SyncReport:
     markers_missing_page_keys: list[str] = field(default_factory=list)
     markers_missing_page_titles: list[str] = field(default_factory=list)
     markers_missing_page_urls: list[str] = field(default_factory=list)
+    # Pages whose HA object is gone but which could not be marked as
+    # orphaned because their AUTO block hash drifted (#275). Same shape
+    # as the lists above; titles/urls come from the existing BookStack
+    # page, since the HA object (and its planned title) no longer exists.
+    orphan_conflict_page_keys: list[str] = field(default_factory=list)
+    orphan_conflict_page_titles: list[str] = field(default_factory=list)
+    orphan_conflict_page_urls: list[str] = field(default_factory=list)
     # BookStack slugs of the pages in ``tombstoned`` (same length, same
     # order; "" when unknown). Lets the notification link them (#225).
     tombstoned_page_slugs: list[str] = field(default_factory=list)
@@ -1002,6 +1009,8 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
         limiter,
         dry_run=dry_run,
         force=force,
+        book_slug=book_slug or "",
+        link_base_url=external_base_url or client.base_url,
     )
 
     if not dry_run:
@@ -1131,6 +1140,42 @@ async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params 
     return True
 
 
+async def tombstone_single_page(
+    client: BookStackApiClient,
+    store: BookStackSyncStore,
+    page_key: str,
+    strings: dict[str, str],
+) -> bool:
+    """
+    Force-tombstone exactly one orphaned page (#275 repair-issue Fix flow).
+
+    Counterpart to ``resync_single_page`` for the orphan-conflict case:
+    the HA object is gone, so there is nothing to render - the page just
+    gets the orphaned AUTO block, overriding the tamper check. The MANUAL
+    block is kept, as in a normal tombstone.
+
+    Returns ``False`` if there is no live mapping for ``page_key`` any
+    more (already tombstoned or deleted in the meantime) - nothing to fix.
+    """
+    await store.async_load()
+    mapping = store.get(page_key)
+    if mapping is None or mapping.tombstoned_at is not None:
+        return False
+    await _tombstone_one(
+        client,
+        store,
+        page_key,
+        mapping,
+        SyncReport(),
+        datetime.now(tz=UTC),
+        strings,
+        dry_run=False,
+        force=True,
+    )
+    await store.async_save()
+    return True
+
+
 # How many affected pages the notification lists per kind (#225) before
 # summarising the rest as "... and N more".
 NOTIFICATION_MAX_ITEMS = 10
@@ -1225,6 +1270,16 @@ def _post_sync_notification(
             ),
         ]
     ]
+    # #275: the HA object behind an orphan conflict is gone, so there is
+    # nothing to link to in HA - only the BookStack page.
+    conflicts.extend(
+        (title, url or None, None)
+        for title, url in zip(
+            report.orphan_conflict_page_titles,
+            report.orphan_conflict_page_urls,
+            strict=True,
+        )
+    )
     orphaned = [
         (
             name,
@@ -1664,6 +1719,8 @@ async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
     *,
     dry_run: bool,
     force: bool = False,
+    book_slug: str = "",
+    link_base_url: str = "",
 ) -> None:
     """Mark pages whose HA object vanished as orphaned (one-time, not on repeat)."""
     planned_keys = {p.key for p in planned}
@@ -1680,6 +1737,8 @@ async def _tombstone_orphans(  # noqa: PLR0913 - cohesive sync step
                 strings,
                 dry_run=dry_run,
                 force=force,
+                book_slug=book_slug,
+                link_base_url=link_base_url,
             )
         except BookStackApiAuthError:
             raise
@@ -1713,6 +1772,8 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
     *,
     dry_run: bool,
     force: bool = False,
+    book_slug: str = "",
+    link_base_url: str = "",
 ) -> None:
     auto_body = render_tombstone_auto_block(strings, now)
 
@@ -1762,13 +1823,28 @@ async def _tombstone_one(  # noqa: PLR0913 - cohesive sync step
                 key,
             )
         else:
+            # #275: report under the BookStack page title (the HA object
+            # and its planned title are gone) and feed the repair issue,
+            # so users can find the page without reading the log.
+            title = str(existing.get("name") or key)
             LOGGER.warning(
-                "BookStack page id=%s (%s): AUTO block was edited manually "
-                "- skipping tombstone to preserve manual changes.",
+                "BookStack page %s (id=%s, %s): AUTO block was edited "
+                "manually - skipping tombstone to preserve manual changes.",
+                title,
                 mapping.page_id,
                 key,
             )
-            report.skipped_conflict.append(f"{key} (tombstone)")
+            report.skipped_conflict.append(title)
+            report.orphan_conflict_page_keys.append(key)
+            report.orphan_conflict_page_titles.append(title)
+            report.orphan_conflict_page_urls.append(
+                _build_absolute_page_url(
+                    link_base_url,
+                    book_slug,
+                    str(existing.get("slug") or ""),
+                )
+                or "",
+            )
             return
 
     existing_name = existing.get("name") or key

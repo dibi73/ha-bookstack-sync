@@ -37,6 +37,7 @@ from .const import (
     REPAIR_ISSUE_BULK_CONFLICT,
     REPAIR_ISSUE_BULK_CONFLICT_THRESHOLD,
     REPAIR_ISSUE_MARKERS_MISSING,
+    REPAIR_ISSUE_ORPHAN_CONFLICT,
     REPAIR_ISSUE_TAMPERED,
     REPAIR_ISSUE_UNREACHABLE,
     REPAIR_ISSUE_UNREACHABLE_THRESHOLD,
@@ -44,7 +45,7 @@ from .const import (
 )
 from .export import ExportResult
 from .export import export as export_run
-from .sync import SyncReport, resync_single_page, run_sync
+from .sync import SyncReport, resync_single_page, run_sync, tombstone_single_page
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -121,6 +122,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
         # Same shape for the v0.14.9 ``page_markers_missing`` repair
         # issue (WYSIWYG editor toggled, marker comments dropped).
         self._active_markers_missing_keys: set[str] = set()
+        self._active_orphan_conflict_keys: set[str] = set()
         # Serialises every sync path - schedule, run_now service, preview -
         # so they cannot interleave and create duplicate pages on first run.
         self._sync_lock = asyncio.Lock()
@@ -288,6 +290,56 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
             )
 
         self._active_markers_missing_keys = set(current.keys())
+
+    def _reconcile_orphan_conflict_issues(
+        self,
+        report: SyncReport,
+        strings: dict[str, str],
+    ) -> None:
+        """
+        Create / auto-resolve ``page_orphan_conflict`` repair issues (#275).
+
+        Same shape as ``_reconcile_markers_missing_issues``. An issue
+        disappears on the next sync once the page was tombstoned (Fix
+        button or ``force=true``) or deleted in BookStack directly.
+        """
+        current = {
+            key: (title, url)
+            for key, title, url in zip(
+                report.orphan_conflict_page_keys,
+                report.orphan_conflict_page_titles,
+                report.orphan_conflict_page_urls,
+                strict=True,
+            )
+        }
+        entry_id = self.config_entry.entry_id
+        prefix = f"{REPAIR_ISSUE_ORPHAN_CONFLICT}_{entry_id}_"
+        existing = {
+            issue_id.removeprefix(prefix)
+            for (issue_domain, issue_id) in ir.async_get(self.hass).issues
+            if issue_domain == DOMAIN and issue_id.startswith(prefix)
+        }
+        resolved_keys = existing - set(current.keys())
+
+        for key, (title, url) in current.items():
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                f"{prefix}{key}",
+                is_fixable=True,
+                is_persistent=True,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=REPAIR_ISSUE_ORPHAN_CONFLICT,
+                translation_placeholders={
+                    "page_title": title,
+                    "page_url": url or strings["repair_no_page_url"],
+                },
+                data={"entry_id": entry_id, "page_key": key},
+            )
+        for key in resolved_keys:
+            ir.async_delete_issue(self.hass, DOMAIN, f"{prefix}{key}")
+
+        self._active_orphan_conflict_keys = set(current.keys())
 
     def _reconcile_bulk_conflict_issue(self, report: SyncReport) -> None:
         """
@@ -496,6 +548,7 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     # repair-issues hang around forever (v0.14.1 fix).
                     self._reconcile_tamper_issues(report, strings)
                     self._reconcile_markers_missing_issues(report, strings)
+                    self._reconcile_orphan_conflict_issues(report, strings)
                     self._reconcile_bulk_conflict_issue(report)
             finally:
                 # End of sync phase. ``is_syncing`` stays True if we're
@@ -573,6 +626,33 @@ class BookStackSyncCoordinator(DataUpdateCoordinator[SyncReport]):
                     CONF_EXCLUDE_LIVE_VALUES,
                     DEFAULT_EXCLUDE_LIVE_VALUES,
                 ),
+            )
+        finally:
+            self._sync_lock.release()
+
+    async def async_tombstone_single_page(self, page_key: str) -> bool:
+        """
+        Force-tombstone exactly one orphaned page (#275 repair-issue Fix flow).
+
+        Same lock discipline as ``async_fix_single_page`` (#203): wait
+        briefly, then raise ``BookStackSyncBusyError`` instead of leaving
+        the confirm dialog spinning behind a long full sync.
+        """
+        try:
+            await asyncio.wait_for(
+                self._sync_lock.acquire(),
+                timeout=FIX_FLOW_LOCK_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as err:
+            msg = "Timed out waiting for the sync lock"
+            raise BookStackSyncBusyError(msg) from err
+        try:
+            runtime = self.config_entry.runtime_data
+            return await tombstone_single_page(
+                runtime.client,
+                runtime.store,
+                page_key,
+                get_strings(self._resolve_output_language()),
             )
         finally:
             self._sync_lock.release()

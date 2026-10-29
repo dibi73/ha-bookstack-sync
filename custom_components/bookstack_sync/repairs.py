@@ -9,7 +9,7 @@ from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 from homeassistant.helpers import issue_registry as ir
 
 from .api import BookStackApiError
-from .const import LOGGER, REPAIR_ISSUE_BULK_CONFLICT
+from .const import LOGGER, REPAIR_ISSUE_BULK_CONFLICT, REPAIR_ISSUE_ORPHAN_CONFLICT
 from .coordinator import BookStackSyncBusyError
 
 if TYPE_CHECKING:
@@ -53,9 +53,7 @@ class _SinglePageFixFlow(RepairsFlow):
                 # and the user clicking Fix - nothing left to resync.
                 return self.async_abort(reason="entry_not_found")
             try:
-                found = await entry.runtime_data.coordinator.async_fix_single_page(
-                    self._page_key,
-                )
+                found = await self._async_run_fix(entry)
             except BookStackSyncBusyError:
                 # #203: a full sync is already holding the lock - fail
                 # fast rather than leave the confirm dialog spinning for
@@ -80,6 +78,27 @@ class _SinglePageFixFlow(RepairsFlow):
             step_id="confirm",
             data_schema=vol.Schema({}),
             description_placeholders=description_placeholders,
+        )
+
+    async def _async_run_fix(self, entry: BookStackSyncConfigEntry) -> bool:
+        """Force-overwrite the page's AUTO block; False if the page is gone."""
+        return await entry.runtime_data.coordinator.async_fix_single_page(
+            self._page_key,
+        )
+
+
+class _OrphanTombstoneFixFlow(_SinglePageFixFlow):
+    """
+    Confirm, then mark one conflicted orphaned page as orphaned anyway (#275).
+
+    Same confirm dialog and error handling as ``_SinglePageFixFlow``; only
+    the action differs, since there is no HA object left to resync from.
+    """
+
+    async def _async_run_fix(self, entry: BookStackSyncConfigEntry) -> bool:
+        """Force-tombstone the page; False if it was already resolved."""
+        return await entry.runtime_data.coordinator.async_tombstone_single_page(
+            self._page_key,
         )
 
 
@@ -155,6 +174,11 @@ async def async_create_fix_flow(
     data = data or {}
     if issue_id.startswith(f"{REPAIR_ISSUE_BULK_CONFLICT}_"):
         return _BulkForceResyncFixFlow(entry_id=str(data.get("entry_id", "")))
+    if issue_id.startswith(f"{REPAIR_ISSUE_ORPHAN_CONFLICT}_"):
+        return _OrphanTombstoneFixFlow(
+            entry_id=str(data.get("entry_id", "")),
+            page_key=str(data.get("page_key", "")),
+        )
     return _SinglePageFixFlow(
         entry_id=str(data.get("entry_id", "")),
         page_key=str(data.get("page_key", "")),

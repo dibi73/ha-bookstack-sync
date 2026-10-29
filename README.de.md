@@ -482,7 +482,8 @@ Entitäten:
   Live-Fortschritt, z. B. `Sync läuft 33/453` und danach
   `Export läuft 120/486` (zu Beginn kurz `syncing`)
 - **Attribute**: `last_run`, `created`, `updated`, `unchanged`,
-  `tombstoned`, `skipped_conflict`, `errors`, `total_pages`, dazu die
+  `tombstoned`, `skipped_conflict`, `conflict_pages` (die Titel der
+  übersprungenen Seiten), `errors`, `total_pages`, dazu die
   Export-Zähler, wenn der Markdown-Export eingeschaltet ist
 
 **Buttons**
@@ -502,6 +503,13 @@ Entitäten:
 - *Marker-Kommentare fehlen* — die Seite wurde im WYSIWYG-Editor
   geöffnet; **Reparieren** legt die Seite neu an (manuelle Notizen
   vorher sichern)
+- *Verwaiste Seite konnte nicht markiert werden* — das Gerät, der Raum
+  oder das Label existiert in Home Assistant nicht mehr, aber der
+  automatische Teil der Seite weicht vom zuletzt geschriebenen Stand ab
+  (von Hand bearbeitet oder von einer älteren Version geschrieben), daher
+  wurde sie nicht als verwaist markiert; **Reparieren** markiert sie
+  trotzdem (der manuelle Teil bleibt). Alternativ die Seite in BookStack
+  löschen oder die Meldung *Ignorieren*, um die Seite so zu behalten
 - *Viele Seiten im Konflikt* — nach einem Update, das die Darstellung
   der Seiten ändert; **Reparieren** erzwingt den Sync aller Seiten auf
   einmal
@@ -510,8 +518,8 @@ Entitäten:
 
 **Benachrichtigung** — nur nach einem Lauf mit Fehlern oder Konflikten.
 Sie nennt die Zahlen und darunter die betroffenen Seiten, jeweils
-verlinkt auf die BookStack-Seite und, bei Geräten und Räumen, auf das
-Objekt in Home Assistant.
+verlinkt auf die BookStack-Seite und, bei Geräten und Räumen, die es
+noch gibt, auf das Objekt in Home Assistant.
 
 ## Anwendungsfälle
 
