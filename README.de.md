@@ -73,10 +73,14 @@ Die Seiten werden in Kapiteln deines Ziel-Buchs organisiert:
   HA-Backup. Bei Aktionsdaten stehen Werte nur für unbedenkliche Felder
   wie `message`, `brightness_pct` oder `temperature`; alle anderen
   Felder erscheinen nur mit Namen, weil ihre Werte aus `!secret` stammen
-  können. Webhook-IDs erscheinen nie. Eine Automation oder ein Skript
-  aus einem Blueprint zeigt stattdessen den Blueprint und seine Eingaben
-  mit ihren Anzeigenamen (Eingaben, deren Name nach Zugangsdaten
-  klingt, bleiben verborgen), und beide Seiten enden mit einer Liste
+  können. Webhook-IDs erscheinen nie. Eine Geräte-ID, die HA nicht mehr
+  kennt, wird als *unbekanntes Gerät* markiert — meist ein Hinweis auf
+  eine Automation, die nach dem Entfernen eines Geräts nicht mehr
+  funktioniert. Eine Automation oder ein Skript aus einem Blueprint
+  zeigt zusätzlich den Blueprint und seine Eingaben mit ihren
+  Anzeigenamen (Eingaben, deren Name nach Zugangsdaten klingt, bleiben
+  verborgen) über der Beschreibung, was sie tut, und beide Seiten enden
+  mit einer Liste
   **Blueprints**: jeder installierte Blueprint mit Datei, Autor, Quelle,
   kurzer Beschreibung und den Automationen bzw. Skripten, die ihn nutzen
   — auch unbenutzte

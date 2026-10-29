@@ -118,6 +118,12 @@ class _Describer:
             return self.refs[value]
         return _code(value)
 
+    def device_ref(self, value: Any) -> str:
+        """Like ``ref`` but flags a device ID HA doesn't know (any more)."""
+        if isinstance(value, str) and value not in self.refs:
+            return self.s["desc_unknown_device"].format(value=_code(value))
+        return self.ref(value)
+
     def refs_of(self, value: Any) -> str:
         return ", ".join(self.ref(v) for v in _as_list(value))
 
@@ -130,7 +136,8 @@ class _Describer:
         for source in sources:
             for key in _TARGET_KEYS:
                 if key in source:
-                    parts.extend(self.ref(v) for v in _as_list(source[key]))
+                    to_label = self.device_ref if key == "device_id" else self.ref
+                    parts.extend(to_label(v) for v in _as_list(source[key]))
         return ", ".join(parts)
 
     def with_target(self, text: str, item: dict[str, Any]) -> str:
@@ -140,9 +147,9 @@ class _Describer:
     def device(self, item: dict[str, Any]) -> str:
         """Describe a device trigger/condition/action."""
         kind = item.get("type") or item.get("domain") or "?"
-        text = self.s["desc_device"].format(
-            device=self.ref(item.get("device_id")), type=_code(kind)
-        )
+        device_id = item.get("device_id")
+        template = "desc_device" if device_id in self.refs else "desc_device_unknown"
+        text = self.s[template].format(device=self.ref(device_id), type=_code(kind))
         if item.get("subtype"):
             text += f" {_code(item['subtype'])}"
         if item.get("entity_id"):
@@ -524,12 +531,15 @@ def describe_automation(
     if not isinstance(config, dict):
         return []
     d = _Describer(strings, refs)
-    if "use_blueprint" in config:
-        return _blueprint_lines(config, d, blueprint)
+    # A blueprint-based entry carries both ``use_blueprint`` and, from HA,
+    # the substituted triggers/actions (#50): show the blueprint first,
+    # then what the result does.
+    head = _blueprint_lines(config, d, blueprint)
     triggers = config.get("triggers", config.get("trigger"))
     conditions = config.get("conditions", config.get("condition"))
     actions = config.get("actions", config.get("action"))
     return [
+        *head,
         *_section(
             strings["desc_triggers"],
             [f"- {d.trigger(t)}" for t in _as_list(triggers)],
@@ -549,8 +559,10 @@ def describe_script(
     if not isinstance(config, dict):
         return []
     d = _Describer(strings, refs)
-    if "use_blueprint" in config:
-        return _blueprint_lines(config, d, blueprint)
+    # A blueprint-based entry carries both ``use_blueprint`` and, from HA,
+    # the substituted triggers/actions (#50): show the blueprint first,
+    # then what the result does.
+    head = _blueprint_lines(config, d, blueprint)
     fields = config.get("fields")
     field_lines = (
         [
@@ -567,6 +579,7 @@ def describe_script(
         else []
     )
     return [
+        *head,
         *_section(strings["desc_fields"], field_lines),
         *_section(strings["desc_sequence"], d.actions(config.get("sequence"), 0)),
     ]
