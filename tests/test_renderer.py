@@ -20,6 +20,7 @@ from custom_components.bookstack_sync.extractor import (
     BackupAgentEntry,
     BackupEntry,
     BackupStatusSnapshot,
+    BlueprintInfo,
     BluetoothDeviceHeard,
     BluetoothNetwork,
     BluetoothProxy,
@@ -788,6 +789,41 @@ class TestBundlePages:
             "> Wakes me up\n\n**Auslöser**\n\n- Um `06:00:00`\n\n"
             "**Aktionen**\n\n- `light.turn_on` für Sofa (`light.sofa`)"
         ) in out
+
+    def test_blueprints_section_lists_users_and_unused(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        """#50: blueprints follow the automations, with who uses them."""
+        blueprints = [
+            BlueprintInfo(
+                domain="automation",
+                path="homeassistant/motion_light.yaml",
+                name="Motion Light",
+                author="Home Assistant",
+                description="Turn on a light\n\nwhen motion is detected.",
+                source_url="https://example.org/motion.yaml",
+                used_by=["Flur Licht", "Keller Licht"],
+            ),
+            BlueprintInfo(domain="automation", path="x/unused.yaml", name="Unused"),
+        ]
+        out = render_automations_auto_block(
+            [], fixed_now, strings_de, blueprints=blueprints
+        )
+
+        assert (
+            "## Blueprints (2)\n\n### Motion Light\n\n"
+            "- Datei: `homeassistant/motion_light.yaml`\n"
+            "- Autor: Home Assistant\n"
+            "- Quelle: <https://example.org/motion.yaml>\n"
+            "- Verwendet von: Flur Licht, Keller Licht\n\n"
+            "> Turn on a light when motion is detected."
+        ) in out
+        assert (
+            "### Unused\n\n- Datei: `x/unused.yaml`\n- Verwendet von: nicht verwendet"
+            in out
+        )
 
     def test_empty_automations_emits_placeholder(
         self,

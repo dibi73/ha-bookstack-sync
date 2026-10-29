@@ -35,6 +35,7 @@ from custom_components.bookstack_sync.extractor import (
     _parse_energy_payload,
     async_extract_addons,
     async_extract_backup_status,
+    async_extract_blueprints,
     async_extract_dashboard_usage,
     async_extract_energy_config,
     extract_snapshot,
@@ -2051,6 +2052,61 @@ async def test_dashboard_usage_attached_to_devices(hass: HomeAssistant) -> None:
 async def test_dashboard_usage_without_lovelace(hass: HomeAssistant) -> None:
     """#45: no lovelace data → nothing attached, no crash."""
     assert await async_extract_dashboard_usage(hass) == {}
+
+
+async def test_blueprints_extracted_and_attached(hass: HomeAssistant) -> None:
+    """#50: blueprints are listed with their users; broken ones skipped."""
+    await _seed_minimal_registry(hass)
+    motion = MagicMock(
+        metadata={
+            "name": "Motion Light",
+            "author": "Home Assistant",
+            "source_url": "https://example.org/motion.yaml",
+        },
+        inputs={"motion_entity": {"name": "Motion Sensor"}, "plain": None},
+    )
+    domain_blueprints = MagicMock()
+    domain_blueprints.async_get_blueprints = AsyncMock(
+        return_value={
+            "homeassistant/motion_light.yaml": motion,
+            "homeassistant/unused.yaml": MagicMock(
+                metadata={"name": "Unused"}, inputs={}
+            ),
+            "broken.yaml": RuntimeError("bad yaml"),
+        },
+    )
+    hass.data["blueprint"] = {"automation": domain_blueprints}
+    hass.data["automation"] = MagicMock(
+        entities=[
+            MagicMock(
+                entity_id="automation.morning",
+                raw_config={
+                    "use_blueprint": {
+                        "path": "homeassistant/motion_light.yaml",
+                        "input": {"motion_entity": "light.sofa_light"},
+                    },
+                },
+            ),
+        ],
+    )
+
+    blueprints = await async_extract_blueprints(hass)
+    snap = extract_snapshot(hass, blueprints=blueprints)
+
+    assert [(b.name, b.used_by) for b in snap.blueprints] == [
+        ("Motion Light", ["Morning Routine"]),
+        ("Unused", []),
+    ]
+    motion_info = snap.blueprints[0]
+    assert motion_info.inputs == {"motion_entity": "Motion Sensor", "plain": "plain"}
+    assert motion_info.author == "Home Assistant"
+    morning = next(a for a in snap.automations if a.name == "Morning Routine")
+    assert morning.blueprint is motion_info
+
+
+async def test_blueprints_without_integration(hass: HomeAssistant) -> None:
+    """#50: no blueprint integration → empty list, no crash."""
+    assert await async_extract_blueprints(hass) == []
 
 
 async def test_live_values_kept_by_default(hass: HomeAssistant) -> None:

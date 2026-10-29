@@ -30,6 +30,7 @@ if TYPE_CHECKING:
         AreaSnapshot,
         AutomationSnapshot,
         BackupStatusSnapshot,
+        BlueprintInfo,
         BluetoothNetwork,
         DeviceSnapshot,
         EnergyConfig,
@@ -757,8 +758,10 @@ def render_automations_auto_block(
     now: datetime,
     strings: dict[str, str],
     ha_url: str = "",
+    *,
+    blueprints: list[BlueprintInfo] | None = None,
 ) -> str:
-    """Render the AUTO block listing every HA automation."""
+    """Render the AUTO block listing every HA automation (+ blueprints, #50)."""
     lines: list[str] = [
         _format_attribution(strings, now),
         "",
@@ -770,10 +773,12 @@ def render_automations_auto_block(
     ]
     if not automations:
         lines.append(strings["empty_automations"])
+        lines.extend(_blueprints_section(blueprints or [], strings))
         return "\n".join(lines).rstrip() + "\n"
 
     for auto in automations:
         lines.extend(_automation_block(auto, strings, ha_url))
+    lines.extend(_blueprints_section(blueprints or [], strings))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -782,8 +787,10 @@ def render_scripts_auto_block(
     now: datetime,
     strings: dict[str, str],
     ha_url: str = "",
+    *,
+    blueprints: list[BlueprintInfo] | None = None,
 ) -> str:
-    """Render the AUTO block listing every HA script."""
+    """Render the AUTO block listing every HA script (+ blueprints, #50)."""
     lines: list[str] = [
         _format_attribution(strings, now),
         "",
@@ -792,11 +799,60 @@ def render_scripts_auto_block(
     ]
     if not scripts:
         lines.append(strings["empty_scripts"])
+        lines.extend(_blueprints_section(blueprints or [], strings))
         return "\n".join(lines).rstrip() + "\n"
 
     for script in scripts:
         lines.extend(_script_block(script, strings, ha_url))
+    lines.extend(_blueprints_section(blueprints or [], strings))
     return "\n".join(lines).rstrip() + "\n"
+
+
+# Blueprint descriptions are often several paragraphs of Markdown; one
+# capped line is enough to say what the blueprint does.
+_BLUEPRINT_DESCRIPTION_MAX = 300
+
+
+def _blueprints_section(
+    blueprints: list[BlueprintInfo],
+    strings: dict[str, str],
+) -> list[str]:
+    """
+    Render the installed blueprints with their users (issue #50).
+
+    Unused blueprints are listed too: "installed but not used" is worth
+    knowing when tidying up.
+    """
+    if not blueprints:
+        return []
+    lines: list[str] = [
+        "",
+        "## "
+        + strings["section_blueprints_count_template"].format(count=len(blueprints)),
+        "",
+    ]
+    for blueprint in blueprints:
+        lines.extend([f"### {_md_escape(blueprint.name)}", ""])
+        lines.append(f"- {strings['field_blueprint_file']}: `{blueprint.path}`")
+        if blueprint.author:
+            lines.append(f"- {strings['field_author']}: {_md_escape(blueprint.author)}")
+        if blueprint.source_url:
+            lines.append(
+                f"- {strings['field_source']}: <{_md_escape(blueprint.source_url)}>"
+            )
+        users = (
+            ", ".join(_md_escape(name) for name in blueprint.used_by)
+            if blueprint.used_by
+            else strings["blueprint_unused"]
+        )
+        lines.append(f"- {strings['field_used_by']}: {users}")
+        if blueprint.description:
+            text = " ".join(str(blueprint.description).split())
+            if len(text) > _BLUEPRINT_DESCRIPTION_MAX:
+                text = text[: _BLUEPRINT_DESCRIPTION_MAX - 1] + "…"
+            lines.extend(["", f"> {_md_escape(text)}"])
+        lines.append("")
+    return lines
 
 
 def render_scenes_auto_block(
@@ -1119,7 +1175,7 @@ def _automation_block(
     if auto.description:
         block.extend(["", f"> {auto.description}"])
     block.append("")
-    block.extend(describe_automation(auto.config, strings, auto.refs))
+    block.extend(describe_automation(auto.config, strings, auto.refs, auto.blueprint))
     return block
 
 
@@ -1143,7 +1199,7 @@ def _script_block(
     if script.description:
         block.extend(["", f"> {script.description}"])
     block.append("")
-    block.extend(describe_script(script.config, strings, script.refs))
+    block.extend(describe_script(script.config, strings, script.refs, script.blueprint))
     return block
 
 
