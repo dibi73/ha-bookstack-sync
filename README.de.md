@@ -57,7 +57,11 @@ Die Seiten werden in Kapiteln deines Ziel-Buchs organisiert:
   Geräte, die Home Assistant (seit HA 2026.8) auf mehrere Integrationen
   aufteilt, werden automatisch zu einer Seite zusammengeführt — unter
   „Auch bekannt als“ auf der Geräteseite stehen die einzelnen
-  Registry-Einträge, die zusammengefasst wurden
+  Registry-Einträge, die zusammengefasst wurden. Die Seite nennt außerdem
+  die Dashboard-Ansichten, auf denen eine Entität des Geräts zu sehen ist,
+  mit Link zur Ansicht („Angezeigt auf Dashboards“); die
+  Dashboard-Konfiguration selbst wird nicht kopiert — die liegt im
+  HA-Backup
 - Kapitel **Labels** — eine Seite pro HA-Label mit allen Geräten, die es
   tragen (direkt oder über eine ihrer Entitäten)
 - **Integrationen**, **Automationen**, **Skripte**, **Szenen** — je eine

@@ -23,6 +23,7 @@ from custom_components.bookstack_sync.extractor import (
     BluetoothDeviceHeard,
     BluetoothNetwork,
     BluetoothProxy,
+    DashboardRef,
     DeviceIntegrationRef,
     DeviceSnapshot,
     EntitySnapshot,
@@ -1398,6 +1399,36 @@ class TestBluetoothPage:
         out = render_bluetooth_auto_block(network, fixed_now, strings_de)
         assert "**esp-btgw-badeg**" in out
         assert "http" not in out
+
+
+class TestDashboardsSection:
+    """#45: device pages list the dashboard views showing the device."""
+
+    def test_views_listed_and_linked(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        device = _device(name="Sofa")
+        device.dashboards = [
+            DashboardRef(None, "lovelace", "Wohnzimmer", "wohnen", 1),
+            DashboardRef("Leo | Kind", "dashboard-leo", "Licht", "0", 0),
+        ]
+        out = render_device_auto_block(device, fixed_now, strings_de, ha_url=_HA_URL)
+
+        assert (
+            "## Angezeigt auf Dashboards\n\n"
+            f"- [Übersicht › Wohnzimmer]({_HA_URL}/lovelace/wohnen)\n"
+            f"- [Leo \\| Kind › Licht]({_HA_URL}/dashboard-leo/0)"
+        ) in out
+
+    def test_no_section_without_dashboards(
+        self,
+        fixed_now: datetime,
+        strings_de: dict[str, str],
+    ) -> None:
+        out = render_device_auto_block(_device(), fixed_now, strings_de)
+        assert "Dashboards" not in out
 
 
 class TestLiveValuesOff:

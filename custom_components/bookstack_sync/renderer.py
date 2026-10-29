@@ -466,7 +466,33 @@ def render_device_auto_block(
         lines.append(strings["empty_entities_in_device"])
     if reverse_usage:
         lines.extend(_used_by_section(device, strings, reverse_usage))
+    lines.extend(_dashboards_section(device, strings, ha_url))
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _dashboards_section(
+    device: DeviceSnapshot,
+    strings: dict[str, str],
+    ha_url: str,
+) -> list[str]:
+    """
+    Render "Shown on dashboards" for a device page (issue #45).
+
+    One line per dashboard view that shows any of the device's entities,
+    linked to that view when ``ha_url`` is set. Answers "where do I see
+    this?" without copying any dashboard config into the wiki.
+    """
+    if not device.dashboards:
+        return []
+    lines: list[str] = ["", f"## {strings['section_dashboards']}", ""]
+    for ref in device.dashboards:
+        dashboard = ref.dashboard_title or strings["dashboard_default_title"]
+        label = f"{_md_escape(dashboard)} › {_md_escape(ref.view_title)}"
+        if ha_url:
+            lines.append(f"- [{label}]({ha_url}/{ref.dashboard_path}/{ref.view_path})")
+        else:
+            lines.append(f"- {label}")
+    return lines
 
 
 def _aka_section(

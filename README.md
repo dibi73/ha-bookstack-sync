@@ -56,7 +56,10 @@ Pages are organised into chapters inside your target book:
   topic. Devices split across multiple integrations by Home Assistant
   (since HA 2026.8) are automatically merged into a single page — see
   "Also known as" on the device page for the individual registry
-  entries that got folded together
+  entries that got folded together. The page also lists the dashboard
+  views that show any of the device's entities, linked to the view
+  ("Shown on dashboards"); the dashboard configuration itself is not
+  copied — HA's backup holds it
 - **Labels** chapter — one page per HA label, listing every device
   that carries it (directly or via one of its entities)
 - **Integrations**, **Automations**, **Scripts**, **Scenes** — one
