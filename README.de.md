@@ -62,7 +62,14 @@ Die Seiten werden in Kapiteln deines Ziel-Buchs organisiert:
   tragen (direkt oder über eine ihrer Entitäten)
 - **Integrationen**, **Automationen**, **Skripte**, **Szenen** — je eine
   Sammelseite mit jedem Eintrag samt Beschreibung, Modus, letzter
-  Auslösung usw.
+  Auslösung usw. Jede Automation und jedes Skript bekommt außerdem eine
+  lesbare Zusammenfassung ihrer Auslöser, Bedingungen und Aktionen (bei
+  Skripten: Eingabefelder und Ablauf), mit Entitäten, Geräten und Räumen
+  beim Namen. Das rohe YAML wird nicht kopiert — das liegt bereits im
+  HA-Backup. Bei Aktionsdaten stehen Werte nur für unbedenkliche Felder
+  wie `message`, `brightness_pct` oder `temperature`; alle anderen
+  Felder erscheinen nur mit Namen, weil ihre Werte aus `!secret` stammen
+  können. Webhook-IDs erscheinen nie
 - **Netzwerk** — Tabelle aller Geräte mit Netzwerkdaten, dazu ein
   UniFi-Topologiebaum und ein Exportblock für DHCP-Reservierungen, wo
   möglich

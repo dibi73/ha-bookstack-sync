@@ -1930,6 +1930,56 @@ async def test_exclude_disabled_drops_disabled_devices_and_entities(
     assert {e.entity_id for e in devices["NAS"].entities} == {"sensor.nas_cpu"}
 
 
+async def test_automation_raw_config_and_reference_labels(
+    hass: HomeAssistant,
+) -> None:
+    """#44: raw_config is taken from HA and its IDs resolved to names."""
+    await _seed_minimal_registry(hass)
+    device_reg = dr.async_get(hass)
+    sofa_device = next(d for d in device_reg.devices.values() if d.name == "Sofa Light")
+    sofa_entry = er.async_get(hass).async_get("light.sofa_light")
+    assert sofa_entry is not None
+    config = {
+        "triggers": [
+            {"trigger": "state", "entity_id": "light.sofa_light", "to": "on"},
+            {"trigger": "state", "entity_id": "Light.Sofa_Light"},
+        ],
+        "actions": [
+            {
+                "device_id": sofa_device.id,
+                "domain": "light",
+                "entity_id": sofa_entry.id,
+                "type": "turn_off",
+            },
+        ],
+    }
+    hass.data["automation"] = MagicMock(
+        entities=[MagicMock(entity_id="automation.morning", raw_config=config)],
+    )
+
+    snap = extract_snapshot(hass)
+
+    morning = next(a for a in snap.automations if a.name == "Morning Routine")
+    assert morning.config == config
+    assert morning.refs["light.sofa_light"] == "Sofa Light (`light.sofa_light`)"
+    assert morning.refs[sofa_entry.id] == "Sofa Light (`light.sofa_light`)"
+    assert morning.refs["Light.Sofa_Light"] == "Sofa Light (`light.sofa_light`)"
+    assert morning.refs[sofa_device.id] == "Sofa Light"
+    # Plain values that aren't IDs get no label.
+    assert "on" not in morning.refs
+
+
+async def test_automation_without_component_has_no_config(hass: HomeAssistant) -> None:
+    """#44: no automation component loaded → no summary, no crash."""
+    await _seed_minimal_registry(hass)
+
+    snap = extract_snapshot(hass)
+
+    morning = next(a for a in snap.automations if a.name == "Morning Routine")
+    assert morning.config is None
+    assert morning.refs == {}
+
+
 async def test_live_values_kept_by_default(hass: HomeAssistant) -> None:
     """#266: without the opt-in, states and timestamps stay in the snapshot."""
     await _seed_minimal_registry(hass)

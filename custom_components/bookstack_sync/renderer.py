@@ -18,7 +18,9 @@ import unicodedata
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ._markdown import _md_escape
 from .const import ATTRIBUTION, PAGE_KIND_DEVICE, PAGE_KIND_LABEL
+from .describe import describe_automation, describe_script
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -90,35 +92,6 @@ def _slugify(text: str) -> str:
     nfkd = unicodedata.normalize("NFKD", text)
     ascii_text = nfkd.encode("ascii", "ignore").decode("ascii").lower()
     return re.sub(r"[^a-z0-9]+", "-", ascii_text).strip("-")
-
-
-def _md_escape(value: object) -> str:
-    """
-    Escape characters that would break a markdown table or inject HTML.
-
-    BookStack renders markdown safely by default but we don't want a device
-    named ``Living Room | <script>`` to either break the table layout or end
-    up as an inline HTML tag if a user enables raw-HTML in BookStack.
-
-    ``[`` / ``]`` are escaped to defuse a name like
-    ``Lampe](javascript:alert(1))`` from breaking out of a markdown link
-    label and injecting a clickable ``javascript:`` URL. BookStack's own
-    sanitiser strips ``javascript:`` schemes on render, but treating that
-    as defence-in-depth lets us not depend on it.
-    """
-    # Device registry fields such as sw_version can arrive as ints.
-    text = "" if value is None else str(value)
-    if not text:
-        return text
-    return (
-        text.replace("\\", "\\\\")
-        .replace("|", "\\|")
-        .replace("[", "\\[")
-        .replace("]", "\\]")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\n", " ")
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1120,6 +1093,7 @@ def _automation_block(
     if auto.description:
         block.extend(["", f"> {auto.description}"])
     block.append("")
+    block.extend(describe_automation(auto.config, strings, auto.refs))
     return block
 
 
@@ -1143,6 +1117,7 @@ def _script_block(
     if script.description:
         block.extend(["", f"> {script.description}"])
     block.append("")
+    block.extend(describe_script(script.config, strings, script.refs))
     return block
 
 

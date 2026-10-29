@@ -26,10 +26,11 @@ from homeassistant.helpers import (
     label_registry as lr,
 )
 
+from ._markdown import _md_escape
 from .const import LOGGER
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Iterator
 
     from homeassistant.core import HomeAssistant
 
@@ -204,6 +205,11 @@ class AutomationSnapshot:
     mode: str | None
     last_triggered: str | None
     area_id: str | None = None
+    # Issue #44: HA's in-memory ``raw_config`` (None when HA doesn't expose
+    # one) plus display labels for the IDs it references, see
+    # ``_reference_labels``. ``describe.describe_automation`` renders both.
+    config: dict[str, Any] | None = None
+    refs: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -216,6 +222,9 @@ class ScriptSnapshot:
     state: str | None
     last_triggered: str | None
     area_id: str | None = None
+    # Issue #44, see ``AutomationSnapshot.config``.
+    config: dict[str, Any] | None = None
+    refs: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -975,6 +984,7 @@ def _extract_automations(
     entity_reg: er.EntityRegistry,
 ) -> list[AutomationSnapshot]:
     automations: list[AutomationSnapshot] = []
+    configs = _raw_configs(hass, "automation")
     for entity_id in _automation_entity_ids(hass, entity_reg):
         registry_entry = entity_reg.async_get(entity_id)
         state_obj = hass.states.get(entity_id)
@@ -996,10 +1006,97 @@ def _extract_automations(
                 mode=attrs.get("mode"),
                 last_triggered=last.isoformat() if isinstance(last, datetime) else last,
                 area_id=area_id,
+                config=configs.get(entity_id),
+                refs=_reference_labels(hass, entity_reg, configs.get(entity_id)),
             ),
         )
     automations.sort(key=lambda a: (a.name.lower(), a.entity_id))
     return automations
+
+
+_ENTITY_ID_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
+
+
+def _raw_configs(hass: HomeAssistant, domain: str) -> dict[str, dict[str, Any]]:
+    """
+    Return entity_id → ``raw_config`` of every automation or script (#44).
+
+    Read from the domain's ``EntityComponent`` in ``hass.data``, so YAML
+    packages and UI-created entries are covered alike and no file is
+    read. Missing pieces (domain not loaded, an entity without
+    ``raw_config``) just mean no summary for that entry.
+    """
+    component = hass.data.get(domain)
+    entities = getattr(component, "entities", None)
+    if entities is None:
+        return {}
+    configs: dict[str, dict[str, Any]] = {}
+    for entity in entities:
+        raw = getattr(entity, "raw_config", None)
+        if isinstance(raw, dict):
+            configs[entity.entity_id] = raw
+    return configs
+
+
+def _iter_strings(value: Any) -> Iterator[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_strings(item)
+
+
+def _entity_label(
+    hass: HomeAssistant, entry: er.RegistryEntry | None, entity_id: str
+) -> str:
+    state = hass.states.get(entity_id)
+    name = (entry.name or entry.original_name if entry else None) or (
+        state.attributes.get("friendly_name") if state else None
+    )
+    if name and name != entity_id:
+        return f"{_md_escape(name)} (`{entity_id}`)"
+    return f"`{entity_id}`"
+
+
+def _reference_labels(
+    hass: HomeAssistant,
+    entity_reg: er.EntityRegistry,
+    config: dict[str, Any] | None,
+) -> dict[str, str]:
+    """
+    Map every ID in ``config`` to a readable, escaped label (#44).
+
+    Covers entity IDs, entity-registry UUIDs (device triggers, conditions
+    and actions reference entities that way), device IDs and area IDs, so
+    the summary reads "Device Remote" instead of an opaque hex string.
+    """
+    if not config:
+        return {}
+    device_reg = dr.async_get(hass)
+    area_reg = ar.async_get(hass)
+    labels: dict[str, str] = {}
+    for value in _iter_strings(config):
+        if value in labels:
+            continue
+        # HA lower-cases entity IDs on load, but raw_config keeps what the
+        # user typed (``cover.RaffstoresEG``).
+        entity_id = value.lower()
+        if _ENTITY_ID_RE.match(entity_id) and (
+            hass.states.get(entity_id) is not None or entity_reg.async_get(entity_id)
+        ):
+            labels[value] = _entity_label(
+                hass, entity_reg.async_get(entity_id), entity_id
+            )
+        elif (entry := entity_reg.async_get(value)) is not None:
+            labels[value] = _entity_label(hass, entry, entry.entity_id)
+        elif (device := device_reg.async_get(value)) is not None:
+            labels[value] = _md_escape(device.name_by_user or device.name or value)
+        elif (area := area_reg.async_get_area(value)) is not None:
+            labels[value] = _md_escape(area.name)
+    return labels
 
 
 def _extract_scripts(
@@ -1007,6 +1104,7 @@ def _extract_scripts(
     entity_reg: er.EntityRegistry,
 ) -> list[ScriptSnapshot]:
     scripts: list[ScriptSnapshot] = []
+    configs = _raw_configs(hass, "script")
     ids: set[str] = {
         e.entity_id
         for e in entity_reg.entities.values()
@@ -1033,6 +1131,8 @@ def _extract_scripts(
                 state=state_obj.state if state_obj else "disabled",
                 last_triggered=last.isoformat() if isinstance(last, datetime) else last,
                 area_id=area_id,
+                config=configs.get(entity_id),
+                refs=_reference_labels(hass, entity_reg, configs.get(entity_id)),
             ),
         )
     scripts.sort(key=lambda s: (s.name.lower(), s.entity_id))
