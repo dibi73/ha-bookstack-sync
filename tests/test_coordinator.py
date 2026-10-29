@@ -844,6 +844,74 @@ async def test_markers_missing_issue_created_fixable_with_resync_data(
     assert issue.data == {"entry_id": entry_id, "page_key": "area:living"}
 
 
+async def test_orphan_conflict_issue_created_and_resolved(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#275: per-page issue for orphan conflicts, auto-resolved once gone."""
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    from custom_components.bookstack_sync._strings import get_strings  # noqa: PLC0415
+    from custom_components.bookstack_sync.const import (  # noqa: PLC0415
+        DOMAIN,
+        REPAIR_ISSUE_ORPHAN_CONFLICT,
+    )
+
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    strings = get_strings("de")
+
+    report = SyncReport()
+    report.orphan_conflict_page_keys.append("device:gone")
+    report.orphan_conflict_page_titles.append("Gerät: Alt")
+    report.orphan_conflict_page_urls.append("http://bookstack.local/books/b/page/alt")
+    coord._reconcile_orphan_conflict_issues(report, strings)
+
+    entry_id = config_entry.entry_id
+    issue_id = f"{REPAIR_ISSUE_ORPHAN_CONFLICT}_{entry_id}_device:gone"
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+    assert issue is not None
+    assert issue.is_fixable is True
+    assert issue.data == {"entry_id": entry_id, "page_key": "device:gone"}
+    assert issue.translation_placeholders == {
+        "page_title": "Gerät: Alt",
+        "page_url": "http://bookstack.local/books/b/page/alt",
+    }
+
+    coord._reconcile_orphan_conflict_issues(SyncReport(), strings)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_async_tombstone_single_page_delegates_and_releases_lock(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """#275: coordinator hands off to ``tombstone_single_page`` under the lock."""
+    config_entry.add_to_hass(hass)
+    coord = _make_coordinator(hass, config_entry)
+    fake_client = object()
+    fake_store = object()
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {"client": fake_client, "store": fake_store},
+    )()
+
+    fake_tombstone = AsyncMock(return_value=True)
+    with patch(
+        "custom_components.bookstack_sync.coordinator.tombstone_single_page",
+        new=fake_tombstone,
+    ):
+        result = await coord.async_tombstone_single_page("device:gone")
+
+    assert result is True
+    args = fake_tombstone.await_args.args
+    assert args[0] is fake_client
+    assert args[1] is fake_store
+    assert args[2] == "device:gone"
+    assert not coord._sync_lock.locked()
+
+
 async def test_bulk_conflict_issue_created_above_threshold(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,

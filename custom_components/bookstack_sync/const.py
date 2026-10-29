@@ -129,6 +129,9 @@ REPAIR_ISSUE_TAMPERED = "page_tampered"
 # repair issue with instructions to reset the page in the markdown
 # editor.
 REPAIR_ISSUE_MARKERS_MISSING = "page_markers_missing"
+# Page's HA object is gone, but the page could not be marked as orphaned
+# because its AUTO block hash drifted (#275). Fix = tombstone anyway.
+REPAIR_ISSUE_ORPHAN_CONFLICT = "page_orphan_conflict"
 # After how many consecutive failed sync runs we surface an "unreachable"
 # repair issue. 3 = three runs in a row before the user gets a
 # notification, so a single transient outage doesn't spam Repairs.

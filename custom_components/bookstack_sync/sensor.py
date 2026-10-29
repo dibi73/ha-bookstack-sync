@@ -111,6 +111,7 @@ class BookStackSyncStatusSensor(
                 "unchanged": 0,
                 "tombstoned": 0,
                 "skipped_conflict": 0,
+                "conflict_pages": [],
                 "errors": [],
                 "total_pages": 0,
             }
@@ -122,6 +123,8 @@ class BookStackSyncStatusSensor(
                 "unchanged": len(report.unchanged),
                 "tombstoned": len(report.tombstoned),
                 "skipped_conflict": len(report.skipped_conflict),
+                # #275: which pages were skipped, not just how many.
+                "conflict_pages": list(report.skipped_conflict),
                 "errors": report.errors,
                 "total_pages": (
                     len(report.created)

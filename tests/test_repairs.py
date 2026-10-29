@@ -15,9 +15,14 @@ from unittest.mock import AsyncMock
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.bookstack_sync.api import BookStackApiError
-from custom_components.bookstack_sync.const import DOMAIN, REPAIR_ISSUE_BULK_CONFLICT
+from custom_components.bookstack_sync.const import (
+    DOMAIN,
+    REPAIR_ISSUE_BULK_CONFLICT,
+    REPAIR_ISSUE_ORPHAN_CONFLICT,
+)
 from custom_components.bookstack_sync.repairs import (
     _BulkForceResyncFixFlow,
+    _OrphanTombstoneFixFlow,
     _SinglePageFixFlow,
     async_create_fix_flow,
 )
@@ -211,6 +216,59 @@ async def test_async_create_fix_flow_dispatches_to_bulk_flow(
     )
     assert isinstance(flow, _BulkForceResyncFixFlow)
     assert flow._entry_id == "entry1"
+
+
+async def test_async_create_fix_flow_dispatches_to_orphan_flow(
+    hass: HomeAssistant,
+) -> None:
+    """#275: orphan-conflict issues get the tombstone flow, not the resync one."""
+    flow = await async_create_fix_flow(
+        hass,
+        f"{REPAIR_ISSUE_ORPHAN_CONFLICT}_entry1_device:gone",
+        {"entry_id": "entry1", "page_key": "device:gone"},
+    )
+    assert isinstance(flow, _OrphanTombstoneFixFlow)
+    assert flow._entry_id == "entry1"
+    assert flow._page_key == "device:gone"
+
+
+async def test_orphan_confirm_step_tombstones_and_creates_entry(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    config_entry.add_to_hass(hass)
+    tombstone = AsyncMock(return_value=True)
+    fix_page = AsyncMock(return_value=True)
+    config_entry.runtime_data = type(
+        "RD",
+        (),
+        {
+            "coordinator": type(
+                "Coord",
+                (),
+                {
+                    "async_tombstone_single_page": tombstone,
+                    "async_fix_single_page": fix_page,
+                },
+            )(),
+        },
+    )()
+
+    flow = _OrphanTombstoneFixFlow(
+        entry_id=config_entry.entry_id,
+        page_key="device:gone",
+    )
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.issue_id = (
+        f"{REPAIR_ISSUE_ORPHAN_CONFLICT}_{config_entry.entry_id}_device:gone"
+    )
+
+    result = await flow.async_step_confirm({})
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    tombstone.assert_awaited_once_with("device:gone")
+    fix_page.assert_not_awaited()
 
 
 async def test_bulk_confirm_step_shows_form_first(hass: HomeAssistant) -> None:

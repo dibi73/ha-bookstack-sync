@@ -454,8 +454,9 @@ Each configured BookStack instance gets one device with these entities:
   `Export läuft 120/486` (falls back to `syncing` for a moment at the
   start)
 - **Attributes**: `last_run`, `created`, `updated`, `unchanged`,
-  `tombstoned`, `skipped_conflict`, `errors`, `total_pages`, plus the
-  export counters when the Markdown export is enabled
+  `tombstoned`, `skipped_conflict`, `conflict_pages` (the titles of the
+  skipped pages), `errors`, `total_pages`, plus the export counters when
+  the Markdown export is enabled
 
 **Buttons**
 - **Sync now** — a full sync, same as `run_now`
@@ -470,6 +471,12 @@ Each configured BookStack instance gets one device with these entities:
   button that overwrites just that page's auto block
 - *Marker comments missing* — the page was opened in the WYSIWYG
   editor; **Fix** recreates the page (save your manual notes first)
+- *Orphaned page could not be marked* — the device, area or label is
+  gone from Home Assistant, but the page's auto block differs from what
+  was last written (edited by hand, or written by an older version), so
+  it was not marked as orphaned; **Fix** marks it anyway (the manual
+  block stays). Alternatively delete the page in BookStack, or *Ignore*
+  the issue to keep the page as it is
 - *Many pages in conflict* — after an update that changes how pages
   are rendered; **Fix** force-syncs all pages at once
 - *BookStack unreachable* — after three failed syncs in a row; clears
@@ -477,8 +484,8 @@ Each configured BookStack instance gets one device with these entities:
 
 **Persistent notification** — only after a run with errors or
 conflicts. It lists the counts and below them the affected pages, each
-linked to the BookStack page and, for devices and areas, to the object
-in Home Assistant.
+linked to the BookStack page and, for devices and areas that still
+exist, to the object in Home Assistant.
 
 ## Use cases
 

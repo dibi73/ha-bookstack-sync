@@ -200,6 +200,23 @@
         }
       }
     },
+    "page_orphan_conflict": {
+      "title": "An orphaned page could not be marked",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Mark as orphaned",
+            "description": "The device, area or label behind the page \"{page_title}\" no longer exists in Home Assistant. Normally the integration marks such pages as orphaned in BookStack. This page's AUTO block, however, differs from what was last written - either it was edited by hand, or the page dates from an older version of the integration. So it was skipped.\n\nOpen the page directly: {page_url}\n\nThis replaces the AUTO block of this page with the \"orphaned\" notice. The MANUAL block is preserved. If you no longer need the page, you can delete it in BookStack instead; to keep it unchanged, choose \"Ignore\". Continue?"
+          }
+        },
+        "abort": {
+          "entry_not_found": "The associated config entry could not be found (it may have been removed).",
+          "page_not_found": "The page has already been marked as orphaned or was deleted — nothing left to fix.",
+          "resync_failed": "The repair attempt failed. Check the BookStack connection and try again.",
+          "sync_in_progress": "A sync is already running. Please try again shortly."
+        }
+      }
+    },
     "bulk_page_conflict": {
       "title": "Multiple pages blocked after an update",
       "fix_flow": {
