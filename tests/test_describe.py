@@ -273,9 +273,35 @@ def test_blueprint_automation_lists_blueprint_and_inputs() -> None:
     assert "**Auslöser**" not in out
 
 
+def test_blueprint_use_is_followed_by_the_substituted_summary() -> None:
+    """#50: HA hands over the substituted config next to use_blueprint."""
+    config = {
+        "use_blueprint": {"path": "x/motion.yaml", "input": {}},
+        "triggers": [{"trigger": "state", "entity_id": "light.sofa", "to": "on"}],
+    }
+    out = _text(describe_automation(config, DE, REFS))
+
+    assert out.index("**Blueprint**") < out.index("**Auslöser**")
+    assert "- Sofa (`light.sofa`) wechselt zu `on`" in out
+
+
 def test_blueprint_not_loadable_shows_path_only() -> None:
     config = {"use_blueprint": {"path": "gone/missing.yaml", "input": {}}}
     out = _text(describe_script(config, EN, {}))
 
     assert "**Blueprint**\n\n- `gone/missing.yaml`" in out
     assert "**Inputs**" not in out
+
+
+def test_unknown_device_is_flagged() -> None:
+    """A device ID HA no longer knows (deleted device) is called out."""
+    config = {
+        "triggers": [{"trigger": "device", "device_id": "gone", "type": "turned_on"}],
+        "actions": [
+            {"action": "music_assistant.play_media", "target": {"device_id": "gone"}},
+        ],
+    }
+    out = _text(describe_automation(config, DE, REFS))
+
+    assert "- Unbekanntes Gerät `gone`: `turned_on`" in out
+    assert "- `music_assistant.play_media` für unbekanntes Gerät `gone`" in out

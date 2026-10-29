@@ -33,6 +33,7 @@ from custom_components.bookstack_sync.extractor import (
     _device_entry_ids,
     _extract_bluetooth_network,
     _parse_energy_payload,
+    _raw_configs,
     async_extract_addons,
     async_extract_backup_status,
     async_extract_blueprints,
@@ -2076,18 +2077,34 @@ async def test_blueprints_extracted_and_attached(hass: HomeAssistant) -> None:
         },
     )
     hass.data["blueprint"] = {"automation": domain_blueprints}
+    # Like HA: raw_config is the substituted config, the blueprint
+    # reference sits apart on the entity.
+    substituted = {"triggers": [{"trigger": "state", "entity_id": "light.sofa_light"}]}
+    blueprint_entity = MagicMock(
+        entity_id="automation.morning",
+        raw_config=substituted,
+        referenced_blueprint="homeassistant/motion_light.yaml",
+        _blueprint_inputs={
+            "use_blueprint": {
+                "path": "homeassistant/motion_light.yaml",
+                "input": {"motion_entity": "light.sofa_light"},
+            },
+        },
+    )
+    path_only_entity = MagicMock(
+        entity_id="automation.other",
+        raw_config={},
+        referenced_blueprint="homeassistant/unused.yaml",
+        _blueprint_inputs=None,
+    )
+    plain_entity = MagicMock(
+        entity_id="automation.plain",
+        raw_config={"triggers": []},
+        referenced_blueprint=None,
+        _blueprint_inputs=None,
+    )
     hass.data["automation"] = MagicMock(
-        entities=[
-            MagicMock(
-                entity_id="automation.morning",
-                raw_config={
-                    "use_blueprint": {
-                        "path": "homeassistant/motion_light.yaml",
-                        "input": {"motion_entity": "light.sofa_light"},
-                    },
-                },
-            ),
-        ],
+        entities=[blueprint_entity, path_only_entity, plain_entity],
     )
 
     blueprints = await async_extract_blueprints(hass)
@@ -2102,6 +2119,20 @@ async def test_blueprints_extracted_and_attached(hass: HomeAssistant) -> None:
     assert motion_info.author == "Home Assistant"
     morning = next(a for a in snap.automations if a.name == "Morning Routine")
     assert morning.blueprint is motion_info
+    assert morning.config is not None
+    # Both the blueprint use and the substituted triggers are kept.
+    assert morning.config["use_blueprint"]["input"] == {
+        "motion_entity": "light.sofa_light"
+    }
+    assert morning.config["triggers"] == substituted["triggers"]
+    assert "use_blueprint" not in substituted
+    assert morning.refs["light.sofa_light"] == "Sofa Light (`light.sofa_light`)"
+
+    configs = _raw_configs(hass, "automation")
+    assert configs["automation.other"] == {
+        "use_blueprint": {"path": "homeassistant/unused.yaml"}
+    }
+    assert configs["automation.plain"] == {"triggers": []}
 
 
 async def test_blueprints_without_integration(hass: HomeAssistant) -> None:

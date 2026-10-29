@@ -71,9 +71,12 @@ Pages are organised into chapters inside your target book:
   data shows values only for harmless keys such as `message`,
   `brightness_pct` or `temperature`; all other keys are listed by name
   only, because their values may come from `!secret`. Webhook IDs are
-  never shown. An automation or script built from a blueprint shows the
-  blueprint and its inputs by their display names instead (inputs whose
-  name suggests a credential stay hidden), and both pages end with a
+  never shown. A device ID that HA no longer knows is flagged as
+  *unknown device* — usually a sign of a broken automation after a
+  device was removed. An automation or script built from a blueprint
+  additionally shows the blueprint and its inputs by their display
+  names (inputs whose name suggests a credential stay hidden) above the
+  summary of what it does, and both pages end with a
   **Blueprints** list: every installed blueprint with file, author,
   source, a short description and which automations or scripts use it
   — unused blueprints included

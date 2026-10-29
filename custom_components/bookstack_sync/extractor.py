@@ -1225,6 +1225,14 @@ def _raw_configs(hass: HomeAssistant, domain: str) -> dict[str, dict[str, Any]]:
     packages and UI-created entries are covered alike and no file is
     read. Missing pieces (domain not loaded, an entity without
     ``raw_config``) just mean no summary for that entry.
+
+    For an entry built from a blueprint, HA's ``raw_config`` is the
+    already substituted config (real triggers and actions), and the
+    ``use_blueprint`` block lives apart from it (#50). It is put back as
+    ``config["use_blueprint"]`` on a copy, so the summary can show both
+    the blueprint with its inputs and what the result actually does. The
+    inputs are only on the private ``_blueprint_inputs``; without it the
+    public ``referenced_blueprint`` still gives the path.
     """
     component = hass.data.get(domain)
     entities = getattr(component, "entities", None)
@@ -1233,9 +1241,19 @@ def _raw_configs(hass: HomeAssistant, domain: str) -> dict[str, dict[str, Any]]:
     configs: dict[str, dict[str, Any]] = {}
     for entity in entities:
         raw = getattr(entity, "raw_config", None)
-        if isinstance(raw, dict):
-            configs[entity.entity_id] = raw
+        if not isinstance(raw, dict):
+            continue
+        use = _blueprint_use(entity)
+        configs[entity.entity_id] = {**raw, "use_blueprint": use} if use else raw
     return configs
+
+
+def _blueprint_use(entity: Any) -> dict[str, Any] | None:
+    inputs = getattr(entity, "_blueprint_inputs", None)
+    if isinstance(inputs, dict) and isinstance(inputs.get("use_blueprint"), dict):
+        return dict(inputs["use_blueprint"])
+    path = getattr(entity, "referenced_blueprint", None)
+    return {"path": path} if isinstance(path, str) else None
 
 
 def _iter_strings(value: Any) -> Iterator[str]:
