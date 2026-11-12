@@ -629,6 +629,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     exclude_live_values: bool = False,
     dashboard_usage: dict[str, list[DashboardRef]] | None = None,
     blueprints: list[BlueprintInfo] | None = None,
+    reverse_usage_yaml: dict[str, list[dict[str, Any]]] | None = None,
 ) -> HASnapshot:
     """
     Build a sorted snapshot of HA registries plus auxiliary data.
@@ -934,7 +935,7 @@ def extract_snapshot(  # noqa: PLR0912, PLR0913, PLR0915 - cohesive registry wal
     snapshot.energy = energy_config
     snapshot.backup_status = backup_status
     snapshot.helpers = _extract_helpers(hass, entity_reg)
-    snapshot.reverse_usage = _extract_reverse_usage(hass)
+    snapshot.reverse_usage = _extract_reverse_usage(hass, reverse_usage_yaml or {})
     snapshot.labels = _extract_labels(
         hass, device_reg, entity_reg, devices, primary_to_members
     )
@@ -2708,6 +2709,43 @@ def _read_yaml_entries(
     return []
 
 
+_REVERSE_USAGE_FILES: tuple[tuple[str, str], ...] = (
+    ("automations.yaml", "automation"),
+    ("scripts.yaml", "script"),
+    ("scenes.yaml", "scene"),
+)
+
+
+def _load_reverse_usage_yaml_blocking(
+    files: list[tuple[Path, str]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Parse the reverse-usage YAML files. Blocking: run on the executor (#286)."""
+    loader_cls = _build_ha_yaml_loader()
+    result: dict[str, list[dict[str, Any]]] = {}
+    for path, domain in files:
+        if not path.is_file():
+            continue
+        result[domain] = _read_yaml_entries(path, loader_cls)
+    return result
+
+
+async def async_extract_reverse_usage_yaml(
+    hass: HomeAssistant,
+) -> dict[str, list[dict[str, Any]]]:
+    """
+    Load ``automations.yaml`` / ``scripts.yaml`` / ``scenes.yaml`` off the loop.
+
+    Pre-step for ``extract_snapshot`` (#286), same pattern as
+    ``async_extract_energy_config``: the file reads happen on the
+    executor, the parsed entries are passed through ``reverse_usage_yaml``.
+    """
+    files = [
+        (Path(hass.config.path(fname)), domain)
+        for fname, domain in _REVERSE_USAGE_FILES
+    ]
+    return await hass.async_add_executor_job(_load_reverse_usage_yaml_blocking, files)
+
+
 def _entry_label(item: dict[str, Any], domain: str) -> str:
     """Pick the most human-readable name from an automation/script/scene entry."""
     return str(
@@ -2779,12 +2817,19 @@ def _resolve_group_members(
     return leaves
 
 
-def _extract_reverse_usage(hass: HomeAssistant) -> dict[str, list[ReverseUsageEntry]]:
+def _extract_reverse_usage(
+    hass: HomeAssistant,
+    yaml_entries: dict[str, list[dict[str, Any]]],
+) -> dict[str, list[ReverseUsageEntry]]:
     """
     Build entity_id → list of automations/scripts/scenes that reference it.
 
-    Reads ``automations.yaml`` / ``scripts.yaml`` / ``scenes.yaml`` from
-    the HA config dir (sync, no async needed). Each file may use HA's
+    ``yaml_entries`` maps ``automation`` / ``script`` / ``scene`` to the
+    entries parsed from ``automations.yaml`` / ``scripts.yaml`` /
+    ``scenes.yaml``. Reading those files is blocking I/O, so callers load
+    them on the executor via ``async_extract_reverse_usage_yaml`` (#286)
+    and pass the result in; this function never touches the disk. Each
+    file may use HA's
     custom YAML tags (``!secret`` / ``!include``); the loader tolerates
     them. False positives (e.g. ``automation.morning`` matching as an
     entity_id token in another automation's body) are filtered out at
@@ -2799,20 +2844,12 @@ def _extract_reverse_usage(hass: HomeAssistant) -> dict[str, list[ReverseUsageEn
     nested chain are flattened away as implementation detail.
     """
     usage: dict[str, list[ReverseUsageEntry]] = {}
-    loader_cls = _build_ha_yaml_loader()
     group_map = _build_group_map(hass)
 
-    for fname, domain in (
-        ("automations.yaml", "automation"),
-        ("scripts.yaml", "script"),
-        ("scenes.yaml", "scene"),
-    ):
-        path = Path(hass.config.path(fname))
-        if not path.is_file():
-            continue
-        for entry in _read_yaml_entries(path, loader_cls):
-            label = _entry_label(entry, domain)
-            text = repr(entry)
+    for domain, domain_entries in yaml_entries.items():
+        for yaml_entry in domain_entries:
+            label = _entry_label(yaml_entry, domain)
+            text = repr(yaml_entry)
             referenced = _extract_entity_ids_from_text(text)
             for entity_id in referenced:
                 usage.setdefault(entity_id, []).append(
