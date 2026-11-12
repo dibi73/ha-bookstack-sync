@@ -96,7 +96,12 @@ def _as_list(value: Any) -> list[Any]:
 def _duration(value: Any) -> str:
     """Render a HA duration (``"00:05:00"``, seconds or a dict) as code."""
     if isinstance(value, dict):
-        parts = {k: int(value.get(k, 0) or 0) for k in ("hours", "minutes", "seconds")}
+        try:
+            parts = {
+                k: int(value.get(k, 0) or 0) for k in ("hours", "minutes", "seconds")
+            }
+        except ValueError, TypeError:
+            return _code(value)
         if set(value) <= {"hours", "minutes", "seconds", "milliseconds"}:
             return _code(
                 f"{parts['hours']:02d}:{parts['minutes']:02d}:{parts['seconds']:02d}"
