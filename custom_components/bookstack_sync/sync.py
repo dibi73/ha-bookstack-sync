@@ -72,6 +72,7 @@ from .extractor import (
     async_extract_blueprints,
     async_extract_dashboard_usage,
     async_extract_energy_config,
+    async_extract_reverse_usage_yaml,
     extract_snapshot,
 )
 from .merge import (
@@ -772,9 +773,11 @@ async def run_sync(  # noqa: C901, PLR0912, PLR0913, PLR0915 - cohesive 3-pass e
     addons = await async_extract_addons(hass)
     dashboard_usage = await async_extract_dashboard_usage(hass)
     blueprints = await async_extract_blueprints(hass)
+    reverse_usage_yaml = await async_extract_reverse_usage_yaml(hass)
     snapshot = extract_snapshot(
         hass,
         blueprints=blueprints,
+        reverse_usage_yaml=reverse_usage_yaml,
         energy_config=energy_config,
         backup_status=backup_status,
         addons=addons,
@@ -1086,9 +1089,11 @@ async def resync_single_page(  # noqa: PLR0913 - mirrors run_sync's core params 
     addons = await async_extract_addons(hass)
     dashboard_usage = await async_extract_dashboard_usage(hass)
     blueprints = await async_extract_blueprints(hass)
+    reverse_usage_yaml = await async_extract_reverse_usage_yaml(hass)
     snapshot = extract_snapshot(
         hass,
         blueprints=blueprints,
+        reverse_usage_yaml=reverse_usage_yaml,
         energy_config=energy_config,
         backup_status=backup_status,
         addons=addons,

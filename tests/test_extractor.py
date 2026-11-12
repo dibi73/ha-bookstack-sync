@@ -39,6 +39,7 @@ from custom_components.bookstack_sync.extractor import (
     async_extract_blueprints,
     async_extract_dashboard_usage,
     async_extract_energy_config,
+    async_extract_reverse_usage_yaml,
     extract_snapshot,
 )
 
@@ -1646,7 +1647,9 @@ async def test_reverse_usage_from_automations_yaml(
         encoding="utf-8",
     )
 
-    snap = extract_snapshot(hass)
+    snap = extract_snapshot(
+        hass, reverse_usage_yaml=await async_extract_reverse_usage_yaml(hass)
+    )
     assert "light.foo" in snap.reverse_usage, (
         f"reverse_usage was {snap.reverse_usage!r}"
     )
@@ -1684,7 +1687,9 @@ async def test_reverse_usage_resolves_through_groups(
         encoding="utf-8",
     )
 
-    snap = extract_snapshot(hass)
+    snap = extract_snapshot(
+        hass, reverse_usage_yaml=await async_extract_reverse_usage_yaml(hass)
+    )
 
     # Direct hit on the group itself.
     direct = snap.reverse_usage.get("group.lights", [])
@@ -1736,12 +1741,66 @@ async def test_reverse_usage_resolves_groups_transitively(
         encoding="utf-8",
     )
 
-    snap = extract_snapshot(hass)
+    snap = extract_snapshot(
+        hass, reverse_usage_yaml=await async_extract_reverse_usage_yaml(hass)
+    )
     leaf_refs = snap.reverse_usage.get("light.deep", [])
     assert any(
         e.domain == "automation" and e.name == "Outer" and e.via_group == "group.outer"
         for e in leaf_refs
     ), f"transitive resolution failed: {leaf_refs!r}"
+
+
+async def test_extract_snapshot_does_no_reverse_usage_file_io(
+    hass: HomeAssistant,
+) -> None:
+    """#286: without pre-loaded YAML, extract_snapshot must not read the files."""
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    Path(hass.config.path("automations.yaml")).write_text(  # noqa: ASYNC240
+        "- alias: Morning Lights\n"
+        "  action:\n"
+        "    - service: light.turn_on\n"
+        "      target:\n"
+        "        entity_id: light.foo\n",
+        encoding="utf-8",
+    )
+
+    snap = extract_snapshot(hass)
+
+    assert snap.reverse_usage == {}
+
+
+async def test_reverse_usage_yaml_loader_shapes(
+    hass: HomeAssistant,
+) -> None:
+    """#286: missing files are skipped, dict-shaped files flattened, bad YAML empty."""
+    from pathlib import Path  # noqa: PLC0415 - test-only
+
+    Path(hass.config.path("scripts.yaml")).write_text(  # noqa: ASYNC240
+        "wake_up:\n"
+        "  alias: Wake up\n"
+        "  sequence:\n"
+        "    - service: light.turn_on\n"
+        "      target:\n"
+        "        entity_id: light.bar\n",
+        encoding="utf-8",
+    )
+    Path(hass.config.path("scenes.yaml")).write_text(  # noqa: ASYNC240
+        "- name: [unclosed\n",
+        encoding="utf-8",
+    )
+    Path(hass.config.path("automations.yaml")).unlink(  # noqa: ASYNC240
+        missing_ok=True
+    )
+
+    loaded = await async_extract_reverse_usage_yaml(hass)
+
+    assert "automation" not in loaded
+    assert loaded["script"][0]["alias"] == "Wake up"
+    assert loaded["scene"] == []
+    snap = extract_snapshot(hass, reverse_usage_yaml=loaded)
+    assert any(e.name == "Wake up" for e in snap.reverse_usage["light.bar"])
 
 
 # --- excluded_integrations / excluded_devices (issue #221) ---------------
