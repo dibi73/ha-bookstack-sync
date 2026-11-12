@@ -369,6 +369,90 @@ class TestRetryOnTransientErrors:
                 await client.get_page(42)
 
 
+class TestWriteServerError:
+    """#285: a 5xx on a write is checked like a timeout before failing."""
+
+    async def test_put_500_but_page_written_is_success(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.put("http://bookstack.local:6875/api/pages/42", status=500)
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P", "markdown": "body"},
+            )
+            page = await client.update_page(42, "P", "body")
+            assert page["markdown"] == "body"
+            assert _calls(mocked, "PUT") == 1
+
+    async def test_put_500_and_page_unchanged_still_fails(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.put("http://bookstack.local:6875/api/pages/42", status=500)
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P", "markdown": "old body"},
+            )
+            with pytest.raises(BookStackApiCommunicationError):
+                await client.update_page(42, "P", "body")
+            # No blind retry of the full body after a server error.
+            assert _calls(mocked, "PUT") == 1
+
+    async def test_put_500_with_failing_check_still_fails(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.put("http://bookstack.local:6875/api/pages/42", status=500)
+            mocked.get("http://bookstack.local:6875/api/pages/42", status=500)
+            with pytest.raises(BookStackApiCommunicationError):
+                await client.update_page(42, "P", "body")
+
+    async def test_put_500_tolerates_bookstack_normalisation(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.put("http://bookstack.local:6875/api/pages/42", status=500)
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/42",
+                payload={"id": 42, "name": "P", "markdown": "line\r\nbody\n\n"},
+            )
+            page = await client.update_page(42, "P", "line\nbody")
+            assert page["id"] == 42
+
+    async def test_put_4xx_is_not_verified(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.put("http://bookstack.local:6875/api/pages/42", status=422)
+            with pytest.raises(BookStackApiCommunicationError):
+                await client.update_page(42, "P", "body")
+            assert _calls(mocked, "GET") == 0
+
+    async def test_post_500_but_page_created_is_not_duplicated(
+        self,
+        client: BookStackApiClient,
+    ) -> None:
+        with aioresponses() as mocked:
+            mocked.post("http://bookstack.local:6875/api/pages", status=500)
+            mocked.get(
+                PAGES_LIST_BY_NAME,
+                payload={"data": [{"id": 11, "name": "P"}], "total": 1},
+            )
+            mocked.get(
+                "http://bookstack.local:6875/api/pages/11",
+                payload={"id": 11, "name": "P", "markdown": "body"},
+            )
+            page = await client.create_page("P", "body", book_id=5)
+            assert page["id"] == 11
+            assert _calls(mocked, "POST") == 1
+
+
 class TestRetryOnRateLimit:
     """#210: a 429 must be retried (honouring Retry-After), not a hard fail."""
 

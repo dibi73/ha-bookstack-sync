@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import unicodedata
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -101,6 +102,24 @@ def _raise_for_status(response: aiohttp.ClientResponse) -> None:
     response.raise_for_status()
 
 
+def _same_markdown(stored: str | None, sent: str) -> bool:
+    """
+    Compare a page's stored markdown with what we sent (#285).
+
+    BookStack may normalise line endings, Unicode composition and
+    surrounding whitespace on save (#58), so an exact comparison can
+    miss a write that did go through.
+    """
+    if stored is None:
+        return False
+
+    def _norm(text: str) -> str:
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        return unicodedata.normalize("NFC", text).strip()
+
+    return _norm(stored) == _norm(sent)
+
+
 class BookStackApiClient:
     """
     Minimal async BookStack REST client.
@@ -162,25 +181,33 @@ class BookStackApiClient:
         method: str,
         path: str,
         verify: Callable[[], Awaitable[dict[str, Any] | None]],
+        failure: str = "timed out",
     ) -> dict[str, Any] | None:
-        """Run a post-timeout write check; ``None`` if unconfirmed (#236)."""
+        """
+        Check whether a failed write was applied anyway; ``None`` if not.
+
+        Used after a client-side timeout (#236) and after a 5xx answer
+        (#285): BookStack can store the page and still fail afterwards.
+        """
         try:
             written = await verify()
         except BookStackApiError as err:
             LOGGER.warning(
-                "BookStack %s %s timed out and the follow-up check failed "
+                "BookStack %s %s %s and the follow-up check failed "
                 "too (%s); treating the write as not applied",
                 method.upper(),
                 path,
+                failure,
                 err,
             )
             return None
         if written is not None:
             LOGGER.info(
-                "BookStack %s %s timed out on the client side, but BookStack "
-                "had already applied the write; not retrying",
+                "BookStack %s %s %s, but BookStack had already applied "
+                "the write; treating it as successful",
                 method.upper(),
                 path,
+                failure,
             )
         return written
 
@@ -282,7 +309,7 @@ class BookStackApiClient:
             )
             for candidate in sorted(candidates, key=lambda p: p["id"], reverse=True):
                 page = await self.get_page(candidate["id"])
-                if page.get("markdown") == markdown:
+                if _same_markdown(page.get("markdown"), markdown):
                     return page
             return None
 
@@ -335,7 +362,9 @@ class BookStackApiClient:
             # the page already holds what we sent, the write went through
             # and re-sending the full body would only add another revision.
             page = await self.get_page(page_id)
-            if page.get("name") == name and page.get("markdown") == markdown:
+            if page.get("name") == name and _same_markdown(
+                page.get("markdown"), markdown
+            ):
                 return page
             return None
 
@@ -384,7 +413,9 @@ class BookStackApiClient:
         checks whether BookStack applied the write anyway and returns the
         resulting page if so, which then counts as success instead of a
         retry. Returning ``None`` means the write did not happen and the
-        normal retry continues.
+        normal retry continues. Since #285 the same check also runs after
+        a 5xx answer; there it is not followed by a retry, the request
+        fails as before when the write is not confirmed.
         """
         url = f"{self._base_url}{path}"
         headers = {
@@ -475,6 +506,23 @@ class BookStackApiClient:
                 )
                 raise BookStackApiCommunicationError(msg) from err
             except (aiohttp.ClientError, socket.gaierror) as err:
+                if (
+                    verify_after_timeout is not None
+                    and isinstance(err, aiohttp.ClientResponseError)
+                    and err.status >= HTTPStatus.INTERNAL_SERVER_ERROR
+                ):
+                    # #285: BookStack sometimes stores the page and only
+                    # fails afterwards (HTTP 500). Treating that as a
+                    # failed write left the stored hash stale, and the
+                    # next run flagged the page as edited by hand.
+                    written = await self._verify_write(
+                        method,
+                        path,
+                        verify_after_timeout,
+                        failure=f"answered HTTP {err.status}",
+                    )
+                    if written is not None:
+                        return written
                 msg = f"BookStack request failed: {self._scrub(err)}"
                 raise BookStackApiCommunicationError(msg) from err
         # The retry loop above either returns, raises, or reaches its final
