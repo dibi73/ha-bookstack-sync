@@ -230,10 +230,13 @@ bei Custom-Integrationen nicht formal prüft:
 
 ## Voraussetzungen
 
-- **Home Assistant**: Die CI testet gegen Home Assistant 2026.8; im
-  Alltag läuft die Integration auf aktuellen Versionen (2026.10). Sie
-  berücksichtigt die Änderung an der Geräte-Registry in 2026.9, ältere
-  und neuere Versionen funktionieren also beide.
+- **Home Assistant 2026.3 oder neuer.** Die Integration nutzt Python 3.14,
+  das Home Assistant ab 2026.3 mitbringt; ältere Versionen laufen noch
+  auf Python 3.13 und können sie nicht laden. HACS bietet sie deshalb
+  erst ab 2026.3 an. Die CI prüft bei jeder Änderung, dass sie auf
+  2026.3 lädt, und testet vollständig gegen die aktuelle Version. Die
+  Änderung an der Geräte-Registry (2026.8 bis 2026.10) wird
+  berücksichtigt.
 - **BookStack** mit einer REST-API, die von Home Assistant aus erreichbar
   ist. Bekannt funktionierend mit dem BookStack-Add-on für Home Assistant
   (5.0.x) und mit eigenständigen Installationen, auch hinter dem Reverse

@@ -1,0 +1,45 @@
+name: Minimum HA version
+
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+    branches:
+      - "main"
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    name: "Loads on HA 2026.3"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+          cache: "pip"
+
+      - name: Install the minimum Home Assistant release
+        # Keep in sync with the "homeassistant" key in hacs.json.
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "homeassistant==2026.3.4"
+
+      - name: Import every module of the integration
+        run: |
+          python3 - <<'PY'
+          import importlib
+          import pkgutil
+
+          import custom_components.bookstack_sync as pkg
+
+          for mod in pkgutil.iter_modules(pkg.__path__):
+              importlib.import_module(f"{pkg.__name__}.{mod.name}")
+              print("ok", mod.name)
+          PY
