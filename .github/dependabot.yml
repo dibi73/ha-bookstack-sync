@@ -16,7 +16,9 @@ updates:
     schedule:
       interval: "daily"
     ignore:
-      # Dependabot should not update Home Assistant as that should match the homeassistant key in hacs.json
+      # homeassistant is pinned for lint/mypy and updated deliberately.
+      # The minimum supported release is the "homeassistant" key in
+      # hacs.json (2026.3.0); CI checks that the integration loads there.
       - dependency-name: "homeassistant"
       # pytest-homeassistant-custom-component pins these to exact versions
       # (matching the Home Assistant release it is built for). Bumping them

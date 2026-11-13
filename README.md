@@ -219,10 +219,12 @@ validate Gold/Platinum rules for custom integrations:
 
 ## Requirements
 
-- **Home Assistant**: CI tests run against Home Assistant 2026.8; the
-  integration is used day to day on current releases (2026.10). It
-  adapts to the device-registry change in 2026.9, so older and newer
-  releases both work.
+- **Home Assistant 2026.3 or newer.** The integration uses Python 3.14,
+  which Home Assistant ships from 2026.3 on; older releases still run on
+  Python 3.13 and cannot load it, so HACS only offers it from 2026.3.
+  CI checks on every change that it loads on 2026.3 and runs the full
+  test suite against the current release. The device-registry change
+  (2026.8 to 2026.10) is handled.
 - **BookStack** with its REST API reachable from Home Assistant. Known
   to work with the BookStack Home Assistant add-on (5.0.x) and with
   standalone installs, also behind a NAS reverse proxy.
