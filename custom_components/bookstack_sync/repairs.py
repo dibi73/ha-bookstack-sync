@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
-from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
+from homeassistant.components.repairs import RepairsFlow
 from homeassistant.helpers import issue_registry as ir
 
 from .api import BookStackApiError
@@ -13,6 +13,9 @@ from .const import LOGGER, REPAIR_ISSUE_BULK_CONFLICT, REPAIR_ISSUE_ORPHAN_CONFL
 from .coordinator import BookStackSyncBusyError
 
 if TYPE_CHECKING:
+    # Type-only: RepairsFlowResult only exists in newer HA releases, so it
+    # must not be imported at runtime on older ones.
+    from homeassistant.components.repairs import RepairsFlowResult
     from homeassistant.core import HomeAssistant
 
     from .data import BookStackSyncConfigEntry
